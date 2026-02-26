@@ -7,9 +7,9 @@
 <style>
 
 body{
-    background:#0a0a0a;
-    color:white;
+    background:#f5f7fa;
     font-family: Arial, sans-serif;
+    margin:0;
 }
 
 /* HEADER */
@@ -18,27 +18,30 @@ header{
     display:flex;
     justify-content:space-between;
     align-items:center;
-    padding:20px;
-    border-bottom:2px solid #8a2be2;
+    padding:20px 40px;
+    background:#4da6ff;
+    color:white;
 }
 
 .logo{
-    font-size:20px;
+    font-size:22px;
     font-weight:bold;
 }
 
 nav button{
-    background:#111;
-    color:white;
-    border:2px solid orange;
+    background:white;
+    color:#4da6ff;
+    border:none;
     padding:10px 20px;
     margin:5px;
-    border-radius:10px;
+    border-radius:8px;
     cursor:pointer;
+    font-weight:bold;
+    transition:0.3s;
 }
 
 nav button:hover{
-    background:orange;
+    background:#e6f2ff;
 }
 
 /* CONTENIDO */
@@ -46,33 +49,40 @@ nav button:hover{
 .container{
     margin:40px auto;
     width:80%;
-    border:2px solid #ff6f91;
-    padding:20px;
-    border-radius:10px;
+    background:white;
+    padding:30px;
+    border-radius:12px;
+    box-shadow:0 4px 10px rgba(0,0,0,0.1);
 }
 
 /* BOTON AGREGAR */
 
 .add-btn{
     float:right;
-    background:#1e3d2f;
-    border:2px solid #00ff7f;
+    background:#4da6ff;
+    border:none;
     color:white;
     padding:10px 20px;
-    border-radius:10px;
+    border-radius:8px;
     cursor:pointer;
+    font-weight:bold;
+    transition:0.3s;
+}
+
+.add-btn:hover{
+    background:#2d8cf0;
 }
 
 /* INVENTARIO */
 
 .inventory{
     margin-top:60px;
-    border:2px solid #4da6ff;
-    border-radius:10px;
+    background:#f0f2f5;
+    border-radius:12px;
     padding:60px;
     text-align:center;
-    font-size:22px;
-    color:#ddd;
+    font-size:20px;
+    color:#666;
 }
 
 </style>
