@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>FashionVision IA</title>
+
+<style>
+
+body{
+    background:#0a0a0a;
+    color:white;
+    font-family: Arial, sans-serif;
+}
+
+/* HEADER */
+
+header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:20px;
+    border-bottom:2px solid #8a2be2;
+}
+
+.logo{
+    font-size:20px;
+    font-weight:bold;
+}
+
+nav button{
+    background:#111;
+    color:white;
+    border:2px solid orange;
+    padding:10px 20px;
+    margin:5px;
+    border-radius:10px;
+    cursor:pointer;
+}
+
+nav button:hover{
+    background:orange;
+}
+
+/* CONTENIDO */
+
+.container{
+    margin:40px auto;
+    width:80%;
+    border:2px solid #ff6f91;
+    padding:20px;
+    border-radius:10px;
+}
+
+/* BOTON AGREGAR */
+
+.add-btn{
+    float:right;
+    background:#1e3d2f;
+    border:2px solid #00ff7f;
+    color:white;
+    padding:10px 20px;
+    border-radius:10px;
+    cursor:pointer;
+}
+
+/* INVENTARIO */
+
+.inventory{
+    margin-top:60px;
+    border:2px solid #4da6ff;
+    border-radius:10px;
+    padding:60px;
+    text-align:center;
+    font-size:22px;
+    color:#ddd;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+
+<div class="logo">
+FashionVision IA
+</div>
+
+<nav>
+<button>Dashboard</button>
+<button>Pago</button>
+<button>Inventario</button>
+<button>W.I.P</button>
+</nav>
+
+</header>
+
+<div class="container">
+
+<button class="add-btn">
+Agregar producto
+</button>
+
+<div class="inventory">
+No se encuentran productos
+</div>
+
+</div>
+
+</body>
+</html>
