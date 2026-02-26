@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Inventario - FashionVision IA</title>
+
+    <style>
+        body {
+            background: #f5f7fa;
+            font-family: Arial, sans-serif;
+            margin: 0;
+        }
+
+        /* HEADER */
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 40px;
+            background: #4da6ff;
+            color: white;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        nav a {
+            background: white;
+            color: #4da6ff;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        nav a:hover {
+            background: #e6f2ff;
+        }
+
+        /* CONTENIDO */
+
+        .container {
+            margin: 40px auto;
+            width: 80%;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* BOTON AGREGAR */
+
+        .add-btn {
+            background: #4da6ff;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .add-btn:hover {
+            background: #2d8cf0;
+        }
+
+        /* TABLA */
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 15px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #f0f2f5;
+        }
+
+        img {
+            width: 60px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+
+        <div class="logo">
+            FashionVision IA
+        </div>
+
+        <nav>
+            <a href="home.html">Dashboard</a>
+            <a href="#">Pago</a>
+            <a href="inventario.html">Inventario</a>
+            <a href="#">W.I.P</a>
+        </nav>
+
+    </header>
+
+    <div class="container">
+
+        <h2>Inventario de Productos</h2>
+
+        <button class="add-btn" onclick="agregarProducto()">
+            Agregar producto
+        </button>
+
+        <table id="tabla">
+            <thead>
+                <tr>
+                    <th>Foto</th>
+                    <th>Cantidad</th>
+                    <th>Color</th>
+                    <th>Precio</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                <tr>
+                    <td><img src="https://via.placeholder.com/60"></td>
+                    <td>10</td>
+                    <td>Negro</td>
+                    <td>$450</td>
+                </tr>
+
+                <tr>
+                    <td><img src="https://via.placeholder.com/60"></td>
+                    <td>5</td>
+                    <td>Rojo</td>
+                    <td>$380</td>
+                </tr>
+
+                <tr>
+                    <td><img src="https://via.placeholder.com/60"></td>
+                    <td>8</td>
+                    <td>Azul</td>
+                    <td>$520</td>
+                </tr>
+
+            </tbody>
+        </table>
+
+    </div>
+
+    <script>
+
+        function agregarProducto() {
+            let cantidad = prompt("Cantidad:");
+            let color = prompt("Color:");
+            let precio = prompt("Precio:");
+
+            if (foto && cantidad && color && precio) {
+
+                let tabla = document.getElementById("tabla").getElementsByTagName("tbody")[0];
+                let fila = tabla.insertRow();
+
+                fila.innerHTML = `
+            <td>${cantidad}</td>
+            <td>${color}</td>
+            <td>$${precio}</td>
+        `;
+            }
+        }
+
+    </script>
+
+</body>
+
+</html>
