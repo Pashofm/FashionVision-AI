@@ -40,3 +40,4 @@ pip install fastapi uvicorn
 
 # Iniciar servidor
 python -m uvicorn main:app --reload
+```
