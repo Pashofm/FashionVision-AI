@@ -41,3 +41,21 @@ pip install fastapi uvicorn
 # Iniciar servidor
 python -m uvicorn main:app --reload
 ```
+
+El backend estará corriendo en: http://127.0.0.1:8000
+
+### 3. Configuración del Frontend (Vite + React) 
+Abre una nueva terminal y ejecuta:
+
+```bash
+# Entrar a la carpeta
+cd frontend
+
+# Instalar dependencias de Node
+npm install
+
+# Iniciar entorno de desarrollo con Vite
+npm run dev
+```
+
+El frontend estará disponible en la URL que indique la consola (usualmente http://localhost:5173).
