@@ -29,7 +29,6 @@ const Home = () => {
   } = useCamera();
 
   const canvasRef = useRef(null);
-  const fileInputRef = useRef(null);
 
   const processImage = useCallback(async (imgData) => {
     setImagen(imgData);
@@ -87,22 +86,6 @@ const Home = () => {
     }
   }, [captureFrame, closeCamera, processImage]);
 
-  const handleFileUpload = useCallback((event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const imgData = e.target.result;
-      await processImage(imgData);
-    };
-    reader.readAsDataURL(file);
-  }, [processImage]);
-
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
-  };
-
   const handleDemoBackend = async () => {
     setLoading(true);
     setAppError('');
@@ -157,18 +140,9 @@ const Home = () => {
         <section className="button-section">
           <ButtonGroup 
             onOpenCamera={openCamera}
-            onUploadImage={triggerFileInput}
             onDemoBackend={handleDemoBackend}
             isModelReady={isReady}
             isLoading={loading}
-          />
-          
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileUpload}
-            style={{ display: 'none' }}
           />
         </section>
 
