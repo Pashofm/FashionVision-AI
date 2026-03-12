@@ -61,14 +61,28 @@ const Home = () => {
       console.log('Predicciones:', predictions);
 
       if (predictions.length > 0) {
-        const categoriaTraducida = traducirCategoria(predictions[0].className);
-        setTipoPrenda(categoriaTraducida);
-        
-        setProducto({
-          prenda: categoriaTraducida,
-          color: colorDetectado,
-          confianza: predictions[0].probability
-        });
+        let categoriaTraducida = null;
+        let predictionIndex = 0;
+
+        for (let i = 0; i < predictions.length; i++) {
+          const categoria = traducirCategoria(predictions[i].className);
+          if (categoria !== null) {
+            categoriaTraducida = categoria;
+            predictionIndex = i;
+            break;
+          }
+        }
+
+        if (categoriaTraducida) {
+          setTipoPrenda(categoriaTraducida);
+          setProducto({
+            prenda: categoriaTraducida,
+            color: colorDetectado,
+            confianza: predictions[predictionIndex].probability
+          });
+        } else {
+          setAppError('No se detectó una prenda de vestir. Intenta con otra imagen.');
+        }
       }
     } catch (err) {
       console.error('Error clasificando:', err);
