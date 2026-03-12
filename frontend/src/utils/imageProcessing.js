@@ -39,6 +39,31 @@ export const traducirCategoria = (texto) => {
     'coat': 'Abrigo',
     'sweater': 'Suéter',
     'short': 'Short',
+    'suit': 'Traje',
+    'blazer': 'Blazer',
+    'skirt': 'Falda',
+    'hoodie': 'Sudadera con capucha',
+    'cardigan': 'Cárdigan',
+    'polo': 'Polo',
+    'vest': 'Chaleco',
+    'legging': 'Malla',
+    'bikini': 'Bikini',
+    'bra': 'Sujetador',
+    'sock': 'Calcetines',
+    'glove': 'Guante',
+    'scarf': 'Bufanda',
+    'belt': 'Cinturón',
+    'watch': 'Reloj',
+    'handbag': 'Bolso de mano',
+    'wallet': 'Billetera',
+    'backpack': 'Mochila',
+    'briefcase': 'Maletín',
+    'luggage': 'Equipaje',
+    'gown': 'Bata',
+    'maillot': 'Mayo',
+    'poncho': 'Poncho',
+    'stole': 'Estola',
+    'cloak': 'Capa',
   };
 
   const t = texto.toLowerCase();
@@ -49,42 +74,5 @@ export const traducirCategoria = (texto) => {
     }
   }
   
-  return texto;
-};
-
-export const processImageData = async (imgData, model) => {
-  return new Promise((resolve, reject) => {
-    const imgElement = new Image();
-    imgElement.src = imgData;
-    
-    imgElement.onload = async () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = imgElement.width;
-      canvas.height = imgElement.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(imgElement, 0, 0);
-
-      const colorDetectado = detectarColor(canvas);
-
-      if (!model) {
-        resolve({ imgElement, colorDetectado });
-        return;
-      }
-
-      try {
-        await imgElement.decode();
-        const predictions = await model.classify(imgElement);
-        
-        resolve({
-          imgElement,
-          colorDetectado,
-          predictions
-        });
-      } catch (err) {
-        reject(err);
-      }
-    };
-    
-    imgElement.onerror = reject;
-  });
+  return null;
 };
