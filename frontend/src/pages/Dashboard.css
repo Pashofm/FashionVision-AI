@@ -1,0 +1,146 @@
+body, html, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.dashboard-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 20px 60px;
+  background: #4da6ff;
+  color: white;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+nav {
+  display: flex;
+  gap: 10px;
+}
+
+nav button {
+  background: white;
+  color: #4da6ff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: 0.3s;
+}
+
+nav button:hover:not(:disabled) {
+  background: #e6f2ff;
+}
+
+nav button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dashboard-container {
+  margin-top: 40px;
+  width: 90%;
+  max-width: 960px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-bottom: 40px;
+}
+
+/* GRÁFICO */
+.ventas-section {
+  background: white;
+  padding: 32px;
+  border-radius: 15px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+}
+
+.section-title {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  color: #1e293b;
+}
+
+.section-subtitle {
+  margin: 0 0 24px 0;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.chart-wrapper {
+  width: 100%;
+}
+
+/* APARTADOS INFERIORES */
+.actions-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.action-card {
+  background: white;
+  border-radius: 15px;
+  padding: 32px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.action-card h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #1e293b;
+}
+
+.action-btn {
+  padding: 14px 40px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+  border: 2px solid;
+}
+
+.btn-pago {
+  background: transparent;
+  border-color: #f5576c;
+  color: #f5576c;
+}
+
+.btn-pago:hover {
+  background: #f5576c;
+  color: white;
+}
+
+.btn-inventario {
+  background: transparent;
+  border-color: #11998e;
+  color: #11998e;
+}
+
+.btn-inventario:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

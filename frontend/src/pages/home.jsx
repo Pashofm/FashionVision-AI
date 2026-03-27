@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useTensorFlow from '../hooks/useTensorFlow';
 import useCamera from '../hooks/useCamera';
 import { traducirCategoria, detectarColor } from '../utils/imageProcessing';
@@ -17,7 +18,7 @@ const Home = () => {
   const [tipoPrenda, setTipoPrenda] = useState('');
   const [productos, setProductos] = useState([]);
   const [appError, setAppError] = useState('');
-
+  const navigate = useNavigate();
   const { model, isReady, error: modelError } = useTensorFlow();
   const { 
     videoRef, 
@@ -142,8 +143,8 @@ const Home = () => {
       <header>
         <div className="logo">FashionVision IA</div>
         <nav>
-          <button>Dashboard</button>
-          <button>Pago</button>
+          <button onClick={() => navigate('/dashboard')}>Dashboard</button>
+          <button onClick={() => navigate('/pago')}>Pago</button>
           <button>Inventario</button>
         </nav>
       </header>
