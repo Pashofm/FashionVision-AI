@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import Home from './pages/home';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/login';
+import Dashboard from './pages/Dashboard';
+import Home from './pages/home';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -11,9 +13,23 @@ function App() {
   };
 
   return (
-    <div className="App">
-      {isLoggedIn ? <Home /> : <Login onLogin={handleLogin} />}
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={isLoggedIn ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />}
+        />
+        <Route
+          path="/dashboard"
+          element={isLoggedIn ? <Dashboard /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/pago"
+          element={isLoggedIn ? <Home /> : <Navigate to="/" />}
+        />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
