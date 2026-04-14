@@ -1,25 +1,102 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import useTensorFlow from '../hooks/useTensorFlow';
 import useCamera from '../hooks/useCamera';
-import { traducirCategoria, detectarColor } from '../utils/imageProcessing';
 import ButtonGroup from '../components/ButtonGroup';
 import CameraSection from '../components/CameraSection';
-import ImagePreview from '../components/ImagePreview';
-import ProductCard from '../components/ProductCard';
-import InventoryTable from '../components/InventoryTable';
+import { detectClothes } from '../services/api';
 import '../styles/home.css';
+
+const PRODUCTOS_DB = {
+  'gorra-roja-lacoste': {
+    name: 'Gorra Roja Lacoste',
+    price: 999.99,
+    brand: 'Lacoste',
+    sku: 'GOR-001',
+    sizes: ['One Size'],
+    colors: ['Rojo'],
+    tipoPrenda: 'Gorra'
+  },
+  'top': {
+    name: 'Camiseta Algodon',
+    price: 299.99,
+    brand: 'FashionCo',
+    sku: 'CAM-001',
+    sizes: ['S', 'M', 'L', 'XL'],
+    colors: ['Blanco', 'Negro'],
+    tipoPrenda: 'Camiseta'
+  },
+  'pants': {
+    name: 'Jean Slim Fit',
+    price: 599.99,
+    brand: 'DenimCraft',
+    sku: 'PAN-001',
+    sizes: ['28', '30', '32', '34'],
+    colors: ['Azul', 'Negro'],
+    tipoPrenda: 'Pantalón'
+  }
+};
+
+const getProduct = (cls, conf) => {
+  const producto = PRODUCTOS_DB[cls.toLowerCase()];
+  if (producto) {
+    return { ...producto, confidence: conf };
+  }
+  return { 
+    name: cls, 
+    price: 0, 
+    brand: 'Desconocido', 
+    sku: 'N/A', 
+    confidence: conf, 
+    tipoPrenda: cls,
+    sizes: [],
+    colors: []
+  };
+};
+
+const traducirCategoria = (className) => {
+  if (!className) return 'Prenda';
+  const producto = PRODUCTOS_DB[className.toLowerCase()];
+  return producto ? producto.tipoPrenda : className;
+};
+
+const detectarColor = (canvas) => {
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  let r = 0, g = 0, b = 0;
+  let total = data.length / 4;
+
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+  }
+
+  r = Math.floor(r / total);
+  g = Math.floor(g / total);
+  b = Math.floor(b / total);
+
+  if (r > g && r > b) return 'Rojo';
+  if (g > r && g > b) return 'Verde';
+  if (b > r && b > g) return 'Azul';
+  if (r > 200 && g > 200 && b > 200) return 'Blanco';
+  if (r < 50 && g < 50 && b < 50) return 'Negro';
+
+  return 'Color mixto';
+};
 
 const Home = () => {
   const [producto, setProducto] = useState(null);
   const [loading, setLoading] = useState(false);
   const [imagen, setImagen] = useState(null);
-  const [color, setColor] = useState('');
-  const [tipoPrenda, setTipoPrenda] = useState('');
-  const [productos, setProductos] = useState([]);
+  const [colorDetectado, setColorDetectado] = useState('');
+  const [detections, setDetections] = useState(null);
+  const [imageSize, setImageSize] = useState(null);
   const [appError, setAppError] = useState('');
+  const [isModelReady, setIsModelReady] = useState(true);
   const navigate = useNavigate();
-  const { model, isReady, error: modelError } = useTensorFlow();
+
   const { 
     videoRef, 
     isActive, 
@@ -30,66 +107,101 @@ const Home = () => {
   } = useCamera();
 
   const canvasRef = useRef(null);
+  const resultCanvasRef = useRef(null);
 
-  const processImage = useCallback(async (imgData) => {
+  const processDetection = useCallback(async (imgData) => {
     setImagen(imgData);
     setAppError('');
-
-    const imgElement = new Image();
-    imgElement.src = imgData;
-
-    await new Promise((resolve) => {
-      imgElement.onload = resolve;
-    });
-
-    const canvas = canvasRef.current;
-    canvas.width = imgElement.width;
-    canvas.height = imgElement.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(imgElement, 0, 0);
-
-    const colorDetectado = detectarColor(canvas);
-    setColor(colorDetectado);
-
-    if (!model) {
-      console.log('Modelo aún no cargado');
-      return;
-    }
+    setLoading(true);
+    setDetections(null);
+    setProducto(null);
 
     try {
-      await imgElement.decode();
-      const predictions = await model.classify(imgElement);
-      console.log('Predicciones:', predictions);
+      const imgElement = new Image();
+      imgElement.src = imgData;
 
-      if (predictions.length > 0) {
-        let categoriaTraducida = null;
-        let predictionIndex = 0;
+      await new Promise((resolve) => {
+        imgElement.onload = resolve;
+      });
 
-        for (let i = 0; i < predictions.length; i++) {
-          const categoria = traducirCategoria(predictions[i].className);
-          if (categoria !== null) {
-            categoriaTraducida = categoria;
-            predictionIndex = i;
-            break;
+      const canvas = canvasRef.current;
+      canvas.width = imgElement.width;
+      canvas.height = imgElement.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(imgElement, 0, 0);
+
+      const color = detectarColor(canvas);
+      setColorDetectado(color);
+
+      canvas.toBlob(async (blob) => {
+        const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+        
+        try {
+          const result = await detectClothes(file);
+          
+          if (result.detections && result.detections.length > 0) {
+            const detection = result.detections[0];
+            setDetections(result.detections);
+            setImageSize(result.image_size);
+            setProducto(getProduct(detection.class, detection.confidence));
+          } else {
+            setAppError('No se detectó una prenda de vestir. Intenta con otra imagen.');
           }
+        } catch (err) {
+          console.error('Error en detección:', err);
+          setAppError('Error al procesar la imagen en el servidor');
+        } finally {
+          setLoading(false);
         }
+      }, 'image/jpeg');
 
-        if (categoriaTraducida) {
-          setTipoPrenda(categoriaTraducida);
-          setProducto({
-            prenda: categoriaTraducida,
-            color: colorDetectado,
-            confianza: predictions[predictionIndex].probability
-          });
-        } else {
-          setAppError('No se detectó una prenda de vestir. Intenta con otra imagen.');
-        }
-      }
     } catch (err) {
-      console.error('Error clasificando:', err);
+      console.error('Error procesando imagen:', err);
       setAppError('Error al procesar la imagen');
+      setLoading(false);
     }
-  }, [model]);
+  }, []);
+
+  useEffect(() => {
+    if (imagen && detections && detections.length > 0 && resultCanvasRef.current) {
+      const canvas = resultCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const imgEl = new Image();
+      
+      imgEl.onload = () => {
+        canvas.width = imgEl.width;
+        canvas.height = imgEl.height;
+        ctx.drawImage(imgEl, 0, 0);
+        
+        const [imgW, imgH] = imageSize || [imgEl.width, imgEl.height];
+        
+        detections.forEach((det) => {
+          const [x1, y1, x2, y2] = det.bbox;
+          const scaleX = imgEl.width / imgW;
+          const scaleY = imgEl.height / imgH;
+          
+          const sx1 = x1 * scaleX;
+          const sy1 = y1 * scaleY;
+          const sx2 = x2 * scaleX;
+          const sy2 = y2 * scaleY;
+          
+          ctx.strokeStyle = '#00ff00';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
+          
+          ctx.fillStyle = '#00ff00';
+          ctx.font = 'bold 16px sans-serif';
+          ctx.fillText(
+            `${traducirCategoria(det.class)} ${Math.round(det.confidence * 100)}%`,
+            sx1,
+            sy1 - 8
+          );
+        });
+      };
+      
+      imgEl.src = imagen;
+    }
+  }, [imagen, detections, imageSize]);
 
   const handleCapture = useCallback(() => {
     const canvas = canvasRef.current;
@@ -97,46 +209,36 @@ const Home = () => {
     
     if (capturedImage) {
       closeCamera();
-      processImage(capturedImage);
+      processDetection(capturedImage);
     }
-  }, [captureFrame, closeCamera, processImage]);
+  }, [captureFrame, closeCamera, processDetection]);
 
   const handleDemoBackend = async () => {
     setLoading(true);
     setAppError('');
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/test-detection');
+      const response = await fetch('http://127.0.0.1:8000/health');
       const result = await response.json();
-      setProducto(result.data);
+      if (result.status === 'healthy') {
+        setIsModelReady(true);
+        setAppError('Backend YOLO conectado correctamente');
+      }
     } catch (err) {
       console.error('Error conectando con el backend:', err);
-      setAppError('Error conectando con el backend');
+      setAppError('Error conectando con el backend YOLO');
     } finally {
       setLoading(false);
     }
   };
 
-  const saveProduct = () => {
-    if (!producto) return;
-
-    const nuevoProducto = {
-      id: Date.now(),
-      nombre: tipoPrenda || 'Producto',
-      cantidad: 1,
-      precio: 0,
-      color,
-      tipoPrenda,
-      imagen
-    };
-
-    setProductos([...productos, nuevoProducto]);
+  const reset = () => {
     setProducto(null);
     setImagen(null);
-    setColor('');
-    setTipoPrenda('');
+    setColorDetectado('');
+    setDetections(null);
   };
 
-  const error = modelError || cameraError || appError;
+  const error = cameraError || appError;
 
   return (
     <div className="home-page">
@@ -156,7 +258,7 @@ const Home = () => {
           <ButtonGroup 
             onOpenCamera={openCamera}
             onDemoBackend={handleDemoBackend}
-            isModelReady={isReady}
+            isModelReady={isModelReady}
             isLoading={loading}
           />
         </section>
@@ -168,27 +270,89 @@ const Home = () => {
           isActive={isActive}
           onCapture={handleCapture}
           onClose={closeCamera}
-          isModelReady={isReady}
+          isModelReady={isModelReady}
         />
 
-        <ImagePreview 
-          image={imagen}
-          color={color}
-          tipoPrenda={tipoPrenda}
-          confianza={producto?.confianza}
-          onSave={saveProduct}
-        />
+        {loading ? (
+          <section className="preview-section">
+            <div className="preview-loading">
+              <div className="spinner"></div>
+              <p>Analizando imagen...</p>
+            </div>
+          </section>
+        ) : imagen ? (
+          <section className="preview-section detection-result">
+            <div className="image-container">
+              {detections && detections.length > 0 ? (
+                <canvas ref={resultCanvasRef} className="preview-image" />
+              ) : (
+                <img src={imagen} alt="Capturada" className="preview-image" />
+              )}
+            </div>
+            
+            {producto ? (
+              <div className="product-info">
+                <div className="product-type-badge">{producto.tipoPrenda}</div>
+                <h2 className="product-name">{producto.name}</h2>
+                <p className="product-brand-sku">{producto.brand} - {producto.sku}</p>
+                
+                <div className="price-display">
+                  <span>Precio</span>
+                  <span className="price">${producto.price.toFixed(2)}</span>
+                </div>
 
-        <section className="inventory">
-          {!producto && productos.length === 0 ? (
-            <p>No se encuentran productos en el inventario</p>
-          ) : (
-            <>
-              <ProductCard producto={producto} />
-              <InventoryTable productos={productos} />
-            </>
-          )}
-        </section>
+                <div className="details-grid">
+                  <div className="detail-item">
+                    <span className="detail-label">Marca</span>
+                    <span className="detail-value">{producto.brand}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">SKU</span>
+                    <span className="detail-value">{producto.sku}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">Color detectado</span>
+                    <span className="detail-value">{colorDetectado}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">Confianza</span>
+                    <span className="detail-value confidence">{(producto.confidence * 100).toFixed(0)}%</span>
+                  </div>
+                </div>
+
+                {producto.sizes && producto.sizes.length > 0 && (
+                  <div className="tags-section">
+                    <span className="tags-label">Tallas disponibles</span>
+                    <div className="tags-list">
+                      {producto.sizes.map(s => <span key={s} className="tag">{s}</span>)}
+                    </div>
+                  </div>
+                )}
+
+                {producto.colors && producto.colors.length > 0 && (
+                  <div className="tags-section">
+                    <span className="tags-label">Colores disponibles</span>
+                    <div className="tags-list">
+                      {producto.colors.map(c => <span key={c} className="tag">{c}</span>)}
+                    </div>
+                  </div>
+                )}
+
+                <button className="btn-save" onClick={reset}>
+                  Nueva Captura
+                </button>
+              </div>
+            ) : (
+              <div className="no-detection">
+                <h3>No se detectó prenda</h3>
+                <p>Intenta con mejor iluminación</p>
+                <button className="btn-outline" onClick={reset}>
+                  Intentar de nuevo
+                </button>
+              </div>
+            )}
+          </section>
+        ) : null}
       </main>
     </div>
   );
