@@ -2,12 +2,13 @@
 
 ## Descripción General
 
-El sistema de detección de prendas utiliza **MobileNet**, un modelo de red neuronal convolucional (CNN) pre-entrenado optimizado para ejecutarse en dispositivos móviles y navegadores web.
+El sistema de detección de prendas utiliza **YOLO** (You Only Look Once), un modelo de detección de objetos en tiempo real desarrollado por Ultralytics.
 
 ### Tecnologías utilizadas
 
-- **TensorFlow.js**: Biblioteca de JavaScript para ejecutar modelos de ML en el navegador
-- **MobileNet**: Modelo pre-entrenado de Google para clasificación de imágenes
+- **FastAPI**: Framework web para el backend
+- **Ultralytics YOLO**: Modelo de detección de objetos
+- **Pillow/OpenCV**: Procesamiento de imágenes
 
 ---
 
@@ -16,161 +17,170 @@ El sistema de detección de prendas utiliza **MobileNet**, un modelo de red neur
 ### Flujo de detección
 
 ```
-1. Usuario captura foto con la cámara
+1. Usuario abre la cámara
    ↓
-2. Imagen se procesa en elemento <canvas>
+2. Captura una foto de la prenda
    ↓
-3. Modelo MobileNet clasifica la imagen
+3. Imagen se envía al backend via POST /api/detect
    ↓
-4. Se obtiene array de predicciones con:
-   - className: categoría detectada (en inglés)
-   - probability: confianza de 0 a 1
+4. YOLO procesa la imagen y detecta objetos
    ↓
-5. traducirCategoria() traduce al español
+5. Backend retorna detecciones con:
+   - class: categoría detectada
+   - confidence: confianza de 0 a 1
+   - bbox: coordenadas del bounding box [x1, y1, x2, y2]
    ↓
-6. Se muestra resultado al usuario
+6. Frontend dibuja bounding boxes verdes en canvas
+   ↓
+7. Se muestra información del producto
 ```
 
-### Archivo principal
+### Archivos principales
 
-`frontend/src/utils/imageProcessing.js` contiene la función `traducirCategoria()` que mapea las categorías del modelo a español.
-
----
-
-## Categorías Disponibles
-
-El modelo actualmente detecta las siguientes categorías:
-
-| Clave (English) | Categoría (Español) |
-|-----------------|---------------------|
-| t-shirt         | Playera             |
-| shirt           | Camisa              |
-| jacket          | Chaqueta            |
-| jean            | Pantalón            |
-| dress           | Vestido             |
-| shoe            | Zapato              |
-| sneaker         | Zapatilla           |
-| bag             | Bolsa               |
-| hat             | Sombrero            |
-| coat            | Abrigo              |
-| sweater         | Suéter              |
-| short           | Short               |
-| suit            | Traje               |
-| blazer          | Blazer              |
-| skirt           | Falda               |
-| hoodie          | Sudadera con capucha|
-| cardigan        | Cárdigan            |
-| polo            | Polo                |
-| vest            | Chaleco             |
-| legging         | Malla               |
-| bikini          | Bikini              |
-| bra             | Sujetador           |
-| sock            | Calcetines          |
-| glove           | Guante              |
-| scarf           | Bufanda             |
-| belt            | Cinturón            |
-| watch           | Reloj               |
-| handbag         | Bolso de mano       |
-| wallet          | Billetera           |
-| backpack        | Mochila             |
-| briefcase       | Maletín             |
-| luggage         | Equipaje            |
+- `backend/main.py` - Servidor FastAPI con endpoint de detección
+- `frontend/src/pages/home.jsx` - Componente de detección
+- `frontend/src/services/api.js` - Cliente API
+- `frontend/src/hooks/useCamera.js` - Hook para cámara
 
 ---
 
-## Cómo Agregar Nuevas Categorías
+## Endpoint de Detección
 
-### Paso 1: Editar el archivo de traducciones
+### POST `/api/detect`
 
-Abre `frontend/src/utils/imageProcessing.js` y agrega tu nueva categoría al objeto `traducciones`:
+Envía una imagen y recibe las detecciones.
+
+**Request:**
+```
+Content-Type: multipart/form-data
+Body: file (imagen)
+```
+
+**Response:**
+```json
+{
+  "detections": [
+    {
+      "class": "gorra-roja-lacoste",
+      "confidence": 0.95,
+      "bbox": [120, 80, 340, 200]
+    }
+  ],
+  "image_size": [640, 480]
+}
+```
+
+**Códigos de respuesta:**
+- 200: Detección exitosa
+- 500: Error en el servidor
+
+---
+
+## Clases Disponibles
+
+El modelo actualmente detecta las siguientes clases:
+
+| Clase (YOLO) | Producto | Precio | Marca |
+|--------------|----------|--------|-------|
+| gorra-roja-lacoste | Gorra Roja Lacoste | $999.99 | Lacoste |
+| top | Camiseta Algodon | $299.99 | FashionCo |
+| pants | Jean Slim Fit | $599.99 | DenimCraft |
+
+---
+
+## Agregar Nuevas Clases
+
+### Paso 1: Entrenar nuevo modelo
+
+```bash
+cd prueba-yolo/backend
+
+# Editar data.yaml con las nuevas clases
+# Entrenar modelo
+python train.py
+```
+
+### Paso 2: Actualizar el modelo
+
+Copiar el nuevo modelo:
+```bash
+cp models/clothes_detector/weights/best.pt ../../backend/models/best.pt
+```
+
+### Paso 3: Agregar producto a la base de datos
+
+En `frontend/src/pages/home.jsx`, agregar al objeto `PRODUCTOS_DB`:
 
 ```javascript
-export const traducirCategoria = (texto) => {
-  const traducciones = {
-    // ... categorías existentes ...
-    
-    // Agregar nueva categoría aquí:
-    'nueva_categoria': 'Mi Nueva Prenda',
-  };
-
-  const t = texto.toLowerCase();
-  
-  for (const [key, value] of Object.entries(traducciones)) {
-    if (t.includes(key)) {
-      return value;
-    }
-  }
-  
-  return texto;
+const PRODUCTOS_DB = {
+  'nueva-clase': {
+    name: 'Nombre del Producto',
+    price: 299.99,
+    brand: 'Marca',
+    sku: 'PROD-001',
+    sizes: ['S', 'M', 'L'],
+    colors: ['Blanco', 'Negro'],
+    tipoPrenda: 'Tipo de Prenda'
+  },
+  // ... otras clases
 };
 ```
 
-### Paso 2: Consideraciones importantes
+---
 
-1. **Clave (key)**: Debe ser el nombre en inglés que MobileNet usa para esa categoría. Puedes encontrar los nombres completos en: https://github.com/tensorflow/tfjs-models/tree/master/mobilenet
+## Cómo se Dibujan los Bounding Boxes
 
-2. **Valor (value)**: Puede ser cualquier texto en español que quieras mostrar
+El frontend dibuja los bounding boxes usando Canvas API:
 
-3. **Matching parcial**: El código usa `.includes()`, así que 'shirt' también coincidirá con "dress shirt" o "polo shirt"
-
-### Paso 3: Verificar cambios
-
-```bash
-cd frontend
-npm run lint
-npm run build
+```javascript
+// En home.jsx, useEffect que dibuja las cajas
+useEffect(() => {
+  if (imagen && detections && resultCanvasRef.current) {
+    const canvas = resultCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    detections.forEach((det) => {
+      const [x1, y1, x2, y2] = det.bbox;
+      
+      // Dibujar rectángulo verde
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      
+      // Dibujar texto con clase y confianza
+      ctx.fillStyle = '#00ff00';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText(`${det.class} ${Math.round(det.confidence * 100)}%`, x1, y1 - 8);
+    });
+  }
+}, [imagen, detections]);
 ```
 
 ---
 
-## Cambiar el Modelo de Detección
+## Detección de Color
 
-Si deseas usar un modelo diferente:
-
-### Opción 1: Usar otra versión de MobileNet
+Además de YOLO, el sistema detecta el color dominante de la prenda:
 
 ```javascript
-// En frontend/src/hooks/useTensorFlow.js
-import * as mobilenet from '@tensorflow-models/mobilenet';
-
-// Cambiar versión
-const modelo = await mobilenet.load({ version: 2, alpha: 1.0 });
-```
-
-Versiones disponibles:
-- `version: 1` - MobileNet V1
-- `version: 2` - MobileNet V2 (más preciso)
-
-### Opción 2: Usar otro modelo
-
-Puedes usar otros modelos de TensorFlow.js como:
-
-- **Coco-SSD**: Detección de objetos múltiples
-- **Teachable Machine**: Modelos personalizados
-- **Custom TensorFlow**: Modelos entrenados específicamente
-
-```javascript
-// Ejemplo con otro modelo
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
-
-const modelo = await cocoSsd.load();
-const predicctions = await modelo.detect(imgElement);
+const detectarColor = (canvas) => {
+  // Analiza los píxeles de la imagen
+  // Retorna: 'Rojo', 'Verde', 'Azul', 'Blanco', 'Negro', o 'Color mixto'
+};
 ```
 
 ---
 
 ## Limitaciones Actuales
 
-1. **Solo detección de tipo**: Actualmente solo detecta el tipo de prenda, no colores ni otros atributos
-
-2. **Modelo pre-entrenado**: MobileNet está entrenado con ImageNet, que tiene categorías limitadas de ropa
-
-3. **Precisión**: La precisión depende de la calidad de la imagen y el ángulo de captura
+1. **Modelo específico**: El modelo está entrenado solo con 3 clases de prendas
+2. **Precisión variable**: La confianza depende de la calidad de la imagen y ángulo
+3. **Un objeto por imagen**: El sistema muestra información del primer objeto detectado
 
 ---
 
 ## Recursos Adicionales
 
-- [TensorFlow.js Documentation](https://www.tensorflow.org/js)
-- [MobileNet Model](https://github.com/tensorflow/tfjs-models/tree/master/mobilenet)
-- [ImageNet Categories](https://image-net.org/challenges/LSVRC/2012/browse-synsets)
+- [Ultralytics YOLO Documentation](https://docs.ultralytics.com/)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [YOLO Training Guide](https://docs.ultralytics.com/datasets/detect/)
