@@ -29,6 +29,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+MODEL_PATH = Path(__file__).parent / "models" / "best.pt"
+model = None
+
+
+def get_model():
+    global model
+    if model is None:
+        if MODEL_PATH.exists():
+            logger.info(f"Loading model from {MODEL_PATH}")
+            model = YOLO(str(MODEL_PATH))
+        else:
+            logger.warning(f"Model not found at {MODEL_PATH}, using YOLOv8n")
+            model = YOLO("yolov8n.pt")
+    return model
+
 
 @app.on_event("startup")
 async def startup():
