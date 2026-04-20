@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: fashionvision_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fashionvision_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-fashionvision_ai_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fashionvision_ai_pass}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - fashionvision_net
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fashionvision_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fashionvision_ai_user}:${POSTGRES_PASSWORD:-fashionvision_ai_pass}@db:5432/${POSTGRES_DB:-fashionvision_ai}
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-fashionvision_ai_user}:${POSTGRES_PASSWORD:-fashionvision_ai_pass}@db:5432/${POSTGRES_DB:-fashionvision_ai}
+      SECRET_KEY: ${SECRET_KEY:-dev_secret_change_in_production}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+    volumes:
+      - .:/app
+      - media_files:/app/media
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks:
+      - fashionvision_net
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    name: fashionvision_postgres_data
+  media_files:
+    name: fashionvision_media_files
+
+networks:
+  fashionvision_net:
+    name: fashionvision_network
+    driver: bridge
