@@ -3,60 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import useCamera from '../hooks/useCamera';
 import ButtonGroup from '../components/ButtonGroup';
 import CameraSection from '../components/CameraSection';
-import { detectClothes } from '../services/api';
+import { detectClothes, getProductByYoloClass } from '../services/api';
 import '../styles/home.css';
-
-const PRODUCTOS_DB = {
-  'gorra-roja-lacoste': {
-    name: 'Gorra Roja Lacoste',
-    price: 999.99,
-    brand: 'Lacoste',
-    sku: 'GOR-001',
-    sizes: ['One Size'],
-    colors: ['Rojo'],
-    tipoPrenda: 'Gorra'
-  },
-  'top': {
-    name: 'Camiseta Algodon',
-    price: 299.99,
-    brand: 'FashionCo',
-    sku: 'CAM-001',
-    sizes: ['S', 'M', 'L', 'XL'],
-    colors: ['Blanco', 'Negro'],
-    tipoPrenda: 'Camiseta'
-  },
-  'pants': {
-    name: 'Jean Slim Fit',
-    price: 599.99,
-    brand: 'DenimCraft',
-    sku: 'PAN-001',
-    sizes: ['28', '30', '32', '34'],
-    colors: ['Azul', 'Negro'],
-    tipoPrenda: 'Pantalón'
-  }
-};
-
-const getProduct = (cls, conf) => {
-  const producto = PRODUCTOS_DB[cls.toLowerCase()];
-  if (producto) {
-    return { ...producto, confidence: conf };
-  }
-  return { 
-    name: cls, 
-    price: 0, 
-    brand: 'Desconocido', 
-    sku: 'N/A', 
-    confidence: conf, 
-    tipoPrenda: cls,
-    sizes: [],
-    colors: []
-  };
-};
 
 const traducirCategoria = (className) => {
   if (!className) return 'Prenda';
-  const producto = PRODUCTOS_DB[className.toLowerCase()];
-  return producto ? producto.tipoPrenda : className;
+  const productoMap = {
+    'gorra-roja-lacoste': 'Gorra',
+    'top': 'Camiseta',
+    'pants': 'Pantalón'
+  };
+  return productoMap[className.toLowerCase()] || className;
 };
 
 const detectarColor = (canvas) => {
@@ -97,13 +54,13 @@ const Home = () => {
   const [isModelReady, setIsModelReady] = useState(true);
   const navigate = useNavigate();
 
-  const { 
-    videoRef, 
-    isActive, 
-    error: cameraError, 
-    openCamera, 
-    closeCamera, 
-    captureFrame 
+  const {
+    videoRef,
+    isActive,
+    error: cameraError,
+    openCamera,
+    closeCamera,
+    captureFrame
   } = useCamera();
 
   const canvasRef = useRef(null);
@@ -135,15 +92,44 @@ const Home = () => {
 
       canvas.toBlob(async (blob) => {
         const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
-        
+
         try {
           const result = await detectClothes(file);
-          
+
           if (result.detections && result.detections.length > 0) {
             const detection = result.detections[0];
             setDetections(result.detections);
             setImageSize(result.image_size);
-            setProducto(getProduct(detection.class, detection.confidence));
+
+            const dbProduct = await getProductByYoloClass(detection.class);
+
+            if (dbProduct) {
+              const productoData = {
+                name: dbProduct.name,
+                price: parseFloat(dbProduct.base_price),
+                brand: dbProduct.category?.name || 'FashionCo',
+                sku: dbProduct.sku,
+                tipoPrenda: traducirCategoria(detection.class),
+                confidence: detection.confidence,
+                colors: [colorDetectado],
+                sizes: ['S', 'M', 'L', 'XL'],
+                yolo_class_name: dbProduct.yolo_class_name,
+                product_id: dbProduct.id
+              };
+              setProducto(productoData);
+            } else {
+              setProducto({
+                name: detection.class,
+                price: 0,
+                brand: 'Desconocido',
+                sku: 'N/A',
+                tipoPrenda: traducirCategoria(detection.class),
+                confidence: detection.confidence,
+                colors: [colorDetectado],
+                sizes: [],
+                yolo_class_name: detection.class
+              });
+            }
           } else {
             setAppError('No se detectó una prenda de vestir. Intenta con otra imagen.');
           }
@@ -160,35 +146,35 @@ const Home = () => {
       setAppError('Error al procesar la imagen');
       setLoading(false);
     }
-  }, []);
+  }, [colorDetectado]);
 
   useEffect(() => {
     if (imagen && detections && detections.length > 0 && resultCanvasRef.current) {
       const canvas = resultCanvasRef.current;
       const ctx = canvas.getContext('2d');
       const imgEl = new Image();
-      
+
       imgEl.onload = () => {
         canvas.width = imgEl.width;
         canvas.height = imgEl.height;
         ctx.drawImage(imgEl, 0, 0);
-        
+
         const [imgW, imgH] = imageSize || [imgEl.width, imgEl.height];
-        
+
         detections.forEach((det) => {
           const [x1, y1, x2, y2] = det.bbox;
           const scaleX = imgEl.width / imgW;
           const scaleY = imgEl.height / imgH;
-          
+
           const sx1 = x1 * scaleX;
           const sy1 = y1 * scaleY;
           const sx2 = x2 * scaleX;
           const sy2 = y2 * scaleY;
-          
+
           ctx.strokeStyle = '#00ff00';
           ctx.lineWidth = 3;
           ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
-          
+
           ctx.fillStyle = '#00ff00';
           ctx.font = 'bold 16px sans-serif';
           ctx.fillText(
@@ -198,7 +184,7 @@ const Home = () => {
           );
         });
       };
-      
+
       imgEl.src = imagen;
     }
   }, [imagen, detections, imageSize]);
@@ -206,7 +192,7 @@ const Home = () => {
   const handleCapture = useCallback(() => {
     const canvas = canvasRef.current;
     const capturedImage = captureFrame(canvas);
-    
+
     if (capturedImage) {
       closeCamera();
       processDetection(capturedImage);
@@ -255,7 +241,7 @@ const Home = () => {
         {error && <div className="error-message">{error}</div>}
 
         <section className="button-section">
-          <ButtonGroup 
+          <ButtonGroup
             onOpenCamera={openCamera}
             onDemoBackend={handleDemoBackend}
             isModelReady={isModelReady}
@@ -265,7 +251,7 @@ const Home = () => {
 
         <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-        <CameraSection 
+        <CameraSection
           videoRef={videoRef}
           isActive={isActive}
           onCapture={handleCapture}
@@ -289,13 +275,13 @@ const Home = () => {
                 <img src={imagen} alt="Capturada" className="preview-image" />
               )}
             </div>
-            
+
             {producto ? (
               <div className="product-info">
                 <div className="product-type-badge">{producto.tipoPrenda}</div>
                 <h2 className="product-name">{producto.name}</h2>
                 <p className="product-brand-sku">{producto.brand} - {producto.sku}</p>
-                
+
                 <div className="price-display">
                   <span>Precio</span>
                   <span className="price">${producto.price.toFixed(2)}</span>

@@ -1,16 +1,30 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { login as apiLogin } from '../services/api';
 import '../styles/login.css';
 
-const Login = ({ onLogin }) => {
+const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (onLogin) {
-      onLogin(email, password);
-    } else {
-      alert(`Login simulado\nEmail: ${email}\nContraseña: ${password}`);
+    setError('');
+    setLoading(true);
+
+    try {
+      const result = await apiLogin(email, password);
+      localStorage.setItem('token', result.access_token);
+      localStorage.setItem('user', JSON.stringify(result.user));
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('Login failed:', err);
+      setError('Email o contraseña incorrectos');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -23,6 +37,8 @@ const Login = ({ onLogin }) => {
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
+          {error && <div className="error-message">{error}</div>}
+
           <div className="form-group">
             <label htmlFor="email">Correo electrónico</label>
             <input
@@ -47,8 +63,8 @@ const Login = ({ onLogin }) => {
             />
           </div>
 
-          <button type="submit" className="login-btn">
-            Iniciar sesión
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? 'Iniciando sesión...' : 'Iniciar sesión'}
           </button>
         </form>
 

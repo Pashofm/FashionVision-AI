@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/login';
 import Dashboard from './pages/Dashboard';
@@ -6,27 +6,20 @@ import Home from './pages/home';
 import ClientDetection from './pages/ClientDetection';
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  const handleLogin = (email, password) => {
-    console.log('Login attempt:', email, password);
-    setIsLoggedIn(true);
-  };
-
   return (
     <BrowserRouter>
       <Routes>
         <Route
           path="/"
-          element={isLoggedIn ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />}
+          element={<Login />}
         />
         <Route
           path="/dashboard"
-          element={isLoggedIn ? <Dashboard /> : <Navigate to="/" />}
+          element={<Dashboard />}
         />
         <Route
           path="/pago"
-          element={isLoggedIn ? <Home /> : <Navigate to="/" />}
+          element={<Home />}
         />
         <Route
           path="/detection"

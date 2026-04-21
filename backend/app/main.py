@@ -37,6 +37,7 @@ from backend.app.schemas import (
     CartStatus
 )
 from backend.app.services.detection import get_model, detect_in_image, get_model_classes
+from backend.app.services.cloudinary_service import upload_image, delete_image
 
 import bcrypt
 
@@ -119,6 +120,41 @@ async def detection_health_check():
         "model_loaded": yolo_model is not None,
         "model_path": str(detection.MODEL_PATH)
     }
+
+
+# ==================== UPLOAD (Cloudinary) ====================
+
+@app.post("/api/upload/image")
+async def upload_product_image(
+    file: UploadFile = File(...),
+    folder: str = "fashionvision/products"
+):
+    try:
+        contents = await file.read()
+        result = upload_image(
+            file=contents,
+            folder=folder,
+            resource_type="image"
+        )
+        return {
+            "success": True,
+            "data": result
+        }
+    except Exception as e:
+        import logging
+        logging.error(f"Error uploading image: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/upload/image/{public_id}")
+async def delete_product_image(public_id: str):
+    try:
+        result = delete_image(public_id)
+        return {"success": True, "data": result}
+    except Exception as e:
+        import logging
+        logging.error(f"Error deleting image: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ==================== AUTH ====================
@@ -323,9 +359,13 @@ async def delete_product(product_id: uuid.UUID, db: AsyncSession = db_dependency
     return {"message": "Product deleted"}
 
 
-@app.get("/api/products/by-yolo/{yolo_class_name}", response_model=ProductResponse)
+@app.get("/api/products/by-yolo/{yolo_class_name}", response_model=ProductWithVariantsResponse)
 async def get_product_by_yolo(yolo_class_name: str, db: AsyncSession = db_dependency):
-    result = await db.execute(select(Product).where(Product.yolo_class_name == yolo_class_name))
+    result = await db.execute(
+        select(Product)
+        .where(Product.yolo_class_name == yolo_class_name)
+        .options(selectinload(Product.variants))
+    )
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail=f"No product found for YOLO class: {yolo_class_name}")
