@@ -37,6 +37,7 @@ from backend.app.schemas import (
     CartStatus
 )
 from backend.app.services.detection import get_model, detect_in_image, get_model_classes
+from backend.app.services.cloudinary_service import upload_image, delete_image
 
 import bcrypt
 
@@ -119,6 +120,41 @@ async def detection_health_check():
         "model_loaded": yolo_model is not None,
         "model_path": str(detection.MODEL_PATH)
     }
+
+
+# ==================== UPLOAD (Cloudinary) ====================
+
+@app.post("/api/upload/image")
+async def upload_product_image(
+    file: UploadFile = File(...),
+    folder: str = "fashionvision/products"
+):
+    try:
+        contents = await file.read()
+        result = upload_image(
+            file=contents,
+            folder=folder,
+            resource_type="image"
+        )
+        return {
+            "success": True,
+            "data": result
+        }
+    except Exception as e:
+        import logging
+        logging.error(f"Error uploading image: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/upload/image/{public_id}")
+async def delete_product_image(public_id: str):
+    try:
+        result = delete_image(public_id)
+        return {"success": True, "data": result}
+    except Exception as e:
+        import logging
+        logging.error(f"Error deleting image: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ==================== AUTH ====================

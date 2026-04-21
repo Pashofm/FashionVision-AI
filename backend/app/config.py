@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
     MEDIA_DIR: str = "/app/media"
     MAX_IMAGE_SIZE_MB: int = 5
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
 
     @property
     def allowed_origins_list(self) -> list[str]:
