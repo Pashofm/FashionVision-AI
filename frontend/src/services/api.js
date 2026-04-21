@@ -61,3 +61,32 @@ export async function login(email, password) {
   }
   return response.json();
 }
+
+export async function uploadImage(file, folder = 'fashionvision/products') {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('folder', folder);
+
+  const response = await fetch(`${API_URL}/api/upload/image`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function deleteImage(publicId) {
+  const response = await fetch(`${API_URL}/api/upload/image/${publicId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Delete failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
