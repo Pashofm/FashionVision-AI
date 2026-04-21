@@ -134,6 +134,16 @@ nav button:disabled {
   color: white;
 }
 
+.btn-inventario:hover {
+  background: #11998e;
+  color: white;
+}
+
+.btn-caja:hover {
+  background: #764ba2;
+  color: white;
+}
+
 .btn-inventario {
   background: transparent;
   border-color: #11998e;
@@ -143,4 +153,9 @@ nav button:disabled {
 .btn-inventario:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.nav-active {
+  background: #667eea !important;
+  color: white !important;
 }
