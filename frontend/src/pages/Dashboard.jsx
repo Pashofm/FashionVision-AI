@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart,
@@ -11,38 +11,44 @@ import {
 } from 'recharts';
 import './Dashboard.css';
 
-// TODO: Reemplazar con datos reales del backend
-const ventasSemanales = [
-  { dia: 'Lun', Playera: 4, Pantalón: 2, Vestido: 1, Camisa: 3 },
-  { dia: 'Mar', Playera: 3, Pantalón: 4, Vestido: 2, Camisa: 1 },
-  { dia: 'Mié', Playera: 5, Pantalón: 1, Vestido: 3, Camisa: 2 },
-  { dia: 'Jue', Playera: 2, Pantalón: 3, Vestido: 4, Camisa: 5 },
-  { dia: 'Vie', Playera: 6, Pantalón: 5, Vestido: 2, Camisa: 3 },
-  { dia: 'Sáb', Playera: 8, Pantalón: 6, Vestido: 5, Camisa: 4 },
-  { dia: 'Dom', Playera: 3, Pantalón: 2, Vestido: 1, Camisa: 2 },
-];
-
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const userData = JSON.parse(localStorage.getItem('user') || '{}');
+    setUser(userData);
+    if (userData.role !== 'admin') {
+      navigate('/');
+    }
+  }, [navigate]);
+
+  if (!user) return null;
+
+  const ventasSemanales = [
+    { dia: 'Lun', Playera: 4, Pantalon: 2, Vestido: 1, Camisa: 3 },
+    { dia: 'Mar', Playera: 3, Pantalon: 4, Vestido: 2, Camisa: 1 },
+    { dia: 'Mié', Playera: 5, Pantalon: 1, Vestido: 3, Camisa: 2 },
+    { dia: 'Jue', Playera: 2, Pantalon: 3, Vestido: 4, Camisa: 5 },
+    { dia: 'Vie', Playera: 6, Pantalon: 5, Vestido: 2, Camisa: 3 },
+    { dia: 'Sáb', Playera: 8, Pantalon: 6, Vestido: 5, Camisa: 4 },
+    { dia: 'Dom', Playera: 3, Pantalon: 2, Vestido: 1, Camisa: 2 },
+  ];
 
   return (
     <div className="dashboard-page">
       <header>
-        <div className="logo">FashionVision IA</div>
+        <div className="logo">⚙️ Admin - FashionVision</div>
         <nav>
-          <button onClick={() => navigate('/dashboard')}>Dashboard</button>
-          <button onClick={() => navigate('/pago')}>Pago</button>
-          <button disabled>Inventario</button>
+          <button className="nav-active">Dashboard</button>
+          <button onClick={() => navigate('/inventory')}>Inventario</button>
         </nav>
       </header>
 
       <main className="dashboard-container">
-
-        {/* GRÁFICO DE VENTAS */}
         <section className="ventas-section">
           <h2 className="section-title">Ventas semanales</h2>
           <p className="section-subtitle">Cantidad de prendas vendidas por día</p>
-          {/* TODO: Conectar con endpoint del backend cuando esté listo */}
           <div className="chart-wrapper">
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={ventasSemanales}>
@@ -51,7 +57,7 @@ const Dashboard = () => {
                 <YAxis tick={{ fill: '#64748b' }} />
                 <Tooltip />
                 <Bar dataKey="Playera" fill="#4da6ff" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Pantalón" fill="#764ba2" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Pantalon" fill="#764ba2" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Vestido" fill="#f5576c" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Camisa" fill="#11998e" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -59,23 +65,23 @@ const Dashboard = () => {
           </div>
         </section>
 
-        {/* APARTADOS INFERIORES */}
         <section className="actions-section">
-          <div className="action-card pago-card">
-            <h3>Realizar pago</h3>
-            <button className="action-btn btn-pago" onClick={() => navigate('/pago')}>
-              PAGO
-            </button>
-          </div>
-
           <div className="action-card inventario-card">
-            <h3>Gestionar inventario</h3>
-            <button className="action-btn btn-inventario" disabled>
+            <h3>Gestionar Inventario</h3>
+            <p>Agregar, editar o eliminar productos y variants</p>
+            <button className="action-btn btn-inventario" onClick={() => navigate('/inventory')}>
               INVENTARIO
             </button>
           </div>
-        </section>
 
+          <div className="action-card analytics-card">
+            <h3>Estadísticas</h3>
+            <p>Ver análisis detallados de ventas</p>
+            <button className="action-btn btn-analytics" disabled>
+              PRÓXIMAMENTE
+            </button>
+          </div>
+        </section>
       </main>
     </div>
   );

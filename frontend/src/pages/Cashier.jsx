@@ -14,7 +14,7 @@ const formatDate = (dateStr) => {
   });
 };
 
-const Home = () => {
+const Cashier = () => {
   const [carts, setCarts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -23,7 +23,7 @@ const Home = () => {
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.role !== 'admin' && user.role !== 'cashier') {
+    if (user.role !== 'cashier') {
       navigate('/');
       return;
     }
@@ -89,8 +89,7 @@ const Home = () => {
         <div className="logo">💰 Caja - FashionVision</div>
         <nav>
           <button onClick={() => navigate('/dashboard')}>Dashboard</button>
-          <button onClick={() => navigate('/pago')}>Pago</button>
-          <button>Inventario</button>
+          <button className="nav-active">Caja</button>
         </nav>
       </header>
 
@@ -292,9 +291,13 @@ const Home = () => {
           opacity: 0.6;
           cursor: not-allowed;
         }
+        .nav-active {
+          background: #667eea !important;
+          color: white !important;
+        }
       `}</style>
     </div>
   );
 };
 
-export default Home;
+export default Cashier;

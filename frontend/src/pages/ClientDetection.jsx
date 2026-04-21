@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useCamera from '../hooks/useCamera';
-import { detectClothes, getProductByYoloClass } from '../services/api';
+import { detectClothes, getProductByYoloClass, createSession, createCart, addCartItem, submitCart } from '../services/api';
 import '../styles/client-detection.css';
 
 const traducirCategoria = (className) => {
@@ -38,14 +38,31 @@ const ClientDetection = () => {
   const [error, setError] = useState('');
   const [carrito, setCarrito] = useState([]);
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
+  const [cartId, setCartId] = useState(null);
+  const [_sessionId, setSessionId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
       navigate('/');
+      return;
     }
+    initSession();
   }, [navigate]);
+
+  const initSession = async () => {
+    try {
+      const session = await createSession('client-detection-kiosk');
+      setSessionId(session.id);
+      const cart = await createCart(session.id);
+      setCartId(cart.id);
+    } catch (err) {
+      console.error('Error initializing session/cart:', err);
+      setError('Error al inicializar el sistema');
+    }
+  };
 
   const {
     videoRef,
@@ -149,22 +166,55 @@ const ClientDetection = () => {
     }
   }, [captureFrame, closeCamera, processDetection]);
 
-  const agregarAlCarrito = () => {
-    if (producto) {
-      setCarrito(prev => [...prev, { ...producto, id: Date.now() }]);
+  const agregarAlCarrito = async () => {
+    if (!producto || !cartId) return;
+
+    try {
+      await addCartItem(cartId, {
+        product_id: producto.product_id,
+        product_variant_id: null,
+        quantity: 1,
+        unit_price: producto.price,
+        detection_confidence: producto.confidence
+      });
+
+      setCarrito(prev => [...prev, { ...producto, cartItemId: Date.now() }]);
       setProducto(null);
       setImagen(null);
       setDetections(null);
+    } catch (err) {
+      console.error('Error adding to cart:', err);
+      setError('Error al agregar al carrito');
     }
   };
 
-  const eliminarDelCarrito = (id) => {
-    setCarrito(prev => prev.filter(item => item.id !== id));
+  const eliminarDelCarrito = (cartItemId) => {
+    setCarrito(prev => prev.filter(item => item.cartItemId !== cartItemId));
   };
 
   const totalesCarrito = () => {
     const total = carrito.reduce((sum, item) => sum + item.price, 0);
     return { items: carrito.length, total };
+  };
+
+  const enviarAlAdmin = async () => {
+    if (carrito.length === 0 || !cartId) return;
+
+    try {
+      setSubmitting(true);
+      await submitCart(cartId);
+      setCarrito([]);
+      alert('¡Pedido enviado a caja! Un administrador lo procesará pronto.');
+      const session = await createSession('client-detection-kiosk');
+      setSessionId(session.id);
+      const newCart = await createCart(session.id);
+      setCartId(newCart.id);
+    } catch (err) {
+      console.error('Error submitting cart:', err);
+      setError('Error al enviar el pedido');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const reset = () => {
@@ -260,7 +310,7 @@ const ClientDetection = () => {
               <p className="carrito-vacio">Tu carrito está vacío</p>
             ) : (
               carrito.map((item) => (
-                <div key={item.id} className="carrito-item">
+                <div key={item.cartItemId} className="carrito-item">
                   <div className="item-info">
                     <span className="item-name">{item.name}</span>
                     <span className="item-price">${item.price.toFixed(2)}</span>
@@ -281,8 +331,8 @@ const ClientDetection = () => {
                 <span>Total:</span>
                 <span className="total-amount">${totalesCarrito().total.toFixed(2)}</span>
               </div>
-              <button className="btn-enviar">
-                Enviar al Admin para Pago
+              <button className="btn-enviar" onClick={enviarAlAdmin} disabled={submitting}>
+                {submitting ? 'Enviando...' : 'Enviar a Caja'}
               </button>
             </div>
           )}
