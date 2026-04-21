@@ -359,9 +359,13 @@ async def delete_product(product_id: uuid.UUID, db: AsyncSession = db_dependency
     return {"message": "Product deleted"}
 
 
-@app.get("/api/products/by-yolo/{yolo_class_name}", response_model=ProductResponse)
+@app.get("/api/products/by-yolo/{yolo_class_name}", response_model=ProductWithVariantsResponse)
 async def get_product_by_yolo(yolo_class_name: str, db: AsyncSession = db_dependency):
-    result = await db.execute(select(Product).where(Product.yolo_class_name == yolo_class_name))
+    result = await db.execute(
+        select(Product)
+        .where(Product.yolo_class_name == yolo_class_name)
+        .options(selectinload(Product.variants))
+    )
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail=f"No product found for YOLO class: {yolo_class_name}")

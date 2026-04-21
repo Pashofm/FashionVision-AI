@@ -404,6 +404,7 @@ body, html, #root {
 }
 
 .result-image-container {
+  position: relative;
   flex: 1;
   min-width: 300px;
   max-width: 500px;
@@ -414,6 +415,16 @@ body, html, #root {
   width: 100%;
   border-radius: 16px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.result-canvas-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  pointer-events: none;
 }
 
 .product-info-card {
