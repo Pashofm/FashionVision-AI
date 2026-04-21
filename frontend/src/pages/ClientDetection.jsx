@@ -1,54 +1,32 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useCamera from '../hooks/useCamera';
-import { detectClothes } from '../services/api';
+import { detectClothes, getProductByYoloClass } from '../services/api';
 import '../styles/client-detection.css';
 
-const DATASET_PRODUCTS = {
-  'gorra-roja-lacoste': {
-    name: 'Gorra Roja Lacoste',
-    price: 999.99,
-    brand: 'Lacoste',
-    sku: 'GOR-001',
-    sizes: ['One Size'],
-    colors: ['Rojo'],
-    tipoPrenda: 'Gorra'
-  },
-  'top': {
-    name: 'Camiseta Algodon',
-    price: 299.99,
-    brand: 'FashionCo',
-    sku: 'CAM-001',
-    sizes: ['S', 'M', 'L', 'XL'],
-    colors: ['Blanco', 'Negro'],
-    tipoPrenda: 'Camiseta'
-  },
-  'pants': {
-    name: 'Jean Slim Fit',
-    price: 599.99,
-    brand: 'DenimCraft',
-    sku: 'PAN-001',
-    sizes: ['28', '30', '32', '34'],
-    colors: ['Azul', 'Negro'],
-    tipoPrenda: 'Pantalón'
-  }
+const traducirCategoria = (className) => {
+  if (!className) return 'Prenda';
+  const productoMap = {
+    'gorra-roja-lacoste': 'Gorra',
+    'top': 'Camiseta',
+    'pants': 'Pantalón'
+  };
+  return productoMap[className.toLowerCase()] || className;
 };
 
-const getProductFromClass = (className, confidence) => {
-  const producto = DATASET_PRODUCTS[className.toLowerCase()];
-  if (producto) {
-    return { ...producto, confidence };
-  }
-  return {
-    name: className,
-    price: 0,
-    brand: 'Desconocido',
-    sku: 'N/A',
-    confidence,
-    tipoPrenda: className,
-    sizes: [],
-    colors: []
+const getDefaultSizes = (yoloClassName) => {
+  const sizeMap = {
+    'gorra-roja-lacoste': ['One Size'],
+    'top': ['S', 'M', 'L', 'XL'],
+    'pants': ['28', '30', '32', '34', '36']
   };
+  return sizeMap[yoloClassName?.toLowerCase()] || ['S', 'M', 'L', 'XL'];
+};
+
+const extractSizesFromVariants = (variants) => {
+  if (!variants || variants.length === 0) return null;
+  const sizes = [...new Set(variants.map(v => v.size).filter(s => s))];
+  return sizes.length > 0 ? sizes : null;
 };
 
 const ClientDetection = () => {
@@ -61,6 +39,13 @@ const ClientDetection = () => {
   const [carrito, setCarrito] = useState([]);
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/');
+    }
+  }, [navigate]);
 
   const {
     videoRef,
@@ -105,7 +90,37 @@ const ClientDetection = () => {
             const detection = result.detections[0];
             setDetections(result.detections);
             setImageSize(result.image_size);
-            setProducto(getProductFromClass(detection.class, detection.confidence));
+
+            const dbProduct = await getProductByYoloClass(detection.class);
+
+            if (dbProduct) {
+              const variantSizes = extractSizesFromVariants(dbProduct.variants);
+              const productoData = {
+                name: dbProduct.name,
+                price: parseFloat(dbProduct.base_price),
+                brand: dbProduct.category?.name || 'FashionCo',
+                sku: dbProduct.sku,
+                tipoPrenda: traducirCategoria(detection.class),
+                confidence: detection.confidence,
+                colors: ['Rojo'],
+                sizes: variantSizes || getDefaultSizes(detection.class),
+                yolo_class_name: dbProduct.yolo_class_name,
+                product_id: dbProduct.id
+              };
+              setProducto(productoData);
+            } else {
+              setProducto({
+                name: detection.class,
+                price: 0,
+                brand: 'Desconocido',
+                sku: 'N/A',
+                tipoPrenda: traducirCategoria(detection.class),
+                confidence: detection.confidence,
+                colors: [],
+                sizes: getDefaultSizes(detection.class),
+                yolo_class_name: detection.class
+              });
+            }
           } else {
             setError('No se detectó una prenda. Intenta con otra imagen.');
           }
@@ -156,6 +171,7 @@ const ClientDetection = () => {
     setProducto(null);
     setImagen(null);
     setDetections(null);
+    setImageSize(null);
     setError('');
   };
 
@@ -169,16 +185,16 @@ const ClientDetection = () => {
     const imgEl = new Image();
 
     imgEl.onload = () => {
-      canvas.width = imgEl.width;
-      canvas.height = imgEl.height;
+      canvas.width = imgEl.naturalWidth;
+      canvas.height = imgEl.naturalHeight;
       ctx.drawImage(imgEl, 0, 0);
 
-      const [imgW, imgH] = imageSize || [imgEl.width, imgEl.height];
+      const [imgW, imgH] = imageSize || [imgEl.naturalWidth, imgEl.naturalHeight];
 
       detections.forEach((det) => {
         const [x1, y1, x2, y2] = det.bbox;
-        const scaleX = imgEl.width / imgW;
-        const scaleY = imgEl.height / imgH;
+        const scaleX = canvas.width / imgW;
+        const scaleY = canvas.height / imgH;
 
         const sx1 = x1 * scaleX;
         const sy1 = y1 * scaleY;
@@ -186,22 +202,22 @@ const ClientDetection = () => {
         const sy2 = y2 * scaleY;
 
         ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 3;
         ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
 
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         const label = `${det.class.toUpperCase()} ${Math.round(det.confidence * 100)}%`;
-        ctx.font = 'bold 18px sans-serif';
+        ctx.font = 'bold 14px sans-serif';
         const textMetrics = ctx.measureText(label);
-        ctx.fillRect(sx1, sy1 - 28, textMetrics.width + 16, 28);
+        ctx.fillRect(sx1, sy1 - 24, textMetrics.width + 12, 22);
         ctx.fillStyle = '#00ff00';
-        ctx.fillText(label, sx1 + 8, sy1 - 8);
+        ctx.fillText(label, sx1 + 6, sy1 - 8);
       });
     };
     imgEl.src = imagen;
   }, [imagen, detections, imageSize]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     drawBoundingBoxes();
   }, [drawBoundingBoxes]);
 
@@ -323,10 +339,9 @@ const ClientDetection = () => {
           {imagen && !loading && (
             <div className="result-view">
               <div className="result-image-container">
-                {detections && detections.length > 0 ? (
-                  <canvas ref={resultCanvasRef} className="result-canvas" />
-                ) : (
-                  <img src={imagen} alt="Capturada" className="result-image" />
+                <img src={imagen} alt="Capturada" className="result-image" />
+                {detections && detections.length > 0 && (
+                  <canvas ref={resultCanvasRef} className="result-canvas-overlay" />
                 )}
               </div>
 
