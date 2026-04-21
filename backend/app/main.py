@@ -3,12 +3,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, List
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
 from passlib.context import CryptContext
+from PIL import Image
+import io
 
 from backend.app.database import get_db, AsyncSessionLocal, engine, Base
 from backend.app.config import settings
@@ -33,6 +36,7 @@ from backend.app.schemas import (
     LoginRequest, LoginResponse,
     CartStatus
 )
+from backend.app.services.detection import get_model, detect_in_image, get_model_classes
 
 import bcrypt
 
@@ -83,6 +87,38 @@ async def root():
 @app.get("/health")
 async def health_check(db: AsyncSession = db_dependency):
     return {"status": "healthy", "database": "connected"}
+
+
+# ==================== YOLO DETECTION ====================
+
+@app.get("/api/detect/classes")
+async def get_detection_classes():
+    classes = get_model_classes()
+    return {"classes": classes}
+
+
+@app.post("/api/detect")
+async def detect_clothes(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents))
+        result = detect_in_image(image)
+        return JSONResponse(result)
+    except Exception as e:
+        import logging
+        logging.error(f"Error during detection: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/detect/health")
+async def detection_health_check():
+    from backend.app.services import detection
+    yolo_model = get_model()
+    return {
+        "status": "healthy" if yolo_model else "model_not_loaded",
+        "model_loaded": yolo_model is not None,
+        "model_path": str(detection.MODEL_PATH)
+    }
 
 
 # ==================== AUTH ====================
