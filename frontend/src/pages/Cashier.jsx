@@ -88,7 +88,6 @@ const Cashier = () => {
       <header>
         <div className="logo">💰 Caja - FashionVision</div>
         <nav>
-          <button onClick={() => navigate('/dashboard')}>Dashboard</button>
           <button className="nav-active">Caja</button>
         </nav>
       </header>

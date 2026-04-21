@@ -290,12 +290,7 @@ const ClientDetection = () => {
               <span className="carrito-badge">{carrito.length}</span>
             )}
           </button>
-          <button
-            className="btn-admin"
-            onClick={() => navigate('/dashboard')}
-          >
-            Panel Admin
-          </button>
+
         </div>
       </header>
 

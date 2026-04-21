@@ -154,3 +154,8 @@ nav button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.nav-active {
+  background: #667eea !important;
+  color: white !important;
+}
