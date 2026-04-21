@@ -19,7 +19,15 @@ const Login = () => {
       const result = await apiLogin(email, password);
       localStorage.setItem('token', result.access_token);
       localStorage.setItem('user', JSON.stringify(result.user));
-      navigate('/dashboard');
+      
+      const role = result.user.role;
+      if (role === 'admin') {
+        navigate('/dashboard');
+      } else if (role === 'cashier') {
+        navigate('/caja');
+      } else {
+        navigate('/cliente');
+      }
     } catch (err) {
       console.error('Login failed:', err);
       setError('Email o contraseña incorrectos');

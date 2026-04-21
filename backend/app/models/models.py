@@ -1,7 +1,7 @@
 import uuid
 import enum
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Enum, Text, Numeric, Boolean, UniqueConstraint
+from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Enum, Text, Numeric, Boolean, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from backend.app.database import Base
@@ -68,11 +68,11 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.client)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole, native_enum=False), default=UserRole.client)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     avatar_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate="now()")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate=lambda: datetime.now())
 
 
 class Category(Base):
@@ -102,7 +102,7 @@ class Product(Base):
     images: Mapped[list] = mapped_column(JSONB, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate="now()")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate=lambda: datetime.now())
 
     category: Mapped["Category"] = relationship(back_populates="products")
     variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
@@ -150,7 +150,7 @@ class InventoryMovement(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("product_variants.id"), nullable=False)
-    movement_type: Mapped[MovementType] = mapped_column(Enum(MovementType), nullable=False)
+    movement_type: Mapped[MovementType] = mapped_column(Enum(MovementType, native_enum=False), nullable=False)
     quantity_change: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity_before: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity_after: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -169,7 +169,7 @@ class Session(Base):
     session_token: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), unique=True, default=uuid.uuid4, index=True)
     client_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     station_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    status: Mapped[SessionStatus] = mapped_column(Enum(SessionStatus), default=SessionStatus.active)
+    status: Mapped[SessionStatus] = mapped_column(Enum(SessionStatus, native_enum=False), default=SessionStatus.active)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -181,11 +181,11 @@ class Cart(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False)
-    status: Mapped[CartStatus] = mapped_column(Enum(CartStatus), default=CartStatus.building)
+    status: Mapped[CartStatus] = mapped_column(Enum(CartStatus, native_enum=False), default=CartStatus.building)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate="now()")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate=lambda: datetime.now())
 
     session: Mapped["Session"] = relationship(back_populates="carts")
     items = relationship("CartItem", back_populates="cart", cascade="all, delete-orphan")
@@ -217,12 +217,12 @@ class PaymentQueue(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     cart_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("carts.id"), unique=True, nullable=False)
     queue_position: Mapped[int] = mapped_column(Integer, nullable=False)
-    priority: Mapped[QueuePriority] = mapped_column(Enum(QueuePriority), default=QueuePriority.normal)
-    status: Mapped[QueueStatus] = mapped_column(Enum(QueueStatus), default=QueueStatus.waiting)
+    priority: Mapped[QueuePriority] = mapped_column(Enum(QueuePriority, native_enum=False), default=QueuePriority.normal)
+    status: Mapped[QueueStatus] = mapped_column(Enum(QueueStatus, native_enum=False), default=QueueStatus.waiting)
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate="now()")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate=lambda: datetime.now())
 
 
 class Order(Base):
@@ -236,10 +236,10 @@ class Order(Base):
     discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     tax_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    payment_method: Mapped[PaymentMethod] = mapped_column(Enum(PaymentMethod), nullable=False)
+    payment_method: Mapped[PaymentMethod] = mapped_column(Enum(PaymentMethod, native_enum=False), nullable=False)
     cash_received: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     change_given: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus), default=OrderStatus.pending)
+    status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus, native_enum=False), default=OrderStatus.pending)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
@@ -293,4 +293,4 @@ class DailySalesSummary(Base):
     payment_method_breakdown: Mapped[dict] = mapped_column(JSONB, default=dict)
     top_products: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate="now()")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate=lambda: datetime.now())
