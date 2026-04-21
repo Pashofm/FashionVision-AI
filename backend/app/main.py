@@ -14,7 +14,7 @@ from backend.app.database import get_db, AsyncSessionLocal, engine, Base
 from backend.app.config import settings
 from backend.app.models import (
     User, Category, Product, ProductVariant, Inventory, InventoryMovement,
-    Session as DbSession, Cart, CartItem, PaymentQueue, Order, OrderItem, Receipt,
+    DbSession, Cart, CartItem, PaymentQueue, Order, OrderItem, Receipt,
     UserRole, CartStatus, OrderStatus, PaymentMethod, QueueStatus, QueuePriority, MovementType
 )
 from backend.app.schemas import (
@@ -31,10 +31,21 @@ from backend.app.schemas import (
     ReceiptCreate, ReceiptResponse,
     DashboardToday, DashboardTopProduct, ActivePaymentQueueItem,
     LoginRequest, LoginResponse,
-    CartStatus as SchemaCartStatus
+    CartStatus
 )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import bcrypt
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception:
+        return False
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 @asynccontextmanager
@@ -81,7 +92,7 @@ async def login(request: LoginRequest, db: AsyncSession = db_dependency):
     result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalar_one_or_none()
     
-    if not user or not pwd_context.verify(request.password, user.password_hash):
+    if not user or not verify_password(request.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     
     if not user.is_active:
@@ -422,7 +433,7 @@ async def create_cart(cart: CartCreate, db: AsyncSession = db_dependency):
 
 
 @app.get("/api/carts", response_model=List[CartResponse])
-async def get_carts(session_id: uuid.UUID = None, status: SchemaCartStatus = None, db: AsyncSession = db_dependency):
+async def get_carts(session_id: uuid.UUID = None, status: CartStatus = None, db: AsyncSession = db_dependency):
     query = select(Cart)
     if session_id:
         query = query.where(Cart.session_id == session_id)
@@ -702,8 +713,8 @@ async def get_sales_analytics(db: AsyncSession = db_dependency):
         select(func.coalesce(func.sum(Order.total_amount), 0))
         .where(and_(Order.status == OrderStatus.completed, func.date(Order.completed_at) == func.current_date()))
     )
-    total = await db.execute(select(func.count(Order.id)).where(Order.status == OrderStatus.completed)
-    
+    total = await db.execute(select(func.count(Order.id)).where(Order.status == OrderStatus.completed))
+
     return {
         "monthly_sales": float(monthly.scalar()),
         "weekly_sales": float(weekly.scalar()),
