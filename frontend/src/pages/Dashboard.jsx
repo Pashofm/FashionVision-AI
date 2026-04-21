@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart,
@@ -13,17 +13,15 @@ import './Dashboard.css';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const userData = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
-    const userData = JSON.parse(localStorage.getItem('user') || '{}');
-    setUser(userData);
     if (userData.role !== 'admin') {
       navigate('/');
     }
-  }, [navigate]);
+  }, [navigate, userData.role]);
 
-  if (!user) return null;
+  if (!userData.role) return null;
 
   const ventasSemanales = [
     { dia: 'Lun', Playera: 4, Pantalon: 2, Vestido: 1, Camisa: 3 },
