@@ -185,7 +185,7 @@ async def create_user(user_data: UserCreate, db: AsyncSession = db_dependency):
     db_user = User(
         name=user_data.name,
         email=user_data.email,
-        password_hash=pwd_context.hash(user_data.password),
+        password_hash=hash_password(user_data.password),
         role=user_data.role
     )
     db.add(db_user)
@@ -221,7 +221,7 @@ async def update_user(user_id: uuid.UUID, user_data: UserUpdate, db: AsyncSessio
     if user_data.email:
         user.email = user_data.email
     if user_data.password:
-        user.password_hash = pwd_context.hash(user_data.password)
+        user.password_hash = hash_password(user_data.password)
     if user_data.role:
         user.role = user_data.role
     if user_data.is_active is not None:
@@ -514,10 +514,35 @@ async def get_carts(session_id: uuid.UUID = None, status: CartStatus = None, db:
     if session_id:
         query = query.where(Cart.session_id == session_id)
     if status:
-        query = query.where(Cart.status == status)
+        query = query.where(Cart.status == status.value)
     query = query.order_by(Cart.created_at.desc())
     result = await db.execute(query)
     return result.scalars().all()
+
+
+# ==================== CARTS (admin endpoints first - route ordering matters!) ====================
+
+@app.get("/api/carts/admin", response_model=List[CartWithTotal])
+async def get_pending_carts_admin(db: AsyncSession = db_dependency):
+    result = await db.execute(
+        select(Cart)
+        .where(Cart.status == CartStatus.submitted.value)
+        .options(selectinload(Cart.items).selectinload(CartItem.product))
+    )
+    carts = result.scalars().all()
+    
+    response = []
+    for cart in carts:
+        cart_total = sum(item.unit_price * item.quantity for item in cart.items)
+        response.append(CartWithTotal(
+            id=cart.id,
+            session_id=cart.session_id,
+            status=cart.status,
+            created_at=cart.created_at,
+            items=[CartItemResponse.model_validate(i) for i in cart.items],
+            total=cart_total
+        ))
+    return response
 
 
 @app.get("/api/carts/{cart_id}", response_model=CartWithItemsResponse)
@@ -578,29 +603,6 @@ async def remove_cart_item(cart_id: uuid.UUID, item_id: uuid.UUID, db: AsyncSess
     
     await db.delete(item)
     return {"message": "Item removed"}
-
-
-@app.get("/api/carts/admin", response_model=List[CartWithTotal])
-async def get_pending_carts_admin(db: AsyncSession = db_dependency):
-    result = await db.execute(
-        select(Cart)
-        .where(Cart.status == CartStatus.submitted)
-        .options(selectinload(Cart.items).selectinload(CartItem.product))
-    )
-    carts = result.scalars().all()
-    
-    response = []
-    for cart in carts:
-        cart_total = sum(item.unit_price * item.quantity for item in cart.items)
-        response.append(CartWithTotal(
-            id=cart.id,
-            session_id=cart.session_id,
-            status=cart.status,
-            created_at=cart.created_at,
-            items=[CartItemResponse.model_validate(i) for i in cart.items],
-            total=cart_total
-        ))
-    return response
 
 
 # ==================== PAYMENT QUEUE ====================
