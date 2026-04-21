@@ -176,9 +176,10 @@ export async function removeCartItem(cartId, itemId) {
   return response.json();
 }
 
-export async function updateCartStatus(cartId, status, notes = null) {
+export async function updateCartStatus(cartId, status, notes = null, paymentMethod = null) {
   const body = { status };
   if (notes !== null) body.notes = notes;
+  if (paymentMethod !== null) body.payment_method = paymentMethod;
   const response = await fetch(`${API_URL}/api/carts/${cartId}`, {
     method: 'PUT',
     headers: getHeaders(),
@@ -202,6 +203,15 @@ export async function rejectCart(cartId, notes = null) {
   return updateCartStatus(cartId, 'cancelled', notes);
 }
 
-export async function markCartPaid(cartId) {
-  return updateCartStatus(cartId, 'paid');
+export async function processPayment(cartId, paymentMethod = 'cash') {
+  const body = { status: 'paid', payment_method: paymentMethod };
+  const response = await fetch(`${API_URL}/api/carts/${cartId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to process payment: ${response.statusText}`);
+  }
+  return response.json();
 }
