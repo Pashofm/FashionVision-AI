@@ -1,54 +1,17 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useCamera from '../hooks/useCamera';
-import { detectClothes } from '../services/api';
+import { detectClothes, getProductByYoloClass } from '../services/api';
 import '../styles/client-detection.css';
 
-const DATASET_PRODUCTS = {
-  'gorra-roja-lacoste': {
-    name: 'Gorra Roja Lacoste',
-    price: 999.99,
-    brand: 'Lacoste',
-    sku: 'GOR-001',
-    sizes: ['One Size'],
-    colors: ['Rojo'],
-    tipoPrenda: 'Gorra'
-  },
-  'top': {
-    name: 'Camiseta Algodon',
-    price: 299.99,
-    brand: 'FashionCo',
-    sku: 'CAM-001',
-    sizes: ['S', 'M', 'L', 'XL'],
-    colors: ['Blanco', 'Negro'],
-    tipoPrenda: 'Camiseta'
-  },
-  'pants': {
-    name: 'Jean Slim Fit',
-    price: 599.99,
-    brand: 'DenimCraft',
-    sku: 'PAN-001',
-    sizes: ['28', '30', '32', '34'],
-    colors: ['Azul', 'Negro'],
-    tipoPrenda: 'Pantalón'
-  }
-};
-
-const getProductFromClass = (className, confidence) => {
-  const producto = DATASET_PRODUCTS[className.toLowerCase()];
-  if (producto) {
-    return { ...producto, confidence };
-  }
-  return {
-    name: className,
-    price: 0,
-    brand: 'Desconocido',
-    sku: 'N/A',
-    confidence,
-    tipoPrenda: className,
-    sizes: [],
-    colors: []
+const traducirCategoria = (className) => {
+  if (!className) return 'Prenda';
+  const productoMap = {
+    'gorra-roja-lacoste': 'Gorra',
+    'top': 'Camiseta',
+    'pants': 'Pantalón'
   };
+  return productoMap[className.toLowerCase()] || className;
 };
 
 const ClientDetection = () => {
@@ -61,6 +24,13 @@ const ClientDetection = () => {
   const [carrito, setCarrito] = useState([]);
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/');
+    }
+  }, [navigate]);
 
   const {
     videoRef,
@@ -105,7 +75,36 @@ const ClientDetection = () => {
             const detection = result.detections[0];
             setDetections(result.detections);
             setImageSize(result.image_size);
-            setProducto(getProductFromClass(detection.class, detection.confidence));
+
+            const dbProduct = await getProductByYoloClass(detection.class);
+
+            if (dbProduct) {
+              const productoData = {
+                name: dbProduct.name,
+                price: parseFloat(dbProduct.base_price),
+                brand: dbProduct.category?.name || 'FashionCo',
+                sku: dbProduct.sku,
+                tipoPrenda: traducirCategoria(detection.class),
+                confidence: detection.confidence,
+                colors: ['Rojo'],
+                sizes: ['S', 'M', 'L', 'XL'],
+                yolo_class_name: dbProduct.yolo_class_name,
+                product_id: dbProduct.id
+              };
+              setProducto(productoData);
+            } else {
+              setProducto({
+                name: detection.class,
+                price: 0,
+                brand: 'Desconocido',
+                sku: 'N/A',
+                tipoPrenda: traducirCategoria(detection.class),
+                confidence: detection.confidence,
+                colors: [],
+                sizes: [],
+                yolo_class_name: detection.class
+              });
+            }
           } else {
             setError('No se detectó una prenda. Intenta con otra imagen.');
           }
@@ -201,7 +200,7 @@ const ClientDetection = () => {
     imgEl.src = imagen;
   }, [imagen, detections, imageSize]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     drawBoundingBoxes();
   }, [drawBoundingBoxes]);
 
