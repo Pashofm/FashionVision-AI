@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/login';
 import Dashboard from './pages/Dashboard';
 import Home from './pages/home';
+import ClientDetection from './pages/ClientDetection';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -26,6 +27,14 @@ function App() {
         <Route
           path="/pago"
           element={isLoggedIn ? <Home /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/detection"
+          element={<ClientDetection />}
+        />
+        <Route
+          path="/cliente"
+          element={<ClientDetection />}
         />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
