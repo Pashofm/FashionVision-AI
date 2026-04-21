@@ -526,20 +526,26 @@ async def get_carts(session_id: uuid.UUID = None, status: CartStatus = None, db:
 async def get_pending_carts_admin(db: AsyncSession = db_dependency):
     result = await db.execute(
         select(Cart)
-        .where(Cart.status == CartStatus.submitted.value)
+        .where(Cart.status.in_([CartStatus.submitted.value, CartStatus.processing.value]))
         .options(selectinload(Cart.items).selectinload(CartItem.product))
     )
     carts = result.scalars().all()
     
     response = []
     for cart in carts:
-        cart_total = sum(item.unit_price * item.quantity for item in cart.items)
+        cart_total = sum(float(item.unit_price) * item.quantity for item in cart.items)
+        items_response = []
+        for i in cart.items:
+            item_data = CartItemResponse.model_validate(i)
+            if i.product:
+                item_data.product = ProductResponse.model_validate(i.product)
+            items_response.append(item_data)
         response.append(CartWithTotal(
             id=cart.id,
             session_id=cart.session_id,
             status=cart.status,
             created_at=cart.created_at,
-            items=[CartItemResponse.model_validate(i) for i in cart.items],
+            items=items_response,
             total=cart_total
         ))
     return response
@@ -554,7 +560,7 @@ async def get_cart(cart_id: uuid.UUID, db: AsyncSession = db_dependency):
     return cart
 
 
-@app.put("/api/carts/{cart_id}", response_model=CartResponse)
+@app.put("/api/carts/{cart_id}")
 async def update_cart(cart_id: uuid.UUID, cart_data: CartUpdate, db: AsyncSession = db_dependency):
     result = await db.execute(select(Cart).where(Cart.id == cart_id))
     cart = result.scalar_one_or_none()
@@ -563,12 +569,102 @@ async def update_cart(cart_id: uuid.UUID, cart_data: CartUpdate, db: AsyncSessio
     
     if cart_data.status:
         cart.status = cart_data.status
+    if cart_data.payment_method is not None:
+        cart.payment_method = cart_data.payment_method
     if cart_data.notes is not None:
         cart.notes = cart_data.notes
     
+    order_data = None
+    receipt_data = None
+    
+    status_value = cart_data.status.value if hasattr(cart_data.status, 'value') else cart_data.status
+    if status_value == 'paid' and cart.payment_method:
+        items_result = await db.execute(
+            select(CartItem).where(CartItem.cart_id == cart_id)
+        )
+        cart_items = items_result.scalars().all()
+        
+        subtotal = float(sum(float(item.unit_price) * item.quantity for item in cart_items))
+        tax_amount = float(subtotal * 0.16)
+        total_amount = float(subtotal + tax_amount)
+        
+        order_number = f"ORD-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:5].upper()}"
+        
+        cashier_result = await db.execute(select(User).where(User.role == UserRole.cashier).limit(1))
+        cashier = cashier_result.scalar_one_or_none()
+        cashier_id = cashier.id if cashier else None
+        
+        db_order = Order(
+            cart_id=cart_id,
+            order_number=order_number,
+            cashier_id=cashier_id,
+            subtotal=subtotal,
+            tax_amount=tax_amount,
+            total_amount=total_amount,
+            payment_method=cart.payment_method,
+            status=OrderStatus.completed,
+            completed_at=datetime.now()
+        )
+        db.add(db_order)
+        await db.flush()
+        
+        order_items_list = []
+        for item in cart_items:
+            product_result = await db.execute(select(Product).where(Product.id == item.product_id))
+            product = product_result.scalar_one_or_none()
+            product_name = product.name if product else "Producto"
+            
+            db_order_item = OrderItem(
+                order_id=db_order.id,
+                product_id=item.product_id,
+                product_variant_id=item.product_variant_id,
+                product_name=product_name,
+                quantity=item.quantity,
+                unit_price=float(item.unit_price),
+                subtotal=float(item.unit_price) * item.quantity
+            )
+            db.add(db_order_item)
+            order_items_list.append({
+                "name": product_name,
+                "quantity": item.quantity,
+                "unit_price": float(item.unit_price),
+                "subtotal": float(item.unit_price) * item.quantity
+            })
+        
+        await db.flush()
+        
+        receipt_number = f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:5].upper()}"
+        
+        receipt_info = {
+            "order_number": order_number,
+            "receipt_number": receipt_number,
+            "items": order_items_list,
+            "subtotal": float(subtotal),
+            "tax_amount": float(tax_amount),
+            "total_amount": float(total_amount),
+            "payment_method": cart.payment_method.value if hasattr(cart.payment_method, 'value') else cart.payment_method,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        db_receipt = Receipt(
+            order_id=db_order.id,
+            receipt_number=receipt_number,
+            receipt_data=receipt_info
+        )
+        db.add(db_receipt)
+        await db.flush()
+        
+        order_data = OrderResponse.model_validate(db_order)
+        receipt_data = ReceiptResponse.model_validate(db_receipt)
+    
     await db.flush()
     await db.refresh(cart)
-    return cart
+    
+    return {
+        "cart": CartResponse.model_validate(cart),
+        "order": order_data,
+        "receipt": receipt_data
+    }
 
 
 @app.post("/api/carts/{cart_id}/items", response_model=CartItemResponse, status_code=status.HTTP_201_CREATED)

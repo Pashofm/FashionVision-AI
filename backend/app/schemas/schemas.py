@@ -272,6 +272,7 @@ class CartItemResponse(CartItemBase):
     cart_id: uuid.UUID
     confirmed: bool
     added_at: datetime
+    product: Optional[ProductResponse] = None
 
     class Config:
         from_attributes = True
@@ -280,6 +281,7 @@ class CartItemResponse(CartItemBase):
 class CartBase(BaseModel):
     session_id: uuid.UUID
     status: CartStatus = CartStatus.building
+    payment_method: Optional[PaymentMethod] = None
     notes: Optional[str] = None
 
 
@@ -289,6 +291,7 @@ class CartCreate(CartBase):
 
 class CartUpdate(BaseModel):
     status: Optional[CartStatus] = None
+    payment_method: Optional[PaymentMethod] = None
     notes: Optional[str] = None
 
 
