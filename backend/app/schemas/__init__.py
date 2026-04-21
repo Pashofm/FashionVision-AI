@@ -15,6 +15,7 @@ from backend.app.schemas.schemas import (
     ReceiptCreate, ReceiptResponse,
     DashboardToday, DashboardTopProduct, ActivePaymentQueueItem,
     LoginRequest, LoginResponse,
+    CartStatus,
 )
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "ReceiptCreate", "ReceiptResponse",
     "DashboardToday", "DashboardTopProduct", "ActivePaymentQueueItem",
     "LoginRequest", "LoginResponse",
+    "CartStatus",
 ]

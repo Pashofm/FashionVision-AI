@@ -74,10 +74,6 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate="now()")
 
-    categories = relationship("Category", back_populates="user")
-    products = relationship("Product", back_populates="user")
-    carts = relationship("Cart", back_populates="user")
-
 
 class Category(Base):
     __tablename__ = "categories"
@@ -89,8 +85,6 @@ class Category(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
 
-    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    user: Mapped["User"] = relationship(back_populates="categories")
     products = relationship("Product", back_populates="category")
 
 
@@ -110,8 +104,6 @@ class Product(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate="now()")
 
-    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    user: Mapped["User"] = relationship(back_populates="products")
     category: Mapped["Category"] = relationship(back_populates="products")
     variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
     cart_items = relationship("CartItem", back_populates="product")
@@ -181,7 +173,6 @@ class Session(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    client_user: Mapped["User"] = relationship(back_populates="sessions")
     carts = relationship("Cart", back_populates="session")
 
 
@@ -197,9 +188,7 @@ class Cart(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate="now()")
 
     session: Mapped["Session"] = relationship(back_populates="carts")
-    user: Mapped["User"] = relationship(back_populates="carts")
     items = relationship("CartItem", back_populates="cart", cascade="all, delete-orphan")
-    payment_queue = relationship("PaymentQueue", back_populates="cart", uselist=False)
 
 
 class CartItem(Base):
@@ -234,8 +223,6 @@ class PaymentQueue(Base):
     called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate="now()")
-
-    cart: Mapped["Cart"] = relationship(back_populates="payment_queue")
 
 
 class Order(Base):
