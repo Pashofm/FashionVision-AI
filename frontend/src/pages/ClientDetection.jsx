@@ -1,5 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useCamera from '../hooks/useCamera';
+import { detectClothes } from '../services/api';
 import '../styles/client-detection.css';
 
 const DATASET_PRODUCTS = {
@@ -50,111 +52,115 @@ const getProductFromClass = (className, confidence) => {
 };
 
 const ClientDetection = () => {
-  const [view, setView] = useState('idle');
-  const [imagen, setImagen] = useState(null);
   const [producto, setProducto] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [imagen, setImagen] = useState(null);
   const [detections, setDetections] = useState(null);
   const [imageSize, setImageSize] = useState(null);
-  const [, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [carrito, setCarrito] = useState([]);
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const navigate = useNavigate();
 
-  const videoRef = useRef(null);
+  const {
+    videoRef,
+    isActive,
+    error: cameraError,
+    openCamera,
+    closeCamera,
+    captureFrame
+  } = useCamera();
+
   const canvasRef = useRef(null);
   const resultCanvasRef = useRef(null);
-  const mediaStreamRef = useRef(null);
 
-  const initCamera = async () => {
-    try {
-      setError('');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false
-      });
-      mediaStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-      setView('camera');
-    } catch (err) {
-      console.error('Camera error:', err);
-      setError('No se pudo acceder a la cámara. Verifica los permisos.');
-    }
-  };
-
-  const stopCamera = () => {
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(t => t.stop());
-      mediaStreamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setView('idle');
-  };
-
-  const capture = () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    if (!video || video.readyState !== 4) {
-      setError('Video no está listo');
-      return;
-    }
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0);
-
-    canvas.toBlob((blob) => {
-      const imgUrl = URL.createObjectURL(blob);
-      setImagen(imgUrl);
-      simulateDetection(imgUrl);
-    }, 'image/jpeg');
-  };
-
-  const simulateDetection = (imgUrl) => {
-    setView('processing');
-    setLoading(true);
+  const processDetection = useCallback(async (imgData) => {
+    setImagen(imgData);
     setError('');
+    setLoading(true);
+    setDetections(null);
+    setProducto(null);
 
-    setTimeout(() => {
-      const classes = Object.keys(DATASET_PRODUCTS);
-      const randomClass = classes[Math.floor(Math.random() * classes.length)];
-      const confidence = 0.85 + Math.random() * 0.14;
-
+    try {
       const imgElement = new Image();
-      imgElement.onload = () => {
-        const imgW = imgElement.width;
-        const imgH = imgElement.height;
-        const x1 = imgW * 0.2 + Math.random() * imgW * 0.3;
-        const y1 = imgH * 0.2 + Math.random() * imgH * 0.3;
-        const x2 = x1 + imgW * 0.3;
-        const y2 = y1 + imgH * 0.35;
+      imgElement.src = imgData;
 
-        const fakeDetections = [{
-          class: randomClass,
-          confidence: confidence,
-          bbox: [x1, y1, x2, y2]
-        }];
+      await new Promise((resolve) => {
+        imgElement.onload = resolve;
+      });
 
-        setDetections(fakeDetections);
-        setImageSize([imgW, imgH]);
-        setProducto(getProductFromClass(randomClass, confidence));
-        setView('result');
-        setLoading(false);
-      };
-      imgElement.src = imgUrl;
-    }, 1500);
+      const canvas = canvasRef.current;
+      canvas.width = imgElement.width;
+      canvas.height = imgElement.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(imgElement, 0, 0);
+
+      canvas.toBlob(async (blob) => {
+        const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+
+        try {
+          const result = await detectClothes(file);
+
+          if (result.detections && result.detections.length > 0) {
+            const detection = result.detections[0];
+            setDetections(result.detections);
+            setImageSize(result.image_size);
+            setProducto(getProductFromClass(detection.class, detection.confidence));
+          } else {
+            setError('No se detectó una prenda. Intenta con otra imagen.');
+          }
+        } catch (err) {
+          console.error('Error en detección:', err);
+          setError('Error al procesar la imagen en el servidor');
+        } finally {
+          setLoading(false);
+        }
+      }, 'image/jpeg');
+
+    } catch (err) {
+      console.error('Error procesando imagen:', err);
+      setError('Error al procesar la imagen');
+      setLoading(false);
+    }
+  }, []);
+
+  const handleCapture = useCallback(() => {
+    const canvas = canvasRef.current;
+    const capturedImage = captureFrame(canvas);
+
+    if (capturedImage) {
+      closeCamera();
+      processDetection(capturedImage);
+    }
+  }, [captureFrame, closeCamera, processDetection]);
+
+  const agregarAlCarrito = () => {
+    if (producto) {
+      setCarrito(prev => [...prev, { ...producto, id: Date.now() }]);
+      setProducto(null);
+      setImagen(null);
+      setDetections(null);
+    }
+  };
+
+  const eliminarDelCarrito = (id) => {
+    setCarrito(prev => prev.filter(item => item.id !== id));
+  };
+
+  const totalesCarrito = () => {
+    const total = carrito.reduce((sum, item) => sum + item.price, 0);
+    return { items: carrito.length, total };
+  };
+
+  const reset = () => {
+    setProducto(null);
+    setImagen(null);
+    setDetections(null);
+    setError('');
   };
 
   const drawBoundingBoxes = useCallback(() => {
-    if (view !== 'result' || !imagen || !detections || detections.length === 0 || !resultCanvasRef.current) {
+    if (!imagen || !detections || detections.length === 0 || !resultCanvasRef.current) {
       return;
     }
 
@@ -183,49 +189,23 @@ const ClientDetection = () => {
         ctx.lineWidth = 4;
         ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
 
-        ctx.fillStyle = '#00ff00';
-        ctx.font = 'bold 18px sans-serif';
-        const label = `${det.class.toUpperCase()} ${Math.round(det.confidence * 100)}%`;
-        const textMetrics = ctx.measureText(label);
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        const label = `${det.class.toUpperCase()} ${Math.round(det.confidence * 100)}%`;
+        ctx.font = 'bold 18px sans-serif';
+        const textMetrics = ctx.measureText(label);
         ctx.fillRect(sx1, sy1 - 28, textMetrics.width + 16, 28);
         ctx.fillStyle = '#00ff00';
         ctx.fillText(label, sx1 + 8, sy1 - 8);
       });
     };
     imgEl.src = imagen;
-  }, [view, imagen, detections, imageSize]);
+  }, [imagen, detections, imageSize]);
 
   React.useEffect(() => {
     drawBoundingBoxes();
   }, [drawBoundingBoxes]);
 
-  const agregarAlCarrito = () => {
-    if (producto) {
-      setCarrito(prev => [...prev, { ...producto, id: Date.now() }]);
-      setProducto(null);
-      setImagen(null);
-      setDetections(null);
-      setView('idle');
-    }
-  };
-
-  const eliminarDelCarrito = (id) => {
-    setCarrito(prev => prev.filter(item => item.id !== id));
-  };
-
-  const totalesCarrito = () => {
-    const total = carrito.reduce((sum, item) => sum + item.price, 0);
-    return { items: carrito.length, total };
-  };
-
-  const reset = () => {
-    setProducto(null);
-    setImagen(null);
-    setDetections(null);
-    setView('idle');
-    setError('');
-  };
+  const finalError = cameraError || error;
 
   return (
     <div className="client-page">
@@ -300,21 +280,19 @@ const ClientDetection = () => {
             Usa la cámara para detectar prendas y agregarlas a tu carrito
           </p>
 
-          {error && <div className="error-message">{error}</div>}
+          {finalError && <div className="error-message">{finalError}</div>}
 
-          {view === 'idle' && (
-            <div className="idle-view">
-              <div className="idle-icon">📷</div>
-              <p className="idle-text">
-                Presiona el botón para abrir la cámara y detectar prendas
-              </p>
-              <button className="btn-primary" onClick={initCamera}>
+          <div className="button-section">
+            {!isActive && !imagen && (
+              <button className="btn-primary" onClick={openCamera}>
                 <span>📷</span> Abrir Cámara
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
-          {view === 'camera' && (
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+          {isActive && (
             <div className="camera-view">
               <video
                 ref={videoRef}
@@ -323,19 +301,18 @@ const ClientDetection = () => {
                 muted
                 className="camera-video"
               />
-              <canvas ref={canvasRef} style={{ display: 'none' }} />
               <div className="camera-controls">
-                <button className="btn-capture" onClick={capture}>
+                <button className="btn-capture" onClick={handleCapture}>
                   <span>⏺</span> Capturar
                 </button>
-                <button className="btn-cancel" onClick={stopCamera}>
+                <button className="btn-cancel" onClick={closeCamera}>
                   ✕ Cerrar
                 </button>
               </div>
             </div>
           )}
 
-          {view === 'processing' && (
+          {loading && (
             <div className="processing-view">
               <div className="spinner"></div>
               <p>Analizando imagen...</p>
@@ -343,7 +320,7 @@ const ClientDetection = () => {
             </div>
           )}
 
-          {view === 'result' && (
+          {imagen && !loading && (
             <div className="result-view">
               <div className="result-image-container">
                 {detections && detections.length > 0 ? (

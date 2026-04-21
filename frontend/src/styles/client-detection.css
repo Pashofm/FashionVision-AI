@@ -265,6 +265,12 @@ body, html, #root {
   margin-bottom: 30px;
 }
 
+.button-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
 .error-message {
   background: #fee2e2;
   border: 1px solid #fecaca;
