@@ -1,62 +1,60 @@
+import io
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, List
 
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
-from sqlalchemy.orm import selectinload
-from passlib.context import CryptContext
 from PIL import Image
-import io
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from backend.app.database import get_db, AsyncSessionLocal, engine, Base
-from backend.app.config import settings
-from backend.app.models import (
-    User, Category, Product, ProductVariant, Inventory, InventoryMovement,
-    DbSession, Cart, CartItem, PaymentQueue, Order, OrderItem, Receipt,
-    UserRole, CartStatus, OrderStatus, PaymentMethod, QueueStatus, QueuePriority, MovementType
-)
-from backend.app.schemas import (
-    UserCreate, UserResponse, UserUpdate,
-    CategoryCreate, CategoryResponse, CategoryUpdate,
-    ProductCreate, ProductResponse, ProductUpdate, ProductVariantCreate, ProductVariantResponse,
-    ProductWithVariantsResponse,
-    InventoryCreate, InventoryResponse, InventoryUpdate,
-    InventoryMovementCreate, InventoryMovementResponse,
-    SessionCreate, SessionResponse,
-    CartCreate, CartResponse, CartUpdate, CartItemCreate, CartItemResponse, CartWithItemsResponse, CartWithTotal,
-    PaymentQueueCreate, PaymentQueueResponse,
-    OrderCreate, OrderResponse,
-    ReceiptCreate, ReceiptResponse,
-    DashboardToday, DashboardTopProduct, ActivePaymentQueueItem,
-    LoginRequest, LoginResponse,
-    CartStatus
-)
-from backend.app.services.detection import get_model, detect_in_image, get_model_classes
-from backend.app.services.cloudinary_service import upload_image, delete_image
-
-import bcrypt
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    try:
-        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
-    except Exception:
-        return False
-
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+from backend.app.config import settings, update_session_timeout
+from backend.app.database import AsyncSessionLocal, Base, engine, get_db
+from backend.app.dependencies import get_current_user, require_role
+from backend.app.models import (Cart, CartItem, CartStatus, Category,
+                                DbSession, Inventory, InventoryMovement,
+                                MovementType, Order, OrderItem, OrderStatus,
+                                PaymentMethod, PaymentQueue, Product,
+                                ProductVariant, QueuePriority, QueueStatus,
+                                Receipt, User, UserRole)
+from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
+                                 CartItemCreate, CartItemResponse,
+                                 CartResponse, CartStatus, CartUpdate,
+                                 CartWithItemsResponse, CartWithTotal,
+                                 CategoryCreate, CategoryResponse,
+                                 CategoryUpdate, DashboardToday,
+                                 DashboardTopProduct, InventoryCreate,
+                                 InventoryMovementCreate,
+                                 InventoryMovementResponse, InventoryResponse,
+                                 InventoryUpdate, LoginRequest, LoginResponse,
+                                 OrderCreate, OrderResponse,
+                                 PaymentQueueCreate, PaymentQueueResponse,
+                                 ProductCreate, ProductResponse, ProductUpdate,
+                                 ProductVariantCreate, ProductVariantResponse,
+                                 ProductWithVariantsResponse, ReceiptCreate,
+                                 ReceiptResponse, RefreshTokenRequest,
+                                 RefreshTokenResponse, SessionCreate,
+                                 SessionResponse, UserCreate, UserResponse,
+                                 UserUpdate)
+from backend.app.services.auth import (create_access_token,
+                                       create_refresh_token,
+                                       decode_refresh_token, hash_password,
+                                       verify_password)
+from backend.app.services.cloudinary_service import delete_image, upload_image
+from backend.app.services.detection import (detect_in_image, get_model,
+                                            get_model_classes)
+from backend.app.services.session_manager import SessionManager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    SessionManager.set_timeout_minutes(settings.SESSION_TIMEOUT_MINUTES)
     yield
 
 
@@ -163,15 +161,96 @@ async def delete_product_image(public_id: str):
 async def login(request: LoginRequest, db: AsyncSession = db_dependency):
     result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalar_one_or_none()
-    
+
     if not user or not verify_password(request.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    
+
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
-    
-    access_token = f"demo_token_{user.id}"
-    return LoginResponse(access_token=access_token, user=UserResponse.model_validate(user))
+
+    access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
+    refresh_token = create_refresh_token(user_id=str(user.id))
+
+    return LoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=UserResponse.model_validate(user)
+    )
+
+
+@app.post("/api/auth/refresh", response_model=RefreshTokenResponse)
+async def refresh_token(request: RefreshTokenRequest, db: AsyncSession = db_dependency):
+    payload = decode_refresh_token(request.refresh_token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    user_id = payload.get("sub")
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
+    new_refresh_token = create_refresh_token(user_id=str(user.id))
+
+    return RefreshTokenResponse(
+        access_token=access_token,
+        refresh_token=new_refresh_token,
+        token_type="bearer",
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+@app.get("/api/auth/session/extend", status_code=status.HTTP_200_OK)
+async def extend_session(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = db_dependency
+):
+    session_id_param = None
+    try:
+        session_id_param = uuid.UUID(current_user.id)
+    except Exception:
+        pass
+
+    if session_id_param:
+        await SessionManager.extend_session(db, session_id_param)
+
+    return {"status": "extended", "timeout_minutes": SessionManager.get_timeout_minutes()}
+
+
+@app.put("/api/auth/session/timeout")
+async def update_session_timeout_config(
+    timeout_minutes: int,
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    if timeout_minutes < 1 or timeout_minutes > 1440:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Timeout must be between 1 and 1440 minutes",
+        )
+    SessionManager.set_timeout_minutes(timeout_minutes)
+    return {"status": "updated", "timeout_minutes": timeout_minutes}
+
+
+@app.get("/api/auth/session/status")
+async def get_session_status(
+    current_user: User = Depends(get_current_user),
+):
+    return {
+        "user_id": str(current_user.id),
+        "role": current_user.role.value,
+        "timeout_minutes": SessionManager.get_timeout_minutes(),
+        "is_active": current_user.is_active,
+    }
 
 
 # ==================== USERS ====================

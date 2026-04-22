@@ -1,12 +1,118 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+const TOKEN_REFRESH_BUFFER_SECONDS = 60;
+
+let isRefreshing = false;
+let refreshSubscribers = [];
+
 const getHeaders = () => {
   const headers = { 'Content-Type': 'application/json' };
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('access_token');
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
+};
+
+const subscribeTokenRefresh = (callback) => {
+  refreshSubscribers.push(callback);
+};
+
+const onTokenRefreshed = (token) => {
+  refreshSubscribers.forEach(callback => callback(token));
+  refreshSubscribers = [];
+};
+
+export async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  const response = await fetch(`${API_URL}/api/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+
+  if (!response.ok) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user');
+    throw new Error('Token refresh failed');
+  }
+
+  const data = await response.json();
+  localStorage.setItem('access_token', data.access_token);
+  localStorage.setItem('refresh_token', data.refresh_token);
+  return data.access_token;
+}
+
+const getAccessToken = () => {
+  return localStorage.getItem('access_token');
+};
+
+const isTokenExpiringSoon = () => {
+  const expiresIn = localStorage.getItem('expires_in');
+  if (!expiresIn) return true;
+  const expiryTime = parseInt(expiresIn, 10) * 1000;
+  const bufferTime = TOKEN_REFRESH_BUFFER_SECONDS * 1000;
+  return Date.now() >= (expiryTime - bufferTime);
+};
+
+const handleUnauthorized = async () => {
+  if (isRefreshing) {
+    return new Promise((resolve) => {
+      subscribeTokenRefresh((token) => {
+        resolve(token);
+      });
+    });
+  }
+
+  isRefreshing = true;
+  try {
+    const newToken = await refreshAccessToken();
+    onTokenRefreshed(newToken);
+    return newToken;
+  } catch (error) {
+    onTokenRefreshed(null);
+    throw error;
+  } finally {
+    isRefreshing = false;
+  }
+};
+
+const authenticatedFetch = async (url, options = {}) => {
+  let token = getAccessToken();
+
+  if (!token || isTokenExpiringSoon()) {
+    try {
+      token = await handleUnauthorized();
+    } catch (error) {
+      window.location.href = '/';
+      throw error;
+    }
+  }
+
+  const headers = {
+    ...options.headers,
+    'Authorization': `Bearer ${token}`,
+  };
+
+  const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401) {
+    try {
+      token = await handleUnauthorized();
+      headers['Authorization'] = `Bearer ${token}`;
+      return fetch(url, { ...options, headers });
+    } catch (error) {
+      window.location.href = '/';
+      throw error;
+    }
+  }
+
+  return response;
 };
 
 export async function detectClothes(imageFile) {
@@ -68,6 +174,31 @@ export async function login(email, password) {
   if (!response.ok) {
     throw new Error(`Login failed: ${response.statusText}`);
   }
+  const data = await response.json();
+  localStorage.setItem('access_token', data.access_token);
+  localStorage.setItem('refresh_token', data.refresh_token);
+  localStorage.setItem('expires_in', data.expires_in.toString());
+  localStorage.setItem('user', JSON.stringify(data.user));
+  return data;
+}
+
+export async function refreshToken() {
+  return refreshAccessToken();
+}
+
+export function getStoredUser() {
+  const userStr = localStorage.getItem('user');
+  return userStr ? JSON.parse(userStr) : null;
+}
+
+export function isAuthenticated() {
+  return !!localStorage.getItem('access_token');
+}
+
+export async function extendSession() {
+  const response = await authenticatedFetch(`${API_URL}/api/auth/session/extend`, {
+    method: 'GET',
+  });
   return response.json();
 }
 
