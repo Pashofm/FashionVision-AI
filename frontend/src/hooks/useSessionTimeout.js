@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { extendSession, refreshToken, getStoredUser, isAuthenticated } from '../services/api';
+import { extendSession, isAuthenticated } from '../services/api';
 
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 const EXTEND_INTERVAL_MS = 5 * 60 * 1000;
@@ -7,7 +7,28 @@ const EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 export function useSessionTimeout(onSessionExpiring, onSessionExpired) {
   const timeoutRef = useRef(null);
   const extendIntervalRef = useRef(null);
-  const lastActivityRef = useRef(Date.now());
+  const lastActivityRef = useRef(null);
+
+  const checkAndExtendSession = useCallback(async () => {
+    if (lastActivityRef.current === null) return;
+    const timeSinceActivity = Date.now() - lastActivityRef.current;
+    if (timeSinceActivity >= INACTIVITY_TIMEOUT_MS) {
+      try {
+        await extendSession();
+        lastActivityRef.current = Date.now();
+        if (onSessionExpiring) {
+          onSessionExpiring();
+        }
+      } catch {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+        if (onSessionExpired) {
+          onSessionExpired();
+        }
+      }
+    }
+  }, [onSessionExpiring, onSessionExpired]);
 
   const resetTimer = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -17,32 +38,14 @@ export function useSessionTimeout(onSessionExpiring, onSessionExpired) {
     timeoutRef.current = setTimeout(() => {
       checkAndExtendSession();
     }, INACTIVITY_TIMEOUT_MS);
-  }, []);
-
-  const checkAndExtendSession = useCallback(async () => {
-    const timeSinceActivity = Date.now() - lastActivityRef.current;
-    if (timeSinceActivity >= INACTIVITY_TIMEOUT_MS) {
-      try {
-        await extendSession();
-        resetTimer();
-        if (onSessionExpiring) {
-          onSessionExpiring();
-        }
-      } catch (error) {
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-        }
-        if (onSessionExpired) {
-          onSessionExpired();
-        }
-      }
-    }
-  }, [resetTimer, onSessionExpiring, onSessionExpired]);
+  }, [checkAndExtendSession]);
 
   useEffect(() => {
     if (!isAuthenticated()) {
       return;
     }
+
+    lastActivityRef.current = Date.now();
 
     const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
 
@@ -60,7 +63,7 @@ export function useSessionTimeout(onSessionExpiring, onSessionExpired) {
       if (isAuthenticated()) {
         try {
           await extendSession();
-        } catch (error) {
+        } catch {
           if (onSessionExpired) {
             onSessionExpired();
           }
@@ -79,7 +82,7 @@ export function useSessionTimeout(onSessionExpiring, onSessionExpired) {
         clearInterval(extendIntervalRef.current);
       }
     };
-  }, [resetTimer]);
+  }, [resetTimer, onSessionExpired]);
 }
 
 export function getTimeUntilExpiration() {
