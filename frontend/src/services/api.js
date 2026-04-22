@@ -346,3 +346,85 @@ export async function processPayment(cartId, paymentMethod = 'cash') {
   }
   return response.json();
 }
+
+// ==================== INVENTORY FUNCTIONS ====================
+
+export async function getProductsWithStock(categoryId = null, search = null) {
+  let url = `${API_URL}/api/products/stock/all`;
+  const params = new URLSearchParams();
+  if (categoryId) params.append('category_id', categoryId);
+  if (search) params.append('search', search);
+  if (params.toString()) url += `?${params.toString()}`;
+
+  const response = await fetch(url, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch products: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getLowStockProducts() {
+  const response = await fetch(`${API_URL}/api/inventory/low-stock`, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch low stock products: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getInventoryMovements(variantId = null) {
+  let url = `${API_URL}/api/inventory-movements`;
+  if (variantId) url += `?product_variant_id=${variantId}`;
+
+  const response = await fetch(url, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch inventory movements: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function adjustInventory(variantId, quantityChange, reason, referenceId = null) {
+  const body = {
+    quantity_change: quantityChange,
+    reason: reason
+  };
+  if (referenceId) body.reference_id = referenceId;
+
+  const response = await fetch(`${API_URL}/api/inventory/adjust?variant_id=${variantId}`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to adjust inventory: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function restockInventory(variantId, quantity, notes = null, referenceId = null) {
+  const body = {
+    quantity: quantity,
+    notes: notes
+  };
+  if (referenceId) body.reference_id = referenceId;
+
+  const response = await fetch(`${API_URL}/api/inventory/restock?variant_id=${variantId}`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to restock: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function updateStockThreshold(variantId, threshold) {
+  const response = await fetch(`${API_URL}/api/inventory/${variantId}/threshold?threshold=${threshold}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update threshold: ${response.statusText}`);
+  }
+  return response.json();
+}
