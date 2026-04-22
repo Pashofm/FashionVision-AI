@@ -37,7 +37,9 @@ from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  LoginRequest, LoginResponse,
                                  OrderCreate, OrderResponse,
                                  PaymentQueueCreate, PaymentQueueResponse,
-                                 PeriodComparison, ProductCreate, ProductResponse,
+                                 PeriodComparison, POSInitializeRequest,
+                                 POSInitializeResponse, POSResultResponse,
+                                 POSStatusResponse, ProductCreate, ProductResponse,
                                  ProductUpdate, ProductVariantCreate,
                                  ProductVariantResponse, ProductVariantUpdate,
                                  ProductWithStockResponse,
@@ -1599,3 +1601,219 @@ async def get_dashboard_summary(db: AsyncSession = db_dependency):
         top_products=top_products,
         inventory_alerts=inventory_alerts
     )
+
+
+# ==================== POS TERMINAL ====================
+
+pos_transactions = {}
+
+
+@app.post("/api/payments/pos/init", response_model=POSInitializeResponse)
+async def pos_initialize_payment(
+    request: POSInitializeRequest,
+    db: AsyncSession = db_dependency
+):
+    from backend.app.services.pos_terminal import terminal
+
+    result = await terminal.initialize_payment(
+        amount=request.amount,
+        currency=request.currency,
+        description=f"Cart payment {request.cart_id}"
+    )
+
+    if result["success"]:
+        pos_transactions[result["transaction_id"]] = {
+            "cart_id": request.cart_id,
+            "amount": request.amount,
+            "status": result["status"]
+        }
+
+    return POSInitializeResponse(
+        success=result["success"],
+        transaction_id=result["transaction_id"],
+        status=result["status"],
+        amount=result["amount"],
+        message=result.get("message")
+    )
+
+
+@app.post("/api/payments/pos/wait-card")
+async def pos_wait_for_card(transaction_id: str):
+    from backend.app.services.pos_terminal import terminal
+
+    result = await terminal.wait_for_card_present(transaction_id)
+
+    if transaction_id in pos_transactions:
+        pos_transactions[transaction_id]["status"] = result.get("status", "waiting_card")
+
+    return result
+
+
+@app.post("/api/payments/pos/process")
+async def pos_process_payment(transaction_id: str):
+    from backend.app.services.pos_terminal import terminal
+
+    result = await terminal.process_payment(transaction_id)
+
+    if transaction_id in pos_transactions:
+        pos_transactions[transaction_id]["status"] = result.status.value
+        pos_transactions[transaction_id]["result"] = result.to_dict()
+
+    return result.to_dict()
+
+
+@app.post("/api/payments/pos/cancel")
+async def pos_cancel_transaction(transaction_id: str):
+    from backend.app.services.pos_terminal import terminal
+
+    result = await terminal.cancel_transaction(transaction_id)
+
+    if transaction_id in pos_transactions:
+        pos_transactions[transaction_id]["status"] = "cancelled"
+
+    return result
+
+
+@app.get("/api/payments/pos/status/{transaction_id}")
+async def pos_get_status(transaction_id: str):
+    from backend.app.services.pos_terminal import terminal
+
+    return await terminal.get_transaction_status(transaction_id)
+
+
+@app.get("/api/payments/pos/result/{transaction_id}")
+async def pos_get_result(transaction_id: str):
+    from backend.app.services.pos_terminal import terminal
+
+    result = terminal.get_transaction_result(transaction_id)
+    if result:
+        return result.to_dict()
+    return {"error": "Transaction not found or not completed"}
+
+
+@app.post("/api/payments/pos/complete-payment", status_code=status.HTTP_200_OK)
+async def pos_complete_payment(
+    transaction_id: str,
+    cart_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = db_dependency
+):
+    from backend.app.services.pos_terminal import terminal
+
+    result = terminal.get_transaction_result(transaction_id)
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    if result.status.value != "approved":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Payment not approved. Status: {result.status.value}"
+        )
+
+    cart_result = await db.execute(select(Cart).where(Cart.id == cart_id))
+    cart = cart_result.scalar_one_or_none()
+    if not cart:
+        raise HTTPException(status_code=404, detail="Cart not found")
+
+    subtotal = sum(float(item.unit_price) * item.quantity for item in cart.items)
+    tax_amount = subtotal * 0.16
+    total_amount = subtotal + tax_amount
+
+    order = Order(
+        cart_id=cart_id,
+        order_number=f"ORD-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:5].upper()}",
+        cashier_id=current_user.id,
+        subtotal=subtotal,
+        tax_amount=tax_amount,
+        total_amount=total_amount,
+        payment_method=PaymentMethod.card,
+        cash_received=total_amount,
+        change_given=0,
+        status=OrderStatus.completed,
+        completed_at=datetime.utcnow()
+    )
+    db.add(order)
+    await db.flush()
+
+    for item in cart.items:
+        order_item = OrderItem(
+            order_id=order.id,
+            product_id=item.product_id,
+            product_variant_id=item.product_variant_id,
+            product_name=item.product.name if item.product else "Unknown",
+            variant_description=f"{item.product_variant.size if item.product_variant else ''} - {item.product_variant.color if item.product_variant else ''}",
+            quantity=item.quantity,
+            unit_price=float(item.unit_price),
+            subtotal=float(item.unit_price) * item.quantity
+        )
+        db.add(order_item)
+
+        inventory_result = await db.execute(
+            select(Inventory).where(Inventory.product_variant_id == item.product_variant_id)
+        )
+        inventory = inventory_result.scalar_one_or_none()
+        if inventory:
+            inventory.quantity_available -= item.quantity
+
+            movement = InventoryMovement(
+                product_variant_id=item.product_variant_id,
+                movement_type=MovementType.sale,
+                quantity_change=-item.quantity,
+                quantity_before=inventory.quantity_available + item.quantity,
+                quantity_after=inventory.quantity_available,
+                reference_id=order.id,
+                notes=f"Venta orden {order.order_number}",
+                created_by=current_user.id
+            )
+            db.add(movement)
+
+    cart.status = CartStatus.paid
+    await db.flush()
+
+    receipt_data = {
+        "order_number": order.order_number,
+        "receipt_number": f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:5].upper()}",
+        "items": [
+            {
+                "name": item.product.name if item.product else "Unknown",
+                "quantity": item.quantity,
+                "unit_price": float(item.unit_price),
+                "subtotal": float(item.unit_price) * item.quantity
+            }
+            for item in cart.items
+        ],
+        "subtotal": subtotal,
+        "tax_amount": tax_amount,
+        "total_amount": total_amount,
+        "payment_method": "card",
+        "card_last_four": result.card_last_four,
+        "authorization_code": result.authorization_code,
+        "transaction_id": transaction_id,
+        "cashier": current_user.name,
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+    receipt = Receipt(
+        order_id=order.id,
+        receipt_number=receipt_data["receipt_number"],
+        receipt_data=receipt_data
+    )
+    db.add(receipt)
+    await db.flush()
+
+    queue_result = await db.execute(
+        select(PaymentQueue).where(PaymentQueue.cart_id == cart_id)
+    )
+    queue_entry = queue_result.scalar_one_or_none()
+    if queue_entry:
+        queue_entry.status = QueueStatus.completed
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "order_id": str(order.id),
+        "order_number": order.order_number,
+        "receipt": receipt_data
+    }

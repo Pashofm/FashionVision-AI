@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getPendingCarts, approveCart, rejectCart, processPayment } from '../services/api';
+import { getPendingCarts, approveCart, rejectCart, processPayment, posInitializePayment, posWaitForCard, posProcessPayment, posCancelTransaction, posCompletePayment } from '../services/api';
 import '../styles/home.css';
 
 const formatDate = (dateStr) => {
@@ -24,7 +24,14 @@ const Cashier = () => {
   const [selectedCart, setSelectedCart] = useState(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('cash');
   const [receiptData, setReceiptData] = useState(null);
+  const [posPayment, setPosPayment] = useState(null);
+  const [posStatus, setPosStatus] = useState('');
+  const [posLogs, setPosLogs] = useState([]);
   const navigate = useNavigate();
+
+  const addPosLog = (message) => {
+    setPosLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), message }]);
+  };
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -89,15 +96,21 @@ const Cashier = () => {
 
   const handlePayment = async () => {
     if (!selectedCart) return;
+
+    if (selectedPaymentMethod === 'card') {
+      await handlePosPayment();
+      return;
+    }
+
     try {
       setProcessingId(selectedCart.id);
       const result = await processPayment(selectedCart.id, selectedPaymentMethod);
-      
+
       if (result.receipt) {
         setReceiptData(result.receipt.receipt_data);
         setShowReceiptModal(true);
       }
-      
+
       closePaymentModal();
       await fetchPendingCarts();
     } catch (err) {
@@ -106,6 +119,93 @@ const Cashier = () => {
     } finally {
       setProcessingId(null);
     }
+  };
+
+  const handlePosPayment = async () => {
+    if (!selectedCart) return;
+
+    try {
+      setProcessingId(selectedCart.id);
+      setPosLogs([]);
+      addPosLog('Iniciando pago con terminal...');
+
+      const cartTotal = selectedCart.total || 0;
+      const initResult = await posInitializePayment(selectedCart.id, cartTotal);
+
+      if (!initResult.success) {
+        addPosLog('Error: No se pudo inicializar el terminal');
+        return;
+      }
+
+      const transactionId = initResult.transaction_id;
+      setPosPayment({ transactionId, amount: cartTotal });
+      setPosStatus('waiting_card');
+      addPosLog(`Terminal listo. Transaction ID: ${transactionId}`);
+      addPosLog('Esperando tarjeta...');
+
+      const waitResult = await posWaitForCard(transactionId);
+
+      if (!waitResult.success) {
+        setPosStatus('timeout');
+        addPosLog('Error: Tarjeta no detectada');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        setPosPayment(null);
+        setProcessingId(null);
+        return;
+      }
+
+      setPosStatus('processing');
+      addPosLog('Tarjeta detectada. Procesando...');
+
+      const processResult = await posProcessPayment(transactionId);
+      setPosStatus(processResult.status);
+
+      if (processResult.status === 'approved') {
+        addPosLog(`Pago aprobado. Auth: ${processResult.authorization_code}`);
+        addPosLog('Completando transacción en sistema...');
+
+        const completeResult = await posCompletePayment(transactionId, selectedCart.id);
+
+        if (completeResult.success) {
+          setReceiptData(completeResult.receipt);
+          addPosLog('Transacción completada exitosamente');
+          setShowReceiptModal(true);
+          await fetchPendingCarts();
+        } else {
+          addPosLog('Error al completar transacción');
+        }
+      } else if (processResult.status === 'declined') {
+        addPosLog(`Pago rechazado: ${processResult.error_message}`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      } else {
+        addPosLog(`Error: ${processResult.error_message}`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+
+      setPosPayment(null);
+      closePaymentModal();
+
+    } catch (err) {
+      setError('Error en el pago con terminal');
+      console.error(err);
+      addPosLog(`Error: ${err.message}`);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleCancelPosPayment = async () => {
+    if (posPayment) {
+      try {
+        await posCancelTransaction(posPayment.transactionId);
+        addPosLog('Transacción cancelada');
+      } catch (err) {
+        console.error(err);
+      }
+      setPosPayment(null);
+      setPosStatus('');
+    }
+    setProcessingId(null);
   };
 
   const closeReceiptModal = () => {
@@ -210,49 +310,76 @@ const Cashier = () => {
               <h3>💳 Seleccionar Método de Pago</h3>
               <button className="modal-close" onClick={closePaymentModal}>✕</button>
             </div>
-            
+
             <div className="modal-body">
               <div className="cart-summary">
                 <p><strong>Pedido:</strong> #{selectedCart.id.slice(0, 8).toUpperCase()}</p>
                 <p><strong>Total a pagar:</strong> <span className="total-amount">${selectedCart.total?.toFixed(2) || '0.00'}</span></p>
               </div>
 
-              <div className="payment-methods">
-                <h4>Método de pago</h4>
-                <div className="method-options">
-                  <label className={`method-option ${selectedPaymentMethod === 'cash' ? 'selected' : ''}`}>
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      value="cash"
-                      checked={selectedPaymentMethod === 'cash'}
-                      onChange={() => setSelectedPaymentMethod('cash')}
-                    />
-                    <span className="method-icon">💵</span>
-                    <span className="method-name">Efectivo</span>
-                  </label>
-                  <label className={`method-option disabled`} title="Deshabilitado por el momento">
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      value="card"
-                      disabled
-                    />
-                    <span className="method-icon">💳</span>
-                    <span className="method-name">Tarjeta</span>
-                    <span className="disabled-label">(No disponible)</span>
-                  </label>
+              {posPayment ? (
+                <div className="pos-status-panel">
+                  <h4>Estado del Terminal</h4>
+                  <div className={`pos-status-indicator ${posStatus}`}>
+                    {posStatus === 'waiting_card' && '⏳ Esperando tarjeta...'}
+                    {posStatus === 'processing' && '🔄 Procesando...'}
+                    {posStatus === 'approved' && '✅ Aprobado'}
+                    {posStatus === 'declined' && '❌ Rechazado'}
+                    {posStatus === 'timeout' && '⏱️ Timeout'}
+                    {posStatus === 'cancelled' && '🚫 Cancelado'}
+                  </div>
+                  <div className="pos-logs">
+                    {posLogs.map((log, idx) => (
+                      <div key={idx} className="pos-log-entry">
+                        <span className="log-time">[{log.time}]</span>
+                        <span className="log-message">{log.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button className="btn-outline" onClick={handleCancelPosPayment}>
+                    Cancelar
+                  </button>
                 </div>
-              </div>
-            </div>
+              ) : (
+                <>
+                  <div className="payment-methods">
+                    <h4>Método de pago</h4>
+                    <div className="method-options">
+                      <label className={`method-option ${selectedPaymentMethod === 'cash' ? 'selected' : ''}`}>
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="cash"
+                          checked={selectedPaymentMethod === 'cash'}
+                          onChange={() => setSelectedPaymentMethod('cash')}
+                        />
+                        <span className="method-icon">💵</span>
+                        <span className="method-name">Efectivo</span>
+                      </label>
+                      <label className={`method-option ${selectedPaymentMethod === 'card' ? 'selected' : ''}`} title="Pago con terminal POS">
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="card"
+                          checked={selectedPaymentMethod === 'card'}
+                          onChange={() => setSelectedPaymentMethod('card')}
+                        />
+                        <span className="method-icon">💳</span>
+                        <span className="method-name">Terminal POS</span>
+                      </label>
+                    </div>
+                  </div>
 
-            <div className="modal-footer">
-              <button className="btn-outline" onClick={closePaymentModal}>
-                Cancelar
-              </button>
-              <button className="btn-primary" onClick={handlePayment}>
-                Confirmar Pago
-              </button>
+                  <div className="modal-footer">
+                    <button className="btn-outline" onClick={closePaymentModal}>
+                      Cancelar
+                    </button>
+                    <button className="btn-primary" onClick={handlePayment}>
+                      Confirmar Pago
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

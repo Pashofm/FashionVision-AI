@@ -620,3 +620,51 @@ class TokenPayload(BaseModel):
     sub: str
     exp: int
     type: str = "access"
+
+
+class POSPaymentStatus(str, Enum):
+    PENDING = "pending"
+    WAITING_CARD = "waiting_card"
+    PROCESSING = "processing"
+    APPROVED = "approved"
+    DECLINED = "declined"
+    CANCELLED = "cancelled"
+    TIMEOUT = "timeout"
+
+
+class POSInitializeRequest(BaseModel):
+    cart_id: uuid.UUID
+    amount: float
+    currency: str = "MXN"
+
+
+class POSInitializeResponse(BaseModel):
+    success: bool
+    transaction_id: str
+    status: POSPaymentStatus
+    amount: float
+    message: Optional[str] = None
+
+
+class POSStatusResponse(BaseModel):
+    success: bool
+    transaction_id: str
+    status: POSPaymentStatus
+    amount: Optional[float] = None
+    card_last_four: Optional[str] = None
+    authorization_code: Optional[str] = None
+    error_message: Optional[str] = None
+    provider_reference: Optional[str] = None
+    timestamp: Optional[datetime] = None
+
+
+class POSResultResponse(BaseModel):
+    success: bool
+    transaction_id: str
+    status: POSPaymentStatus
+    amount: float
+    card_last_four: Optional[str] = None
+    authorization_code: Optional[str] = None
+    error_message: Optional[str] = None
+    provider_reference: Optional[str] = None
+    timestamp: datetime
