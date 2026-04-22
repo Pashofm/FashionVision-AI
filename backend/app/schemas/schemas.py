@@ -228,6 +228,76 @@ class InventoryMovementResponse(InventoryMovementBase):
         from_attributes = True
 
 
+class InventoryAdjust(BaseModel):
+    quantity_change: int
+    reason: str
+    reference_id: Optional[uuid.UUID] = None
+
+
+class InventoryRestock(BaseModel):
+    quantity: int
+    notes: Optional[str] = None
+    reference_id: Optional[uuid.UUID] = None
+
+
+class VariantWithInventory(BaseModel):
+    id: uuid.UUID
+    product_id: uuid.UUID
+    size: Optional[str]
+    color: Optional[str]
+    color_hex: Optional[str]
+    sku_variant: str
+    price_modifier: float
+    is_active: bool
+    created_at: datetime
+    inventory: Optional[InventoryResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProductWithStockResponse(ProductResponse):
+    variants: List[VariantWithInventory] = []
+    total_stock: int = 0
+    has_low_stock: bool = False
+    has_out_of_stock: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class InventoryLowStockResponse(BaseModel):
+    variant_id: uuid.UUID
+    product_id: uuid.UUID
+    product_name: str
+    category_name: str
+    sku: str
+    sku_variant: str
+    size: Optional[str]
+    color: Optional[str]
+    quantity_available: int
+    quantity_reserved: int
+    low_stock_threshold: int
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class ProductVariantUpdate(BaseModel):
+    size: Optional[str] = None
+    color: Optional[str] = None
+    color_hex: Optional[str] = None
+    price_modifier: Optional[float] = None
+    is_active: Optional[bool] = None
+
+
+class ImageUploadResponse(BaseModel):
+    success: bool
+    public_id: str
+    url: str
+
+
 class SessionBase(BaseModel):
     station_id: Optional[str] = None
 

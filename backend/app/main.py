@@ -28,20 +28,25 @@ from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  CategoryCreate, CategoryResponse,
                                  CategoryUpdate, DashboardToday,
                                  DashboardTopProduct, DashboardSummary,
+                                 ImageUploadResponse, InventoryAdjust,
                                  InventoryAlert, InventoryCreate,
+                                 InventoryLowStockResponse,
                                  InventoryMovementCreate,
                                  InventoryMovementResponse, InventoryResponse,
-                                 InventoryUpdate, LoginRequest, LoginResponse,
+                                 InventoryRestock, InventoryUpdate,
+                                 LoginRequest, LoginResponse,
                                  OrderCreate, OrderResponse,
                                  PaymentQueueCreate, PaymentQueueResponse,
                                  PeriodComparison, ProductCreate, ProductResponse,
                                  ProductUpdate, ProductVariantCreate,
-                                 ProductVariantResponse,
+                                 ProductVariantResponse, ProductVariantUpdate,
+                                 ProductWithStockResponse,
                                  ProductWithVariantsResponse, ReceiptCreate,
                                  ReceiptResponse, RefreshTokenRequest,
                                  RefreshTokenResponse, SalesByCategory,
                                  SalesByHour, SessionCreate, SessionResponse,
-                                 UserCreate, UserResponse, UserUpdate)
+                                 UserCreate, UserResponse, UserUpdate,
+                                 VariantWithInventory)
 from backend.app.services.auth import (create_access_token,
                                        create_refresh_token,
                                        decode_refresh_token, hash_password,
@@ -363,11 +368,15 @@ async def update_category(category_id: uuid.UUID, category_data: CategoryUpdate,
 # ==================== PRODUCTS ====================
 
 @app.post("/api/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
-async def create_product(product: ProductCreate, db: AsyncSession = db_dependency):
+async def create_product(
+    product: ProductCreate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
     result = await db.execute(select(Product).where(Product.sku == product.sku))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="SKU already exists")
-    
+
     db_product = Product(**product.model_dump())
     db.add(db_product)
     await db.flush()
@@ -414,23 +423,32 @@ async def get_product(product_id: uuid.UUID, db: AsyncSession = db_dependency):
 
 
 @app.put("/api/products/{product_id}", response_model=ProductResponse)
-async def update_product(product_id: uuid.UUID, product_data: ProductUpdate, db: AsyncSession = db_dependency):
+async def update_product(
+    product_id: uuid.UUID,
+    product_data: ProductUpdate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
     result = await db.execute(select(Product).where(Product.id == product_id))
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
     update_data = product_data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(product, key, value)
-    
+
     await db.flush()
     await db.refresh(product)
     return product
 
 
 @app.delete("/api/products/{product_id}")
-async def delete_product(product_id: uuid.UUID, db: AsyncSession = db_dependency):
+async def delete_product(
+    product_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
     result = await db.execute(select(Product).where(Product.id == product_id))
     product = result.scalar_one_or_none()
     if not product:
@@ -456,12 +474,17 @@ async def get_product_by_yolo(yolo_class_name: str, db: AsyncSession = db_depend
 # ==================== PRODUCT VARIANTS ====================
 
 @app.post("/api/products/{product_id}/variants", response_model=ProductVariantResponse, status_code=status.HTTP_201_CREATED)
-async def create_product_variant(product_id: uuid.UUID, variant: ProductVariantCreate, db: AsyncSession = db_dependency):
+async def create_product_variant(
+    product_id: uuid.UUID,
+    variant: ProductVariantCreate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
     result = await db.execute(select(Product).where(Product.id == product_id))
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
     db_variant = ProductVariant(
         product_id=product_id,
         size=variant.size,
@@ -482,10 +505,240 @@ async def get_product_variants(product_id: uuid.UUID, db: AsyncSession = db_depe
     return result.scalars().all()
 
 
+@app.put("/api/products/{product_id}/variants/{variant_id}", response_model=ProductVariantResponse)
+async def update_product_variant(
+    product_id: uuid.UUID,
+    variant_id: uuid.UUID,
+    variant_data: ProductVariantUpdate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(
+        select(ProductVariant).where(
+            and_(ProductVariant.id == variant_id, ProductVariant.product_id == product_id)
+        )
+    )
+    variant = result.scalar_one_or_none()
+    if not variant:
+        raise HTTPException(status_code=404, detail="Variant not found")
+
+    update_data = variant_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(variant, key, value)
+
+    await db.flush()
+    await db.refresh(variant)
+    return variant
+
+
+@app.delete("/api/products/{product_id}/variants/{variant_id}")
+async def delete_product_variant(
+    product_id: uuid.UUID,
+    variant_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(
+        select(ProductVariant).where(
+            and_(ProductVariant.id == variant_id, ProductVariant.product_id == product_id)
+        )
+    )
+    variant = result.scalar_one_or_none()
+    if not variant:
+        raise HTTPException(status_code=404, detail="Variant not found")
+
+    await db.delete(variant)
+    return {"message": "Variant deleted"}
+
+
+@app.get("/api/products/{product_id}/stock", response_model=ProductWithStockResponse)
+async def get_product_stock(product_id: uuid.UUID, db: AsyncSession = db_dependency):
+    result = await db.execute(
+        select(Product)
+        .where(Product.id == product_id)
+        .options(selectinload(Product.variants).selectinload(ProductVariant.inventory))
+    )
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    total_stock = 0
+    has_low_stock = False
+    has_out_of_stock = False
+
+    variants_data = []
+    for v in product.variants:
+        inv = v.inventory
+        qty = inv.quantity_available if inv else 0
+        total_stock += qty
+        threshold = inv.low_stock_threshold if inv else 5
+
+        if qty == 0:
+            has_out_of_stock = True
+        elif qty <= threshold:
+            has_low_stock = True
+
+        variants_data.append(VariantWithInventory(
+            id=v.id,
+            product_id=v.product_id,
+            size=v.size,
+            color=v.color,
+            color_hex=v.color_hex,
+            sku_variant=v.sku_variant,
+            price_modifier=float(v.price_modifier) if v.price_modifier else 0,
+            is_active=v.is_active,
+            created_at=v.created_at,
+            inventory=InventoryResponse(
+                id=inv.id,
+                product_variant_id=inv.product_variant_id,
+                quantity_available=inv.quantity_available,
+                quantity_reserved=inv.quantity_reserved,
+                low_stock_threshold=inv.low_stock_threshold,
+                last_updated=inv.last_updated
+            ) if inv else None
+        ))
+
+    return ProductWithStockResponse(
+        id=product.id,
+        name=product.name,
+        sku=product.sku,
+        base_price=float(product.base_price),
+        description=product.description,
+        category_id=product.category_id,
+        yolo_class_id=product.yolo_class_id,
+        yolo_class_name=product.yolo_class_name,
+        images=product.images or [],
+        is_active=product.is_active,
+        created_at=product.created_at,
+        updated_at=product.updated_at,
+        variants=variants_data,
+        total_stock=total_stock,
+        has_low_stock=has_low_stock,
+        has_out_of_stock=has_out_of_stock
+    )
+
+
+@app.get("/api/products/stock/all")
+async def get_all_products_with_stock(
+    skip: int = 0,
+    limit: int = 100,
+    category_id: uuid.UUID = None,
+    search: str = None,
+    db: AsyncSession = db_dependency
+):
+    query = select(Product).options(
+        selectinload(Product.variants).selectinload(ProductVariant.inventory)
+    )
+
+    if category_id:
+        query = query.where(Product.category_id == category_id)
+    if search:
+        query = query.where(Product.name.ilike(f"%{search}%"))
+
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    products = result.scalars().all()
+
+    response = []
+    for product in products:
+        total_stock = 0
+        has_low_stock = False
+        has_out_of_stock = False
+
+        for v in product.variants:
+            inv = v.inventory
+            qty = inv.quantity_available if inv else 0
+            total_stock += qty
+            threshold = inv.low_stock_threshold if inv else 5
+
+            if qty == 0:
+                has_out_of_stock = True
+            elif qty <= threshold:
+                has_low_stock = True
+
+        response.append({
+            "id": str(product.id),
+            "name": product.name,
+            "sku": product.sku,
+            "category_id": str(product.category_id),
+            "base_price": float(product.base_price),
+            "is_active": product.is_active,
+            "variants_count": len(product.variants),
+            "total_stock": total_stock,
+            "has_low_stock": has_low_stock,
+            "has_out_of_stock": has_out_of_stock
+        })
+
+    return response
+
+
+@app.post("/api/products/{product_id}/images", response_model=ImageUploadResponse)
+async def add_product_image(
+    product_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    try:
+        contents = await file.read()
+        upload_result = upload_image(
+            file=contents,
+            folder="fashionvision/products",
+            resource_type="image"
+        )
+
+        current_images = product.images or []
+        current_images.append(upload_result.get("secure_url", ""))
+        product.images = current_images
+        await db.flush()
+
+        return ImageUploadResponse(
+            success=True,
+            public_id=upload_result.get("public_id", ""),
+            url=upload_result.get("secure_url", "")
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
+
+
+@app.delete("/api/products/{product_id}/images")
+async def remove_product_image(
+    product_id: uuid.UUID,
+    image_url: str,
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    current_images = product.images or []
+    if image_url in current_images:
+        current_images.remove(image_url)
+        product.images = current_images
+        await db.flush()
+
+    try:
+        public_id = image_url.split("/")[-1].split(".")[0]
+        delete_image(public_id)
+    except Exception:
+        pass
+
+    return {"message": "Image removed"}
+
+
 # ==================== INVENTORY ====================
 
 @app.post("/api/inventory", response_model=InventoryResponse, status_code=status.HTTP_201_CREATED)
-async def create_inventory(inventory: InventoryCreate, db: AsyncSession = db_dependency):
+async def create_inventory(
+    inventory: InventoryCreate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
     db_inventory = Inventory(**inventory.model_dump())
     db.add(db_inventory)
     await db.flush()
@@ -509,16 +762,21 @@ async def get_inventory_by_variant(variant_id: uuid.UUID, db: AsyncSession = db_
 
 
 @app.put("/api/inventory/{inventory_id}", response_model=InventoryResponse)
-async def update_inventory(inventory_id: uuid.UUID, inventory_data: InventoryUpdate, db: AsyncSession = db_dependency):
+async def update_inventory(
+    inventory_id: uuid.UUID,
+    inventory_data: InventoryUpdate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
     result = await db.execute(select(Inventory).where(Inventory.id == inventory_id))
     inventory = result.scalar_one_or_none()
     if not inventory:
         raise HTTPException(status_code=404, detail="Inventory not found")
-    
+
     update_data = inventory_data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(inventory, key, value)
-    
+
     await db.flush()
     await db.refresh(inventory)
     return inventory
@@ -559,6 +817,143 @@ async def get_inventory_movements(product_variant_id: uuid.UUID = None, db: Asyn
     query = query.order_by(InventoryMovement.created_at.desc())
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@app.post("/api/inventory/adjust", response_model=InventoryMovementResponse)
+async def adjust_inventory(
+    variant_id: uuid.UUID,
+    adjust_data: InventoryAdjust,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Inventory).where(Inventory.product_variant_id == variant_id))
+    inventory = result.scalar_one_or_none()
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory not found for this variant")
+
+    new_quantity = inventory.quantity_available + adjust_data.quantity_change
+    if new_quantity < 0:
+        raise HTTPException(status_code=400, detail="Cannot reduce stock below zero")
+
+    quantity_before = inventory.quantity_available
+    inventory.quantity_available = new_quantity
+    inventory.last_updated = datetime.utcnow()
+    inventory.updated_by = current_user.id
+
+    db_movement = InventoryMovement(
+        product_variant_id=variant_id,
+        movement_type=MovementType.adjustment,
+        quantity_change=adjust_data.quantity_change,
+        quantity_before=quantity_before,
+        quantity_after=new_quantity,
+        reference_id=adjust_data.reference_id,
+        notes=adjust_data.reason,
+        created_by=current_user.id
+    )
+    db.add(db_movement)
+    await db.flush()
+    await db.refresh(db_movement)
+    return db_movement
+
+
+@app.post("/api/inventory/restock", response_model=InventoryMovementResponse)
+async def restock_inventory(
+    variant_id: uuid.UUID,
+    restock_data: InventoryRestock,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Inventory).where(Inventory.product_variant_id == variant_id))
+    inventory = result.scalar_one_or_none()
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory not found for this variant")
+
+    quantity_before = inventory.quantity_available
+    inventory.quantity_available += restock_data.quantity
+    inventory.last_updated = datetime.utcnow()
+    inventory.updated_by = current_user.id
+
+    db_movement = InventoryMovement(
+        product_variant_id=variant_id,
+        movement_type=MovementType.restock,
+        quantity_change=restock_data.quantity,
+        quantity_before=quantity_before,
+        quantity_after=inventory.quantity_available,
+        reference_id=restock_data.reference_id,
+        notes=restock_data.notes,
+        created_by=current_user.id
+    )
+    db.add(db_movement)
+    await db.flush()
+    await db.refresh(db_movement)
+    return db_movement
+
+
+@app.get("/api/inventory/low-stock", response_model=List[InventoryLowStockResponse])
+async def get_low_stock_variants(db: AsyncSession = db_dependency):
+    result = await db.execute(
+        select(
+            ProductVariant.id,
+            ProductVariant.product_id,
+            Product.name,
+            Category.name,
+            Product.sku,
+            ProductVariant.sku_variant,
+            ProductVariant.size,
+            ProductVariant.color,
+            Inventory.quantity_available,
+            Inventory.quantity_reserved,
+            Inventory.low_stock_threshold
+        )
+        .select_from(Inventory)
+        .join(ProductVariant)
+        .join(Product)
+        .join(Category)
+        .where(Inventory.quantity_available <= Inventory.low_stock_threshold)
+        .order_by(Inventory.quantity_available.asc())
+    )
+
+    response = []
+    for row in result:
+        qty = row[8] or 0
+        threshold = row[9] or 5
+        status = 'out_of_stock' if qty == 0 else 'low_stock'
+
+        response.append(InventoryLowStockResponse(
+            variant_id=row[0],
+            product_id=row[1],
+            product_name=row[2],
+            category_name=row[3],
+            sku=row[4],
+            sku_variant=row[5],
+            size=row[6],
+            color=row[7],
+            quantity_available=qty,
+            quantity_reserved=row[9] or 0,
+            low_stock_threshold=threshold,
+            status=status
+        ))
+    return response
+
+
+@app.put("/api/inventory/{variant_id}/threshold")
+async def update_stock_threshold(
+    variant_id: uuid.UUID,
+    threshold: int,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Inventory).where(Inventory.product_variant_id == variant_id))
+    inventory = result.scalar_one_or_none()
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+
+    inventory.low_stock_threshold = threshold
+    inventory.last_updated = datetime.utcnow()
+    inventory.updated_by = current_user.id
+    await db.flush()
+
+    return {"message": "Threshold updated", "threshold": threshold}
 
 
 # ==================== SESSIONS ====================
