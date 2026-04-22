@@ -428,3 +428,72 @@ export async function updateStockThreshold(variantId, threshold) {
   }
   return response.json();
 }
+
+// ==================== POS TERMINAL FUNCTIONS ====================
+
+export async function posInitializePayment(cartId, amount, currency = 'MXN') {
+  const response = await fetch(`${API_URL}/api/payments/pos/init`, {
+    method: 'POST',
+    headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cart_id: cartId, amount, currency }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to initialize POS payment: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function posWaitForCard(transactionId) {
+  const response = await fetch(`${API_URL}/api/payments/pos/wait-card?transaction_id=${transactionId}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to wait for card: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function posProcessPayment(transactionId) {
+  const response = await fetch(`${API_URL}/api/payments/pos/process?transaction_id=${transactionId}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to process payment: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function posCancelTransaction(transactionId) {
+  const response = await fetch(`${API_URL}/api/payments/pos/cancel?transaction_id=${transactionId}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to cancel transaction: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function posGetStatus(transactionId) {
+  const response = await fetch(`${API_URL}/api/payments/pos/status/${transactionId}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to get transaction status: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function posCompletePayment(transactionId, cartId) {
+  const response = await fetch(`${API_URL}/api/payments/pos/complete-payment?transaction_id=${transactionId}&cart_id=${cartId}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to complete payment: ${response.statusText}`);
+  }
+  return response.json();
+}
