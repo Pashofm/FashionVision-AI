@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionTimeout } from '../hooks/useSessionTimeout';
-import { isAuthenticated, getStoredUser, refreshToken } from '../services/api';
+import { refreshToken } from '../services/api';
 
 const SessionContext = createContext(null);
 
@@ -10,10 +10,7 @@ export function SessionProvider({ children }) {
   const [savedState, setSavedState] = useState(null);
   const navigate = useNavigate();
 
-  const user = getStoredUser();
-
   const handleSessionExpiring = useCallback(() => {
-    console.log('Session expiring soon...');
   }, []);
 
   const handleSessionExpired = useCallback(async () => {
@@ -26,7 +23,7 @@ export function SessionProvider({ children }) {
     try {
       await refreshToken();
       setShowExpiredModal(false);
-    } catch (error) {
+    } catch {
       setShowExpiredModal(false);
       navigate('/');
     }
@@ -59,6 +56,7 @@ export function SessionProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useSession() {
   const context = useContext(SessionContext);
   if (!context) {

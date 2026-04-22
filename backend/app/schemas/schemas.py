@@ -477,6 +477,51 @@ class ActivePaymentQueueItem(BaseModel):
     estimated_total: float
 
 
+class SalesByHour(BaseModel):
+    hour: int
+    total_orders: int
+    total_revenue: float
+
+
+class SalesByCategory(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    total_quantity_sold: int
+    total_revenue: float
+    order_count: int
+
+
+class InventoryAlert(BaseModel):
+    variant_id: uuid.UUID
+    product_id: uuid.UUID
+    product_name: str
+    variant_description: str
+    sku_variant: str
+    quantity_available: int
+    quantity_reserved: int
+    low_stock_threshold: int
+    status: str
+
+
+class PeriodComparison(BaseModel):
+    current_period: float
+    previous_period: float
+    absolute_change: float
+    percentage_change: float
+    trend: str
+
+
+class DashboardSummary(BaseModel):
+    today: DashboardToday
+    weekly_sales: float
+    monthly_sales: float
+    comparison: PeriodComparison
+    sales_by_hour: List[SalesByHour]
+    sales_by_category: List[SalesByCategory]
+    top_products: List[DashboardTopProduct]
+    inventory_alerts: List[InventoryAlert]
+
+
 class LoginRequest(BaseModel):
     email: str
     password: str

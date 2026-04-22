@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, concat
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -27,19 +27,21 @@ from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  CartWithItemsResponse, CartWithTotal,
                                  CategoryCreate, CategoryResponse,
                                  CategoryUpdate, DashboardToday,
-                                 DashboardTopProduct, InventoryCreate,
+                                 DashboardTopProduct, DashboardSummary,
+                                 InventoryAlert, InventoryCreate,
                                  InventoryMovementCreate,
                                  InventoryMovementResponse, InventoryResponse,
                                  InventoryUpdate, LoginRequest, LoginResponse,
                                  OrderCreate, OrderResponse,
                                  PaymentQueueCreate, PaymentQueueResponse,
-                                 ProductCreate, ProductResponse, ProductUpdate,
-                                 ProductVariantCreate, ProductVariantResponse,
+                                 PeriodComparison, ProductCreate, ProductResponse,
+                                 ProductUpdate, ProductVariantCreate,
+                                 ProductVariantResponse,
                                  ProductWithVariantsResponse, ReceiptCreate,
                                  ReceiptResponse, RefreshTokenRequest,
-                                 RefreshTokenResponse, SessionCreate,
-                                 SessionResponse, UserCreate, UserResponse,
-                                 UserUpdate)
+                                 RefreshTokenResponse, SalesByCategory,
+                                 SalesByHour, SessionCreate, SessionResponse,
+                                 UserCreate, UserResponse, UserUpdate)
 from backend.app.services.auth import (create_access_token,
                                        create_refresh_token,
                                        decode_refresh_token, hash_password,
@@ -974,3 +976,231 @@ async def get_sales_analytics(db: AsyncSession = db_dependency):
         "daily_sales": float(daily.scalar()),
         "total_transactions": total.scalar()
     }
+
+
+@app.get("/api/analytics/sales-by-hour", response_model=List[SalesByHour])
+async def get_sales_by_hour(date: str = None, db: AsyncSession = db_dependency):
+    if date:
+        target_date = datetime.strptime(date, '%Y-%m-%d').date()
+    else:
+        target_date = datetime.now().date()
+
+    result = await db.execute(
+        select(
+            func.extract('hour', Order.completed_at).label('hour'),
+            func.count(Order.id).label('total_orders'),
+            func.coalesce(func.sum(Order.total_amount), 0).label('total_revenue')
+        )
+        .where(and_(
+            Order.status == OrderStatus.completed,
+            func.date(Order.completed_at) == target_date
+        ))
+        .group_by(func.extract('hour', Order.completed_at))
+        .order_by(func.extract('hour', Order.completed_at))
+    )
+
+    response = []
+    for row in result:
+        response.append(SalesByHour(
+            hour=int(row[0]),
+            total_orders=row[1],
+            total_revenue=float(row[2])
+        ))
+    return response
+
+
+@app.get("/api/analytics/sales-by-category", response_model=List[SalesByCategory])
+async def get_sales_by_category(period: str = 'weekly', db: AsyncSession = db_dependency):
+    now = datetime.now()
+    if period == 'daily':
+        start_date = func.current_date()
+    elif period == 'weekly':
+        start_date = now - timedelta(days=7)
+    elif period == 'monthly':
+        start_date = now - timedelta(days=30)
+    else:
+        start_date = now - timedelta(days=7)
+
+    result = await db.execute(
+        select(
+            Category.id,
+            Category.name,
+            func.sum(OrderItem.quantity).label('total_quantity'),
+            func.sum(OrderItem.subtotal).label('total_revenue'),
+            func.count(func.distinct(Order.id)).label('order_count')
+        )
+        .select_from(OrderItem)
+        .join(Order)
+        .join(Product)
+        .join(Category)
+        .where(and_(
+            Order.status == OrderStatus.completed,
+            Order.completed_at >= start_date
+        ))
+        .group_by(Category.id, Category.name)
+        .order_by(func.sum(OrderItem.quantity).desc())
+    )
+
+    response = []
+    for row in result:
+        response.append(SalesByCategory(
+            category_id=row[0],
+            category_name=row[1],
+            total_quantity_sold=row[2] or 0,
+            total_revenue=float(row[3] or 0),
+            order_count=row[4]
+        ))
+    return response
+
+
+@app.get("/api/analytics/inventory-alerts", response_model=List[InventoryAlert])
+async def get_inventory_alerts(db: AsyncSession = db_dependency):
+    result = await db.execute(
+        select(
+            ProductVariant.id,
+            ProductVariant.product_id,
+            Product.name,
+            concat(func.coalesce(ProductVariant.size, ''), ' - ', func.coalesce(ProductVariant.color, '')).label('variant_desc'),
+            ProductVariant.sku_variant,
+            Inventory.quantity_available,
+            Inventory.quantity_reserved,
+            Inventory.low_stock_threshold
+        )
+        .select_from(Inventory)
+        .join(ProductVariant)
+        .join(Product)
+        .where(Inventory.quantity_available <= Inventory.low_stock_threshold)
+        .order_by(Inventory.quantity_available.asc())
+    )
+
+    response = []
+    for row in result:
+        qty_available = row[5] or 0
+        threshold = row[6] or 5
+        status = 'out_of_stock' if qty_available == 0 else 'low_stock'
+        response.append(InventoryAlert(
+            variant_id=row[0],
+            product_id=row[1],
+            product_name=row[2],
+            variant_description=row[3] or '',
+            sku_variant=row[4],
+            quantity_available=qty_available,
+            quantity_reserved=row[6] or 0,
+            low_stock_threshold=threshold,
+            status=status
+        ))
+    return response
+
+
+@app.get("/api/analytics/comparison", response_model=PeriodComparison)
+async def get_period_comparison(period: str = 'weekly', db: AsyncSession = db_dependency):
+    now = datetime.now()
+
+    if period == 'weekly':
+        current_start = now - timedelta(days=7)
+        previous_start = now - timedelta(days=14)
+        previous_end = current_start
+    elif period == 'monthly':
+        current_start = now - timedelta(days=30)
+        previous_start = now - timedelta(days=60)
+        previous_end = current_start
+    else:
+        current_start = now - timedelta(days=7)
+        previous_start = now - timedelta(days=14)
+        previous_end = current_start
+
+    current_result = await db.execute(
+        select(func.coalesce(func.sum(Order.total_amount), 0))
+        .where(and_(
+            Order.status == OrderStatus.completed,
+            Order.completed_at >= current_start
+        ))
+    )
+    current_period = float(current_result.scalar() or 0)
+
+    previous_result = await db.execute(
+        select(func.coalesce(func.sum(Order.total_amount), 0))
+        .where(and_(
+            Order.status == OrderStatus.completed,
+            Order.completed_at >= previous_start,
+            Order.completed_at < previous_end
+        ))
+    )
+    previous_period = float(previous_result.scalar() or 0)
+
+    absolute_change = current_period - previous_period
+    if previous_period > 0:
+        percentage_change = ((current_period - previous_period) / previous_period) * 100
+    else:
+        percentage_change = 100.0 if current_period > 0 else 0.0
+
+    trend = 'up' if absolute_change > 0 else 'down' if absolute_change < 0 else 'stable'
+
+    return PeriodComparison(
+        current_period=current_period,
+        previous_period=previous_period,
+        absolute_change=absolute_change,
+        percentage_change=round(percentage_change, 2),
+        trend=trend
+    )
+
+
+@app.get("/api/analytics/dashboard/summary", response_model=DashboardSummary)
+async def get_dashboard_summary(db: AsyncSession = db_dependency):
+    now = datetime.now()
+    today_start = func.current_date()
+
+    today_result = await db.execute(
+        select(
+            func.count(Order.id),
+            func.coalesce(func.sum(Order.total_amount), 0),
+            func.coalesce(func.sum(OrderItem.quantity), 0)
+        )
+        .where(and_(
+            Order.status == OrderStatus.completed,
+            func.date(Order.completed_at) == today_start
+        ))
+        .join(OrderItem, Order.id == OrderItem.order_id, isouter=True)
+    )
+    today_row = today_result.first()
+    today_data = DashboardToday(
+        total_orders=today_row[0] or 0,
+        total_revenue=float(today_row[1] or 0),
+        total_items_sold=today_row[2] or 0
+    )
+
+    weekly_result = await db.execute(
+        select(func.coalesce(func.sum(Order.total_amount), 0))
+        .where(and_(
+            Order.status == OrderStatus.completed,
+            Order.completed_at >= now - timedelta(days=7)
+        ))
+    )
+    weekly_sales = float(weekly_result.scalar() or 0)
+
+    monthly_result = await db.execute(
+        select(func.coalesce(func.sum(Order.total_amount), 0))
+        .where(and_(
+            Order.status == OrderStatus.completed,
+            Order.completed_at >= now - timedelta(days=30)
+        ))
+    )
+    monthly_sales = float(monthly_result.scalar() or 0)
+
+    comparison = await get_period_comparison('weekly', db)
+
+    sales_by_hour = await get_sales_by_hour(db=db)
+    sales_by_category = await get_sales_by_category('weekly', db)
+    top_products = await get_top_products(30, db)
+    inventory_alerts = await get_inventory_alerts(db)
+
+    return DashboardSummary(
+        today=today_data,
+        weekly_sales=weekly_sales,
+        monthly_sales=monthly_sales,
+        comparison=comparison,
+        sales_by_hour=sales_by_hour,
+        sales_by_category=sales_by_category,
+        top_products=top_products,
+        inventory_alerts=inventory_alerts
+    )
