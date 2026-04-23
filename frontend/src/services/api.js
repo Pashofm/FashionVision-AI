@@ -5,7 +5,7 @@ const TOKEN_REFRESH_BUFFER_SECONDS = 60;
 let isRefreshing = false;
 let refreshSubscribers = [];
 
-const getHeaders = () => {
+export const getHeaders = () => {
   const headers = { 'Content-Type': 'application/json' };
   const token = localStorage.getItem('access_token');
   if (token) {
