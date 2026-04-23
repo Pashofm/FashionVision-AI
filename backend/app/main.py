@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
-from sqlalchemy import and_, func, select, concat
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -1457,7 +1457,7 @@ async def get_inventory_alerts(db: AsyncSession = db_dependency):
             ProductVariant.id,
             ProductVariant.product_id,
             Product.name,
-            concat(func.coalesce(ProductVariant.size, ''), ' - ', func.coalesce(ProductVariant.color, '')).label('variant_desc'),
+            func.concat(func.coalesce(ProductVariant.size, ''), ' - ', func.coalesce(ProductVariant.color, '')).label('variant_desc'),
             ProductVariant.sku_variant,
             Inventory.quantity_available,
             Inventory.quantity_reserved,
