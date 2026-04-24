@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getHeaders, getCategories, getLowStockProducts, getInventoryMovements } from '../services/api';
+import { formatLocalDateTime } from '../utils/dateUtils';
 import './Inventory.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -903,7 +904,7 @@ function StockModalForm({ product, variant, stockData, setStockData, movements, 
                   <span className={`movement-qty ${m.quantity_change > 0 ? 'positive' : 'negative'}`}>
                     {m.quantity_change > 0 ? '+' : ''}{m.quantity_change}
                   </span>
-                  <span className="movement-date">{new Date(m.created_at).toLocaleString()}</span>
+                  <span className="movement-date">{formatLocalDateTime(m.created_at)}</span>
                   {m.notes && <span className="movement-notes">{m.notes}</span>}
                 </div>
               ))}

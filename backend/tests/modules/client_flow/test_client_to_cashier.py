@@ -51,6 +51,8 @@ class TestClientCartWorkflow:
 
     async def test_client_adds_detected_items(self, db_session):
         """Test client adding YOLO-detected items to cart."""
+        from sqlalchemy import select
+
         session = await SessionFactory.create(db_session)
         cart = await CartFactory.create(db_session, session=session)
         product = await ProductFactory.create(
@@ -67,8 +69,11 @@ class TestClientCartWorkflow:
             confidence=0.95
         )
 
-        await db_session.refresh(cart)
-        assert len(cart.items) == 1
+        result = await db_session.execute(
+            select(CartItem).where(CartItem.cart_id == cart.id)
+        )
+        items = result.scalars().all()
+        assert len(items) == 1
         assert item.detection_confidence == 0.95
 
     async def test_client_updates_item_quantity(self, db_session):
@@ -181,16 +186,18 @@ class TestCashierApproval:
 
     async def test_approved_cart_creates_order(self, db_session, cashier_user):
         """Test that approved cart creates an order."""
+        from sqlalchemy import select
+
         cart = await CartFactory.create_submitted(db_session)
         await CartItemFactory.create(db_session, cart=cart, quantity=2)
         cart.status = CartStatus.processing
         await db_session.commit()
 
-        await db_session.refresh(cart)
-        subtotal = sum(
-            float(item.unit_price) * item.quantity
-            for item in cart.items
+        result = await db_session.execute(
+            select(CartItem).where(CartItem.cart_id == cart.id)
         )
+        items = result.scalars().all()
+        subtotal = sum(float(item.unit_price) * item.quantity for item in items)
         tax = subtotal * 0.16
         total = subtotal + tax
 

@@ -425,25 +425,28 @@ class TestLowStockThreshold:
 
     async def test_multiple_inventory_threshold_levels(self, db_session):
         """Test different threshold levels."""
+        created_ids = []
         thresholds = [5, 10, 20, 50]
 
         for threshold in thresholds:
-            await InventoryFactory.create(
+            inventory = await InventoryFactory.create(
                 db_session,
                 quantity_available=threshold - 1,
                 low_stock_threshold=threshold
             )
+            created_ids.append(inventory.id)
 
         from sqlalchemy import select
 
         result = await db_session.execute(
             select(Inventory).where(
-                Inventory.quantity_available <= Inventory.low_stock_threshold
+                Inventory.id.in_(created_ids)
             )
         )
         low_stock = result.scalars().all()
 
         assert len(low_stock) == 4
+        assert all(inv.quantity_available <= inv.low_stock_threshold for inv in low_stock)
 
     async def test_threshold_update(self, db_session):
         """Test updating low stock threshold."""

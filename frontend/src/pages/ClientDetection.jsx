@@ -1,8 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useCamera from '../hooks/useCamera';
-import { detectClothes, getProductByYoloClass, createSession, createCart, addCartItem, submitCart } from '../services/api';
+import { detectClothes, getProductByYoloClass, createSession, getOrCreateCartBySession, getCart, addCartItem, removeCartItem, submitCart } from '../services/api';
 import '../styles/client-detection.css';
+
+const STORAGE_KEY_SESSION = 'client_session_id';
+const STORAGE_KEY_CART = 'client_cart_id';
 
 const traducirCategoria = (className) => {
   if (!className) return 'Prenda';
@@ -54,14 +57,58 @@ const ClientDetection = () => {
 
   const initSession = async () => {
     try {
+      let sessionId = localStorage.getItem(STORAGE_KEY_SESSION);
+      let cartId = localStorage.getItem(STORAGE_KEY_CART);
+
+      if (sessionId && cartId) {
+        try {
+          const existingCart = await getCart(cartId);
+          if (existingCart && existingCart.status === 'building') {
+            setSessionId(sessionId);
+            setCartId(cartId);
+            if (existingCart.items && existingCart.items.length > 0) {
+              setCarrito(existingCart.items.map(item => ({
+                name: item.product?.name || 'Producto',
+                price: parseFloat(item.unit_price),
+                brand: item.product?.category?.name || 'FashionCo',
+                sku: item.product?.sku || 'N/A',
+                tipoPrenda: traducirCategoria(item.product?.yolo_class_name),
+                confidence: item.detection_confidence || 0,
+                colors: [],
+                sizes: [],
+                yolo_class_name: item.product?.yolo_class_name || '',
+                product_id: item.product_id,
+                cartItemId: item.id
+              })));
+            }
+            return;
+          }
+        } catch (err) {
+          console.warn('Could not recover existing cart, creating new one:', err);
+        }
+      }
+
       const session = await createSession('client-detection-kiosk');
-      setSessionId(session.id);
-      const cart = await createCart(session.id);
-      setCartId(cart.id);
+      sessionId = session.id;
+      localStorage.setItem(STORAGE_KEY_SESSION, sessionId);
+
+      const cart = await getOrCreateCartBySession(sessionId);
+      cartId = cart.id;
+      localStorage.setItem(STORAGE_KEY_CART, cartId);
+
+      setSessionId(sessionId);
+      setCartId(cartId);
     } catch (err) {
       console.error('Error initializing session/cart:', err);
       setError('Error al inicializar el sistema');
     }
+  };
+
+  const clearSession = () => {
+    localStorage.removeItem(STORAGE_KEY_SESSION);
+    localStorage.removeItem(STORAGE_KEY_CART);
+    setSessionId(null);
+    setCartId(null);
   };
 
   const {
@@ -170,7 +217,7 @@ const ClientDetection = () => {
     if (!producto || !cartId) return;
 
     try {
-      await addCartItem(cartId, {
+      const newItem = await addCartItem(cartId, {
         product_id: producto.product_id,
         product_variant_id: null,
         quantity: 1,
@@ -178,7 +225,7 @@ const ClientDetection = () => {
         detection_confidence: producto.confidence
       });
 
-      setCarrito(prev => [...prev, { ...producto, cartItemId: Date.now() }]);
+      setCarrito(prev => [...prev, { ...producto, cartItemId: newItem.id }]);
       setProducto(null);
       setImagen(null);
       setDetections(null);
@@ -188,8 +235,14 @@ const ClientDetection = () => {
     }
   };
 
-  const eliminarDelCarrito = (cartItemId) => {
-    setCarrito(prev => prev.filter(item => item.cartItemId !== cartItemId));
+  const eliminarDelCarrito = async (cartItemId) => {
+    try {
+      await removeCartItem(cartId, cartItemId);
+      setCarrito(prev => prev.filter(item => item.cartItemId !== cartItemId));
+    } catch (err) {
+      console.error('Error removing from cart:', err);
+      setError('Error al eliminar del carrito');
+    }
   };
 
   const totalesCarrito = () => {
@@ -205,9 +258,12 @@ const ClientDetection = () => {
       await submitCart(cartId);
       setCarrito([]);
       alert('¡Pedido enviado a caja! Un administrador lo procesará pronto.');
+      clearSession();
       const session = await createSession('client-detection-kiosk');
+      localStorage.setItem(STORAGE_KEY_SESSION, session.id);
       setSessionId(session.id);
-      const newCart = await createCart(session.id);
+      const newCart = await getOrCreateCartBySession(session.id);
+      localStorage.setItem(STORAGE_KEY_CART, newCart.id);
       setCartId(newCart.id);
     } catch (err) {
       console.error('Error submitting cart:', err);
@@ -312,7 +368,7 @@ const ClientDetection = () => {
                   </div>
                   <button
                     className="btn-eliminar"
-                    onClick={() => eliminarDelCarrito(item.id)}
+                    onClick={() => eliminarDelCarrito(item.cartItemId)}
                   >
                     🗑️
                   </button>

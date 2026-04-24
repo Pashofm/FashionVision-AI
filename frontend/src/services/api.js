@@ -259,6 +259,17 @@ export async function createCart(sessionId) {
   return response.json();
 }
 
+export async function getOrCreateCartBySession(sessionId) {
+  const response = await fetch(`${API_URL}/api/carts/by-session/${sessionId}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to get/create cart: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export async function getCarts(status = null) {
   const url = status ? `${API_URL}/api/carts?status=${status}` : `${API_URL}/api/carts`;
   const response = await fetch(url, { headers: getHeaders() });
