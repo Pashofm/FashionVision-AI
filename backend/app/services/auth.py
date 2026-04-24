@@ -40,7 +40,7 @@ def decode_access_token(token: str) -> Optional[dict]:
 
 
 def create_refresh_token(user_id: str) -> str:
-    data = {"sub": str(user_id), "type": "refresh"}
+    data = {"sub": str(user_id), "type": "refresh", "iat": datetime.utcnow().isoformat()}
     expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     data.update({"exp": expire})
     return jwt.encode(data, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
@@ -54,3 +54,13 @@ def decode_refresh_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+def get_token_issued_at(payload: dict) -> Optional[datetime]:
+    iat_str = payload.get("iat")
+    if iat_str:
+        try:
+            return datetime.fromisoformat(iat_str)
+        except ValueError:
+            pass
+    return None

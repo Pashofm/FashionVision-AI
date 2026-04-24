@@ -195,6 +195,22 @@ export function isAuthenticated() {
   return !!localStorage.getItem('access_token');
 }
 
+export function logout() {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('expires_in');
+  localStorage.removeItem('user');
+}
+
+export async function performLogout() {
+  try {
+    await authenticatedFetch(`${API_URL}/api/auth/logout`, { method: 'POST' });
+  } catch (err) {
+    console.warn('Server logout failed, clearing local state anyway:', err);
+  }
+  logout();
+}
+
 export async function extendSession() {
   const response = await authenticatedFetch(`${API_URL}/api/auth/session/extend`, {
     method: 'GET',
