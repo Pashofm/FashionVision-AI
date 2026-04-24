@@ -52,9 +52,9 @@ from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  UserCreate, UserResponse, UserUpdate,
                                  VariantWithInventory)
 from backend.app.services.auth import (create_access_token,
-                                      create_refresh_token,
-                                      decode_refresh_token, hash_password,
-                                      verify_password)
+                                       create_refresh_token,
+                                       decode_refresh_token, hash_password,
+                                       verify_password, get_token_issued_at)
 from backend.app.services.timezone_service import (
     get_current_utc_time, get_server_time, utc_to_local, local_to_utc,
     get_timezone_from_request, format_datetime_for_response
@@ -244,6 +244,14 @@ async def refresh_token(request: RefreshTokenRequest, db: AsyncSession = db_depe
             detail="User not found or inactive",
         )
 
+    if user.last_logout_at:
+        token_iat = get_token_issued_at(payload)
+        if token_iat and token_iat.replace(tzinfo=dt_timezone.utc) < user.last_logout_at:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session has been invalidated. Please login again.",
+            )
+
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
     new_refresh_token = create_refresh_token(user_id=str(user.id))
 
@@ -253,6 +261,19 @@ async def refresh_token(request: RefreshTokenRequest, db: AsyncSession = db_depe
         token_type="bearer",
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
+
+
+@app.post("/api/auth/logout")
+async def logout(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = db_dependency
+):
+    user_id = current_user.id
+    result = await db.execute(
+        update(User).where(User.id == user_id).values(last_logout_at=datetime.now(dt_timezone.utc))
+    )
+    await db.commit()
+    return {"status": "logged_out", "user_id": str(user_id)}
 
 
 @app.get("/api/auth/session/extend", status_code=status.HTTP_200_OK)

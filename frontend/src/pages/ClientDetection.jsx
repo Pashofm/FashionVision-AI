@@ -1,7 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useCamera from '../hooks/useCamera';
-import { detectClothes, getProductByYoloClass, createSession, getOrCreateCartBySession, getCart, addCartItem, removeCartItem, submitCart } from '../services/api';
+import { useKioskTimeout } from '../hooks/useKioskTimeout';
+import { detectClothes, getProductByYoloClass, createSession, getOrCreateCartBySession, getCart, addCartItem, removeCartItem, submitCart, performLogout, extendSession } from '../services/api';
 import '../styles/client-detection.css';
 
 const STORAGE_KEY_SESSION = 'client_session_id';
@@ -44,16 +45,29 @@ const ClientDetection = () => {
   const [cartId, setCartId] = useState(null);
   const [_sessionId, setSessionId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showCountdown, setShowCountdown] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      navigate('/');
-      return;
-    }
-    initSession();
+  const handleKioskLogout = useCallback(async () => {
+    localStorage.removeItem('client_session_id');
+    localStorage.removeItem('client_cart_id');
+    await performLogout();
+    navigate('/');
   }, [navigate]);
+
+  const { countdown, resetTimer } = useKioskTimeout(handleKioskLogout);
+
+  useEffect(() => {
+    if (countdown !== null) {
+      setShowCountdown(true);
+    } else {
+      setShowCountdown(false);
+    }
+  }, [countdown]);
+
+  useEffect(() => {
+    initSession();
+  }, []);
 
   const initSession = async () => {
     try {
@@ -203,12 +217,17 @@ const ClientDetection = () => {
     }
   }, []);
 
-  const handleCapture = useCallback(() => {
+  const handleCapture = useCallback(async () => {
     const canvas = canvasRef.current;
     const capturedImage = captureFrame(canvas);
 
     if (capturedImage) {
       closeCamera();
+      try {
+        await extendSession();
+      } catch (err) {
+        console.warn('Failed to extend session:', err);
+      }
       processDetection(capturedImage);
     }
   }, [captureFrame, closeCamera, processDetection]);
@@ -229,6 +248,11 @@ const ClientDetection = () => {
       setProducto(null);
       setImagen(null);
       setDetections(null);
+      try {
+        await extendSession();
+      } catch (err) {
+        console.warn('Failed to extend session:', err);
+      }
     } catch (err) {
       console.error('Error adding to cart:', err);
       setError('Error al agregar al carrito');
@@ -239,6 +263,11 @@ const ClientDetection = () => {
     try {
       await removeCartItem(cartId, cartItemId);
       setCarrito(prev => prev.filter(item => item.cartItemId !== cartItemId));
+      try {
+        await extendSession();
+      } catch (err) {
+        console.warn('Failed to extend session:', err);
+      }
     } catch (err) {
       console.error('Error removing from cart:', err);
       setError('Error al eliminar del carrito');
@@ -401,7 +430,14 @@ const ClientDetection = () => {
 
           <div className="button-section">
             {!isActive && !imagen && (
-              <button className="btn-primary" onClick={openCamera}>
+              <button className="btn-primary" onClick={async () => {
+                try {
+                  await extendSession();
+                } catch (err) {
+                  console.warn('Failed to extend session:', err);
+                }
+                openCamera();
+              }}>
                 <span>📷</span> Abrir Cámara
               </button>
             )}
@@ -517,6 +553,20 @@ const ClientDetection = () => {
       <footer className="client-footer">
         <p>FashionVision AI - Sistema de Detección de Prendas</p>
       </footer>
+
+      {showCountdown && countdown !== null && (
+        <div className="countdown-overlay">
+          <div className="countdown-modal">
+            <h2 className="countdown-title">Tu sesión está por terminar</h2>
+            <p className="countdown-subtitle">¿Deseas continuar?</p>
+            <div className="countdown-number">{countdown}</div>
+            <p className="countdown-text">segundos</p>
+            <button className="btn-keep-session" onClick={resetTimer}>
+              Mantener sesión
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
