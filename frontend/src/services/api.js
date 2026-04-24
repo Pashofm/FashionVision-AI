@@ -579,3 +579,192 @@ export async function getReceiptPreview(receiptId) {
   }
   return response.json();
 }
+
+// ==================== SUPPLIER FUNCTIONS ====================
+
+export async function getSuppliers(isActive = null) {
+  let url = `${API_URL}/api/suppliers`;
+  if (isActive !== null) url += `?is_active=${isActive}`;
+  const response = await fetch(url, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch suppliers: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function createSupplier(supplierData) {
+  const response = await fetch(`${API_URL}/api/suppliers`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(supplierData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create supplier: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function updateSupplier(supplierId, supplierData) {
+  const response = await fetch(`${API_URL}/api/suppliers/${supplierId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(supplierData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update supplier: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function deleteSupplier(supplierId) {
+  const response = await fetch(`${API_URL}/api/suppliers/${supplierId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete supplier: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ==================== ATTRIBUTE FUNCTIONS ====================
+
+export async function getAttributes(type = null) {
+  let url = `${API_URL}/api/attributes`;
+  if (type) url += `?type=${type}`;
+  const response = await fetch(url, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch attributes: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function createAttribute(attributeData) {
+  const response = await fetch(`${API_URL}/api/attributes`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(attributeData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create attribute: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function updateAttribute(attributeId, attributeData) {
+  const response = await fetch(`${API_URL}/api/attributes/${attributeId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(attributeData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update attribute: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function deleteAttribute(attributeId) {
+  const response = await fetch(`${API_URL}/api/attributes/${attributeId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete attribute: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ==================== PRODUCT ATTRIBUTES ====================
+
+export async function getProductAttributes(productId) {
+  const response = await fetch(`${API_URL}/api/products/${productId}/attributes`, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch product attributes: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function addProductAttributes(productId, attributeIds) {
+  const response = await fetch(`${API_URL}/api/products/${productId}/attributes`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ attribute_ids: attributeIds }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to add product attributes: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function removeProductAttribute(productId, attributeId) {
+  const response = await fetch(`${API_URL}/api/products/${productId}/attributes/${attributeId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to remove product attribute: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ==================== PRICE FUNCTIONS ====================
+
+export async function getPriceBreakdown(productId, variantId = null) {
+  let url = `${API_URL}/api/products/${productId}/price-breakdown`;
+  if (variantId) url += `?variant_id=${variantId}`;
+  const response = await fetch(url, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch price breakdown: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getProductPriceHistory(productId, limit = 50) {
+  const response = await fetch(`${API_URL}/api/products/${productId}/price-history?limit=${limit}`, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch price history: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function updateProductPrices(productId, priceData) {
+  const response = await fetch(`${API_URL}/api/products/${productId}/update-prices`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(priceData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update product prices: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ==================== INVENTORY STATUS FUNCTIONS ====================
+
+export async function updateInventoryStatus(variantId, statusData) {
+  const response = await fetch(`${API_URL}/api/inventory/${variantId}/status`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(statusData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update inventory status: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getInventoryByLocation(location) {
+  const response = await fetch(`${API_URL}/api/inventory/warehouse/${encodeURIComponent(location)}`, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch inventory by location: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getInventoryByStatus(status) {
+  const response = await fetch(`${API_URL}/api/inventory/by-status?status=${status}`, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch inventory by status: ${response.statusText}`);
+  }
+  return response.json();
+}

@@ -22,6 +22,7 @@ from backend.app.models.models import (
 from backend.app.models.models import Session
 from backend.app.models.models import Session as DbSession
 from backend.app.models.models import SessionStatus, User, UserRole
+from backend.app.models.models import StockStatus, Supplier, AttributeOption, ProductAttribute, PriceHistory
 
 __all__ = [
     "User",
@@ -47,5 +48,10 @@ __all__ = [
     "MovementType",
     "SessionStatus",
     "Session",
+    "StockStatus",
+    "Supplier",
+    "AttributeOption",
+    "ProductAttribute",
+    "PriceHistory",
 ]
 

@@ -51,6 +51,8 @@ CREATE TYPE movement_type AS ENUM (
 
 CREATE TYPE session_status AS ENUM ('active', 'completed', 'abandoned');
 
+CREATE TYPE stock_status AS ENUM ('available', 'reserved', 'damaged', 'in_transit', 'returned');
+
 
 -- ─────────────────────────────────────────────────────────────────────────────
 --  TABLA: users — Usuarios del sistema
@@ -64,6 +66,7 @@ CREATE TABLE users (
     role            user_role       NOT NULL DEFAULT 'client',
     is_active       BOOLEAN         NOT NULL DEFAULT TRUE,
     avatar_path     TEXT,
+    last_logout_at  TIMESTAMPTZ,
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
@@ -90,6 +93,79 @@ COMMENT ON TABLE categories IS 'Categorías de ropa: Camisas, Pantalones, Vestid
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
+--  TABLA: suppliers — Proveedores de mercancía
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE suppliers (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name            VARCHAR(150)    NOT NULL,
+    contact_name    VARCHAR(100),
+    email           VARCHAR(255),
+    phone           VARCHAR(20),
+    address         TEXT,
+    is_active       BOOLEAN         NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE suppliers IS 'Catálogo de proveedores de mercancía';
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+--  TABLA: attribute_options — Catálogo global de atributos (tallas y colores)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE attribute_options (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    type        VARCHAR(20)     NOT NULL CHECK (type IN ('size', 'color')),
+    value       VARCHAR(50)     NOT NULL,
+    hex_code    CHAR(7),                    -- Solo para colores: '#FF5733'
+    sort_order  INTEGER         NOT NULL DEFAULT 0,
+    is_active   BOOLEAN         NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_attribute_type_value UNIQUE (type, value)
+);
+
+COMMENT ON TABLE attribute_options IS 'Catálogo de tallas y colores predefinidos disponibles globalmente';
+COMMENT ON COLUMN attribute_options.type IS 'Tipo de atributo: size o color';
+COMMENT ON COLUMN attribute_options.value IS 'Valor del atributo: "S", "M", "L", "Rojo", "Azul"';
+COMMENT ON COLUMN attribute_options.hex_code IS 'Código hexadecimal para colores en la UI';
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+--  TABLA: product_attributes — Relación productos ↔ atributos disponibles
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE product_attributes (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id          UUID            NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    attribute_option_id UUID            NOT NULL REFERENCES attribute_options(id) ON DELETE CASCADE,
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_product_attribute UNIQUE (product_id, attribute_option_id)
+);
+
+COMMENT ON TABLE product_attributes IS 'Define qué tallas/colores están disponibles para cada producto';
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+--  TABLA: price_history — Historial de cambios de precio
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE price_history (
+    id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id    UUID            NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    price_type    VARCHAR(20)     NOT NULL CHECK (price_type IN ('cost', 'base', 'special')),
+    old_price     NUMERIC(10,2),
+    new_price     NUMERIC(10,2)   NOT NULL,
+    changed_by    UUID            REFERENCES users(id) ON DELETE SET NULL,
+    reason        TEXT,
+    created_at    TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE price_history IS 'Registro de todos los cambios de precio realizados en productos';
+COMMENT ON COLUMN price_history.price_type IS 'Tipo de precio modificado: cost=costo, base=venta, special=oferta';
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
 --  TABLA: products — Catálogo de prendas
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -102,6 +178,24 @@ CREATE TABLE products (
 
     -- Precio base (las variantes pueden ajustarlo)
     base_price      NUMERIC(10,2)   NOT NULL CHECK (base_price >= 0),
+
+    -- ─── Campos de precio profesional ─────────────────────────────────
+    cost_price      NUMERIC(10,2)   NOT NULL DEFAULT 0 CHECK (cost_price >= 0),
+    tax_rate        NUMERIC(5,4)    NOT NULL DEFAULT 0.16 CHECK (tax_rate >= 0 AND tax_rate <= 1),
+    profit_margin   NUMERIC(5,4)    NOT NULL DEFAULT 0 CHECK (profit_margin >= 0 AND profit_margin <= 1),
+
+    -- ─── Información adicional del producto ───────────────────────────
+    brand           VARCHAR(100),
+    supplier        VARCHAR(150),
+    barcode         VARCHAR(50)    UNIQUE,
+    weight          NUMERIC(8,2),
+    width           NUMERIC(8,2),
+    height          NUMERIC(8,2),
+    depth           NUMERIC(8,2),
+    min_stock_level INTEGER        NOT NULL DEFAULT 0,
+    max_stock_level INTEGER,
+    is_featured     BOOLEAN        NOT NULL DEFAULT FALSE,
+    tags            JSONB          NOT NULL DEFAULT '[]',
 
     -- ─── Integración con YOLO ─────────────────────────────────────
     -- Estos campos conectan el modelo de IA con los productos reales.
@@ -159,6 +253,8 @@ CREATE TABLE inventory (
     quantity_available      INTEGER         NOT NULL DEFAULT 0 CHECK (quantity_available >= 0),
     quantity_reserved       INTEGER         NOT NULL DEFAULT 0 CHECK (quantity_reserved >= 0),
     low_stock_threshold     INTEGER         NOT NULL DEFAULT 5,
+    stock_status            stock_status    NOT NULL DEFAULT 'available',
+    warehouse_location      VARCHAR(50),
     last_updated            TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_by              UUID            REFERENCES users(id) ON DELETE SET NULL
 );
@@ -182,11 +278,13 @@ CREATE VIEW inventory_net AS
         i.quantity_reserved,
         (i.quantity_available - i.quantity_reserved) AS quantity_net,
         i.low_stock_threshold,
+        i.stock_status,
+        i.warehouse_location,
         CASE
             WHEN (i.quantity_available - i.quantity_reserved) <= 0             THEN 'out_of_stock'
             WHEN (i.quantity_available - i.quantity_reserved) <= i.low_stock_threshold THEN 'low_stock'
             ELSE 'in_stock'
-        END                                         AS stock_status,
+        END                                         AS availability_status,
         i.last_updated
     FROM inventory i
     JOIN product_variants pv ON pv.id = i.product_variant_id
@@ -464,6 +562,25 @@ CREATE INDEX idx_daily_summary_date ON daily_sales_summary (summary_date DESC);
 -- Usuarios
 CREATE INDEX idx_users_email  ON users (email);
 CREATE INDEX idx_users_role   ON users (role);
+
+-- Suppliers
+CREATE INDEX idx_suppliers_active ON suppliers (is_active) WHERE is_active = TRUE;
+
+-- Attribute options
+CREATE INDEX idx_attribute_options_type ON attribute_options (type);
+CREATE INDEX idx_attribute_options_active ON attribute_options (is_active) WHERE is_active = TRUE;
+
+-- Product attributes
+CREATE INDEX idx_product_attributes_product ON product_attributes (product_id);
+CREATE INDEX idx_product_attributes_option ON product_attributes (attribute_option_id);
+
+-- Price history
+CREATE INDEX idx_price_history_product ON price_history (product_id);
+CREATE INDEX idx_price_history_created_at ON price_history (created_at DESC);
+
+-- Inventory - nuevos índices para campos nuevos
+CREATE INDEX idx_inventory_status ON inventory (stock_status);
+CREATE INDEX idx_inventory_location ON inventory (warehouse_location) WHERE warehouse_location IS NOT NULL;
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
