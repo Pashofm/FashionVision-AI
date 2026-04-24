@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -8,14 +9,21 @@ from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = Path("/datos/Proyectos/Desarrollo_de_Software/FashionVision-AI/backend/models/best.pt")
+DEFAULT_MODEL_PATH = Path("/app/models/best.pt")
+
+def get_model_path() -> Path:
+    env_path = os.environ.get("MODEL_PATH")
+    if env_path:
+        return Path(env_path)
+    return DEFAULT_MODEL_PATH
+
 model: Optional[YOLO] = None
 
 
 def get_model() -> YOLO:
     global model
     if model is None:
-        model_path = MODEL_PATH
+        model_path = get_model_path()
         if model_path.exists():
             logger.info(f"Loading YOLO model from {model_path}")
             model = YOLO(str(model_path))
