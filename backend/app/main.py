@@ -1969,3 +1969,123 @@ async def pos_complete_payment(
         "order_number": order.order_number,
         "receipt": receipt_data
     }
+
+
+@app.get("/api/printers/drivers")
+async def get_printer_drivers():
+    """
+    Get list of available printer drivers.
+
+    Returns available driver types and their names.
+    """
+    from backend.app.services.printers import ReceiptPrinterService, DriverType
+
+    drivers = ReceiptPrinterService.get_available_drivers()
+    return {
+        "drivers": [
+            {"type": dt.value, "name": name}
+            for dt, name in drivers
+        ]
+    }
+
+
+@app.get("/api/printers/driver")
+async def get_current_printer_driver():
+    """
+    Get the currently active printer driver.
+
+    Returns the active driver type and name.
+    """
+    from backend.app.services.printers import ReceiptPrinterService, DriverType
+
+    driver_type, driver_name = ReceiptPrinterService.get_current_driver()
+    return {
+        "type": driver_type.value,
+        "name": driver_name
+    }
+
+
+@app.post("/api/printers/driver")
+async def set_printer_driver(driver_type: str):
+    """
+    Change the active printer driver.
+
+    Args:
+        driver_type: One of 'mock', 'textfile', 'html', 'escpos'
+
+    Returns confirmation message.
+    """
+    from backend.app.services.printers import ReceiptPrinterService, DriverType
+
+    try:
+        driver_enum = DriverType.from_string(driver_type)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    ReceiptPrinterService.set_driver(driver_enum)
+    _, driver_name = ReceiptPrinterService.get_current_driver()
+
+    return {
+        "message": f"Printer driver changed to {driver_type}",
+        "active_driver": driver_name
+    }
+
+
+@app.post("/api/receipts/{receipt_id}/print")
+async def print_receipt(
+    receipt_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = db_dependency
+):
+    """
+    Print a receipt using the current active driver.
+
+    Args:
+        receipt_id: UUID of the receipt to print
+
+    Returns:
+        PrintResult with success status and output info
+    """
+    from backend.app.services.printers import ReceiptPrinterService
+
+    result = await db.execute(select(Receipt).where(Receipt.id == receipt_id))
+    receipt = result.scalar_one_or_none()
+
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    print_result = await ReceiptPrinterService.print_receipt(receipt.receipt_data)
+
+    if print_result.success and not receipt.printed_at:
+        from datetime import datetime
+        receipt.printed_at = datetime.utcnow()
+        await db.commit()
+
+    return print_result.to_dict()
+
+
+@app.get("/api/receipts/{receipt_id}/preview")
+async def preview_receipt(
+    receipt_id: uuid.UUID,
+    db: AsyncSession = db_dependency
+):
+    """
+    Generate an HTML preview of a receipt.
+
+    Args:
+        receipt_id: UUID of the receipt to preview
+
+    Returns:
+        HTML string of the receipt preview
+    """
+    from backend.app.services.printers import ReceiptPrinterService
+
+    result = await db.execute(select(Receipt).where(Receipt.id == receipt_id))
+    receipt = result.scalar_one_or_none()
+
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    html = await ReceiptPrinterService.preview_receipt(receipt.receipt_data)
+
+    return {"html": html}
