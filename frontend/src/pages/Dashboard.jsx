@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { performLogout } from '../services/api';
 import {
   BarChart,
   Bar,
@@ -92,6 +93,11 @@ const Dashboard = () => {
     }
   };
 
+  const handleLogout = () => {
+    performLogout();
+    navigate('/');
+  };
+
   if (!userData.role) return null;
 
   if (loading) {
@@ -103,6 +109,7 @@ const Dashboard = () => {
             <button className="nav-active">Dashboard</button>
             <button onClick={() => navigate('/inventory')}>Inventario</button>
           </nav>
+          <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
         </header>
         <div className="dashboard-container" style={{ textAlign: 'center', padding: '60px' }}>
           <p>Cargando datos del dashboard...</p>
@@ -120,6 +127,7 @@ const Dashboard = () => {
             <button className="nav-active">Dashboard</button>
             <button onClick={() => navigate('/inventory')}>Inventario</button>
           </nav>
+          <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
         </header>
         <div className="dashboard-container" style={{ textAlign: 'center', padding: '60px' }}>
           <p style={{ color: '#f5576c' }}>{error}</p>
@@ -145,6 +153,7 @@ const Dashboard = () => {
           <button className="nav-active">Dashboard</button>
           <button onClick={() => navigate('/inventory')}>Inventario</button>
         </nav>
+        <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
       </header>
 
       <main className="dashboard-container">

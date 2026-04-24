@@ -71,6 +71,7 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole, native_enum=False), default=UserRole.client)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     avatar_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_logout_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate=lambda: datetime.now())
 
