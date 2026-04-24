@@ -1,18 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getPendingCarts, approveCart, rejectCart, processPayment, posInitializePayment, posWaitForCard, posProcessPayment, posCancelTransaction, posCompletePayment } from '../services/api';
+import { formatLocalDateTime } from '../utils/dateUtils';
 import '../styles/home.css';
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return '-';
-  const date = new Date(dateStr);
-  return date.toLocaleString('es-MX', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
 
 const Cashier = () => {
   const [carts, setCarts] = useState([]);
@@ -248,7 +238,7 @@ const Cashier = () => {
               <div key={cart.id} className="cart-card">
                 <div className="cart-card-header">
                   <span className="cart-id">#{cart.id.slice(0, 8).toUpperCase()}</span>
-                  <span className="cart-date">{formatDate(cart.created_at)}</span>
+                  <span className="cart-date">{formatLocalDateTime(cart.created_at)}</span>
                 </div>
 
                 <div className="cart-items">
@@ -402,7 +392,7 @@ const Cashier = () => {
               <div className="receipt-info">
                 <p><strong>No. Receipt:</strong> {receiptData.receipt_number}</p>
                 <p><strong>No. Order:</strong> {receiptData.order_number}</p>
-                <p><strong>Fecha:</strong> {new Date(receiptData.created_at).toLocaleString('es-MX')}</p>
+                <p><strong>Fecha:</strong> {formatLocalDateTime(receiptData.created_at)}</p>
                 <p><strong>Método:</strong> {receiptData.payment_method === 'cash' ? '💵 Efectivo' : '💳 Tarjeta'}</p>
               </div>
 

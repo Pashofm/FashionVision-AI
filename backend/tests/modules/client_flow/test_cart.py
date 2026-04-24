@@ -38,9 +38,7 @@ class TestCartCreation:
 
     async def test_create_cart_with_session(self, db_session):
         """Test creating a cart linked to a session."""
-        session = await SessionFactory.create(db_session)
-
-        cart = await CartFactory.create_with_session(db_session)
+        cart, session = await CartFactory.create_with_session(db_session)
 
         assert cart.session_id == session.id
 
@@ -91,6 +89,8 @@ class TestCartItems:
 
     async def test_add_multiple_items(self, db_session):
         """Test adding multiple items to a cart."""
+        from sqlalchemy import select
+
         cart = await CartFactory.create(db_session)
 
         for i in range(3):
@@ -102,8 +102,11 @@ class TestCartItems:
                 quantity=i + 1
             )
 
-        await db_session.refresh(cart)
-        assert len(cart.items) == 3
+        result = await db_session.execute(
+            select(CartItem).where(CartItem.cart_id == cart.id)
+        )
+        items = result.scalars().all()
+        assert len(items) == 3
 
     async def test_update_item_quantity(self, db_session):
         """Test updating item quantity in cart."""
@@ -216,6 +219,8 @@ class TestCartCalculations:
 
     async def test_cart_total_with_single_item(self, db_session):
         """Test cart total with single item."""
+        from sqlalchemy import select
+
         cart = await CartFactory.create(db_session)
         variant = await ProductVariantFactory.create(db_session)
 
@@ -226,13 +231,18 @@ class TestCartCalculations:
             quantity=2,
             unit_price=Decimal("100.00")
         )
-        await db_session.refresh(cart)
 
-        total = sum(float(item.unit_price) * item.quantity for item in cart.items)
+        result = await db_session.execute(
+            select(CartItem).where(CartItem.cart_id == cart.id)
+        )
+        items = result.scalars().all()
+        total = sum(float(item.unit_price) * item.quantity for item in items)
         assert total == 200.00
 
     async def test_cart_total_with_multiple_items(self, db_session):
         """Test cart total with multiple items."""
+        from sqlalchemy import select
+
         cart = await CartFactory.create(db_session)
 
         await CartItemFactory.create(
@@ -242,13 +252,18 @@ class TestCartCalculations:
             db_session, cart=cart, quantity=1, unit_price=Decimal("75.00")
         )
 
-        await db_session.refresh(cart)
-        total = sum(float(item.unit_price) * item.quantity for item in cart.items)
+        result = await db_session.execute(
+            select(CartItem).where(CartItem.cart_id == cart.id)
+        )
+        items = result.scalars().all()
+        total = sum(float(item.unit_price) * item.quantity for item in items)
 
         assert total == 175.00
 
     async def test_cart_with_price_modifiers(self, db_session):
         """Test cart with variant price modifiers."""
+        from sqlalchemy import select
+
         product = await ProductFactory.create(db_session, base_price=Decimal("100.00"))
         variant = await ProductVariantFactory.create(
             db_session, product=product, price_modifier=Decimal("20.00")
@@ -260,8 +275,11 @@ class TestCartCalculations:
             db_session, cart=cart, variant=variant, unit_price=Decimal(str(unit_price))
         )
 
-        await db_session.refresh(cart)
-        total = sum(float(item.unit_price) * item.quantity for item in cart.items)
+        result = await db_session.execute(
+            select(CartItem).where(CartItem.cart_id == cart.id)
+        )
+        items = result.scalars().all()
+        total = sum(float(item.unit_price) * item.quantity for item in items)
 
         assert total == 120.00
 
@@ -274,23 +292,28 @@ class TestCartRelationships:
         session = await SessionFactory.create(db_session)
         cart = await CartFactory.create(db_session, session=session)
 
-        await db_session.refresh(session)
         assert cart.session_id == session.id
 
     async def test_cart_items_relationship(self, db_session):
         """Test cart has items relationship."""
+        from sqlalchemy import select
+
         cart = await CartFactory.create(db_session)
         item = await CartItemFactory.create(db_session, cart=cart)
 
-        await db_session.refresh(cart)
-        assert any(i.id == item.id for i in cart.items)
+        result = await db_session.execute(
+            select(CartItem).where(CartItem.cart_id == cart.id)
+        )
+        items = result.scalars().all()
+        assert any(i.id == item.id for i in items)
 
     async def test_cascade_delete_items(self, db_session):
         """Test that deleting cart deletes items."""
+        from sqlalchemy import select
+
         cart = await CartFactory.create(db_session)
         await CartItemFactory.create(db_session, cart=cart)
         await CartItemFactory.create(db_session, cart=cart)
-        await db_session.refresh(cart)
 
         cart_id = cart.id
         await db_session.delete(cart)
@@ -321,11 +344,16 @@ class TestCartEdgeCases:
 
     async def test_cart_empty_after_item_removal(self, db_session):
         """Test cart appears empty after removing all items."""
+        from sqlalchemy import select
+
         cart = await CartFactory.create(db_session)
         item = await CartItemFactory.create(db_session, cart=cart)
 
         await db_session.delete(item)
         await db_session.commit()
-        await db_session.refresh(cart)
 
-        assert len(cart.items) == 0
+        result = await db_session.execute(
+            select(CartItem).where(CartItem.cart_id == cart.id)
+        )
+        items = result.scalars().all()
+        assert len(items) == 0

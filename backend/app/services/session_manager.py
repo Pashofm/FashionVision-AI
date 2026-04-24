@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import uuid
 
@@ -6,6 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 
 from backend.app.models import Session, SessionStatus
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class SessionManager:
@@ -54,7 +58,7 @@ class SessionManager:
             )
             session = result.scalar_one_or_none()
             if session and session.status == SessionStatus.active:
-                session.last_activity_at = datetime.utcnow()
+                session.last_activity_at = utc_now()
                 session.ended_at = None
                 await db.flush()
                 return True
@@ -92,7 +96,7 @@ class SessionManager:
             if session.ended_at:
                 return False
             timeout = SessionManager.SESSION_TIMEOUT_MINUTES
-            cutoff = datetime.utcnow() - timedelta(minutes=timeout)
+            cutoff = utc_now() - timedelta(minutes=timeout)
             if session.last_activity_at and session.last_activity_at < cutoff:
                 return False
             return True
@@ -118,7 +122,7 @@ class SessionManager:
             session = result.scalar_one_or_none()
             if session:
                 session.status = SessionStatus.abandoned
-                session.ended_at = datetime.utcnow()
+                session.ended_at = utc_now()
                 await db.flush()
                 return True
             return False
@@ -142,7 +146,7 @@ class SessionManager:
         """
         try:
             timeout = SessionManager.SESSION_TIMEOUT_MINUTES
-            cutoff = datetime.utcnow() - timedelta(minutes=timeout)
+            cutoff = utc_now() - timedelta(minutes=timeout)
             result = await db.execute(
                 select(Session).where(
                     Session.status == SessionStatus.active,
@@ -154,7 +158,7 @@ class SessionManager:
             for session in sessions:
                 if session.last_activity_at and session.last_activity_at < cutoff:
                     session.status = SessionStatus.abandoned
-                    session.ended_at = datetime.utcnow()
+                    session.ended_at = utc_now()
                     expired_count += 1
             if expired_count > 0:
                 await db.flush()

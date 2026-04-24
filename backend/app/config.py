@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
+    CLIENT_TIMEZONE_HEADER: str = "X-Timezone"
+    DEFAULT_TIMEZONE: str = "America/Mazatlan"
 
     @property
     def allowed_origins_list(self) -> list[str]:

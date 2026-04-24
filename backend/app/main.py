@@ -1,14 +1,16 @@
 import io
 import uuid
+import asyncio
+import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import AsyncGenerator, List
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,7 +22,7 @@ from backend.app.models import (Cart, CartItem, CartStatus, Category,
                                 MovementType, Order, OrderItem, OrderStatus,
                                 PaymentMethod, PaymentQueue, Product,
                                 ProductVariant, QueuePriority, QueueStatus,
-                                Receipt, User, UserRole)
+                                Receipt, SessionStatus, User, UserRole)
 from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  CartItemCreate, CartItemResponse,
                                  CartResponse, CartStatus, CartUpdate,
@@ -50,13 +52,36 @@ from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  UserCreate, UserResponse, UserUpdate,
                                  VariantWithInventory)
 from backend.app.services.auth import (create_access_token,
-                                       create_refresh_token,
-                                       decode_refresh_token, hash_password,
-                                       verify_password)
-from backend.app.services.cloudinary_service import delete_image, upload_image
-from backend.app.services.detection import (detect_in_image, get_model,
-                                            get_model_classes)
+                                      create_refresh_token,
+                                      decode_refresh_token, hash_password,
+                                      verify_password)
+from backend.app.services.timezone_service import (
+    get_current_utc_time, get_server_time, utc_to_local, local_to_utc,
+    get_timezone_from_request, format_datetime_for_response
+)
+from backend.app.services.detection import detect_in_image, get_model
 from backend.app.services.session_manager import SessionManager
+
+logger = logging.getLogger(__name__)
+_cleanup_lock = asyncio.Lock()
+_cleanup_task_handle = None
+
+
+async def periodic_session_cleanup(app: FastAPI):
+    while True:
+        try:
+            await asyncio.sleep(300)
+            if _cleanup_lock.locked():
+                continue
+            async with _cleanup_lock:
+                async with AsyncSessionLocal() as db:
+                    expired_count = await SessionManager.expire_inactive_sessions(db)
+                    if expired_count > 0:
+                        logger.info(f"Session cleanup: expired {expired_count} inactive sessions")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in periodic session cleanup: {e}")
 
 
 @asynccontextmanager
@@ -64,7 +89,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     SessionManager.set_timeout_minutes(settings.SESSION_TIMEOUT_MINUTES)
+    
+    global _cleanup_task_handle
+    _cleanup_task_handle = asyncio.create_task(periodic_session_cleanup(app))
+    
     yield
+    
+    if _cleanup_task_handle:
+        _cleanup_task_handle.cancel()
+        try:
+            await _cleanup_task_handle
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
@@ -975,11 +1011,76 @@ async def get_sessions(db: AsyncSession = db_dependency):
     return result.scalars().all()
 
 
+@app.post("/api/sessions/cleanup")
+async def cleanup_sessions(db: AsyncSession = db_dependency):
+    """
+    Manually trigger session cleanup and expired cart cancellation.
+    Also expires carts belonging to expired sessions.
+    """
+    try:
+        expired_count = await SessionManager.expire_inactive_sessions(db)
+        
+        await db.execute(
+            update(Cart)
+            .where(
+                Cart.status == CartStatus.building,
+                Cart.session_id.in_(
+                    select(DbSession.id).where(DbSession.status != SessionStatus.active)
+                )
+            )
+            .values(status=CartStatus.cancelled)
+        )
+        
+        await db.commit()
+        
+        return {
+            "success": True,
+            "expired_sessions": expired_count,
+            "cancelled_carts": expired_count
+        }
+    except Exception as e:
+        logger.error(f"Error in session cleanup: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== CARTS ====================
 
 @app.post("/api/carts", response_model=CartResponse, status_code=status.HTTP_201_CREATED)
 async def create_cart(cart: CartCreate, db: AsyncSession = db_dependency):
+    existing = await db.execute(
+        select(Cart).where(
+            and_(
+                Cart.session_id == cart.session_id,
+                Cart.status == CartStatus.building
+            )
+        )
+    )
+    existing_cart = existing.scalar_one_or_none()
+    if existing_cart:
+        return existing_cart
+    
     db_cart = Cart(**cart.model_dump())
+    db.add(db_cart)
+    await db.flush()
+    await db.refresh(db_cart)
+    return db_cart
+
+
+@app.get("/api/carts/by-session/{session_id}", response_model=CartResponse)
+async def get_or_create_cart_for_session(session_id: uuid.UUID, db: AsyncSession = db_dependency):
+    existing = await db.execute(
+        select(Cart).where(
+            and_(
+                Cart.session_id == session_id,
+                Cart.status == CartStatus.building
+            )
+        )
+    )
+    existing_cart = existing.scalar_one_or_none()
+    if existing_cart:
+        return existing_cart
+    
+    db_cart = Cart(session_id=session_id, status=CartStatus.building)
     db.add(db_cart)
     await db.flush()
     await db.refresh(db_cart)
@@ -1031,7 +1132,14 @@ async def get_pending_carts_admin(db: AsyncSession = db_dependency):
 
 @app.get("/api/carts/{cart_id}", response_model=CartWithItemsResponse)
 async def get_cart(cart_id: uuid.UUID, db: AsyncSession = db_dependency):
-    result = await db.execute(select(Cart).where(Cart.id == cart_id).options(selectinload(Cart.items)))
+    result = await db.execute(
+        select(Cart)
+        .where(Cart.id == cart_id)
+        .options(
+            selectinload(Cart.items).selectinload(CartItem.product),
+            selectinload(Cart.items).selectinload(CartItem.product_variant)
+        )
+    )
     cart = result.scalar_one_or_none()
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
@@ -1045,8 +1153,25 @@ async def update_cart(cart_id: uuid.UUID, cart_data: CartUpdate, db: AsyncSessio
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
     
+    VALID_TRANSITIONS = {
+        CartStatus.building: [CartStatus.submitted, CartStatus.cancelled],
+        CartStatus.submitted: [CartStatus.processing, CartStatus.cancelled],
+        CartStatus.processing: [CartStatus.paid, CartStatus.cancelled],
+        CartStatus.paid: [],
+        CartStatus.cancelled: []
+    }
+    
     if cart_data.status:
-        cart.status = cart_data.status
+        current_status = cart.status
+        new_status = cart_data.status
+        if new_status not in VALID_TRANSITIONS.get(current_status, []):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status transition from '{current_status.value}' to '{new_status.value}'. "
+                       f"Allowed transitions: {[s.value for s in VALID_TRANSITIONS.get(current_status, [])]}"
+            )
+        cart.status = new_status
+    
     if cart_data.payment_method is not None:
         cart.payment_method = cart_data.payment_method
     if cart_data.notes is not None:
@@ -1164,7 +1289,13 @@ async def add_cart_item(cart_id: uuid.UUID, item: CartItemCreate, db: AsyncSessi
     )
     db.add(db_item)
     await db.flush()
-    await db.refresh(db_item)
+    
+    result = await db.execute(
+        select(CartItem)
+        .options(selectinload(CartItem.product), selectinload(CartItem.product_variant))
+        .where(CartItem.id == db_item.id)
+    )
+    db_item = result.scalar_one()
     return db_item
 
 

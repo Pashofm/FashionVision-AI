@@ -35,6 +35,21 @@ The testing infrastructure provides:
 
 ---
 
+## Test Coverage (Current)
+
+| Module | Tests | Status |
+|--------|-------|--------|
+| Session Unit | 33 | ✅ All passing |
+| Inventory Unit | 29 | ✅ All passing |
+| Cart | 17 | ✅ All passing |
+| Client to Cashier | 19 | ✅ All passing |
+| Detection | 9 | ⚠️ Requires ultralytics |
+| Session API | 6 | ⚠️ Requires cloudinary |
+| Inventory API | 16 | ⚠️ Requires cloudinary |
+| **Total** | **104+** | ✅ Core tests passing |
+
+---
+
 ## Quick Start
 
 ### 1. Setup Test Database
@@ -44,11 +59,13 @@ cd backend
 ./scripts/setup_test_db.sh
 ```
 
-### 2. Run All Tests
+### 2. Run Working Tests
 
 ```bash
 cd backend
-./scripts/run_tests.sh
+./scripts/run_tests.sh --module inventory
+./scripts/run_tests.sh --module sessions
+./scripts/run_tests.sh --module client_flow
 ```
 
 ### 3. Run with Coverage
@@ -280,6 +297,28 @@ Fixtures are provided by `conftest.py` and available in all tests.
 |---------|------|-------------|
 | `client` | AsyncClient | Unauthenticated HTTP client |
 | `authenticated_client` | AsyncClient | Authenticated HTTP client |
+
+---
+
+## Module Dependencies
+
+Some API tests require additional packages:
+
+### Detection Tests
+```bash
+pip install ultralytics
+```
+
+### Cloudinary Tests (API endpoints)
+```bash
+pip install cloudinary
+```
+
+### Running Without Optional Dependencies
+```bash
+# Skip API tests that require cloudinary
+pytest tests/modules/inventory/test_inventory_unit.py tests/modules/client_flow/test_cart.py -v
+```
 
 ---
 

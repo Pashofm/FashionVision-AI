@@ -6,6 +6,11 @@ from typing import Optional, List
 from enum import Enum
 
 
+def get_current_datetime() -> datetime:
+    from backend.app.services.timezone_service import get_current_utc_time
+    return get_current_utc_time()
+
+
 class UserRole(str, Enum):
     admin = "admin"
     cashier = "cashier"
