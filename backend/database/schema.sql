@@ -228,6 +228,7 @@ CREATE TABLE sessions (
     station_id      VARCHAR(50),    -- identificador del kiosko físico: "KIOSKO-01"
     status          session_status  NOT NULL DEFAULT 'active',
     started_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    last_activity_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     ended_at        TIMESTAMPTZ
 );
 
@@ -243,6 +244,7 @@ CREATE TABLE carts (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     session_id      UUID            NOT NULL REFERENCES sessions(id) ON DELETE RESTRICT,
     status          cart_status     NOT NULL DEFAULT 'building',
+    payment_method  payment_method,
     submitted_at    TIMESTAMPTZ,    -- cuando el cliente apretó "enviar a caja"
     notes           TEXT,           -- comentarios opcionales del cliente
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),

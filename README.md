@@ -92,6 +92,10 @@ El frontend estará disponible en: **http://localhost:5173**
 | GET | `/` | Endpoint raíz |
 | GET | `/health` | Estado del servidor y modelo |
 | POST | `/api/detect` | Detectar prendas en imagen |
+| POST | `/api/sessions` | Crear sesión de cliente |
+| GET | `/api/carts/{id}` | Obtener carrito con items |
+| POST | `/api/carts/{id}/items` | Agregar item al carrito |
+| DELETE | `/api/carts/{id}/items/{item_id}` | Eliminar item del carrito |
 
 ### Detección de Prendas
 
@@ -183,7 +187,9 @@ FashionVision-AI/
 │   └── requirements.txt
 │
 ├── docs/
+│   ├── COMANDOS.md              # Comandos de referencia rápida
+│   ├── SESIONES_Y_CARRITOS.md  # Sistema de sesiones y carritos
 │   └── detection.md             # Documentación de detección
-│
+
 └── prueba-yolo/                 # Implementación alternativa legacy
 ```
