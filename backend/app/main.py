@@ -1217,7 +1217,8 @@ async def update_cart(cart_id: uuid.UUID, cart_data: CartUpdate, db: AsyncSessio
         cashier_result = await db.execute(select(User).where(User.role == UserRole.cashier).limit(1))
         cashier = cashier_result.scalar_one_or_none()
         cashier_id = cashier.id if cashier else None
-        
+        cashier_name = cashier.name if cashier else "Cajero"
+
         db_order = Order(
             cart_id=cart_id,
             order_number=order_number,
@@ -1267,6 +1268,7 @@ async def update_cart(cart_id: uuid.UUID, cart_data: CartUpdate, db: AsyncSessio
             "tax_amount": float(tax_amount),
             "total_amount": float(total_amount),
             "payment_method": cart.payment_method.value if hasattr(cart.payment_method, 'value') else cart.payment_method,
+            "cashier": cashier_name,
             "created_at": datetime.now().isoformat()
         }
         
@@ -1967,7 +1969,8 @@ async def pos_complete_payment(
         "success": True,
         "order_id": str(order.id),
         "order_number": order.order_number,
-        "receipt": receipt_data
+        "receipt": receipt_data,
+        "receipt_id": str(receipt.id)
     }
 
 

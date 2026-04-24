@@ -457,3 +457,159 @@ pip install pytest pytest-asyncio
 - [x] Endpoints API agregados
 - [x] Tests unitarios creados
 - [x] Documentación completada
+
+## Integración Frontend - Cashier
+
+### Flujo de Confirmación de Pago
+
+El frontend del Cashier detecta automáticamente el driver configurado y actúa según el tipo:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     CONFIRMAR PAGO                              │
+│                                                                     │
+│  1. processPayment() / posCompletePayment()                       │
+│     └── Crea receipt en DB                                        │
+│                                                                     │
+│  2. getCurrentPrinterDriver() → {type, name}                      │
+│                                                                     │
+│     ┌──────────────┬──────────────┬──────────────┬─────────────┐ │
+│     │ MOCK         │ TEXTFILE     │ HTML         │ ESCPOS     │ │
+│     └──────┬───────┴──────┬───────┴──────┬───────┴──────┬─────┘ │
+│            │              │              │              │       │
+│            ▼              ▼              ▼              ▼       │
+│     ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌──────────┐   │
+│     │Solo modal  │ │Print to    │ │Open new    │ │Print to  │   │
+│     │(no action) │ │file        │ │tab with    │ │thermal   │   │
+│     │            │ │silently    │ │HTML preview│ │printer   │   │
+│     └────────────┘ └────────────┘ └────────────┘ └──────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Configuración de Impresora en Cashier
+
+El Cashier tiene un panel colapsable de configuración de impresora:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ ▶ ⚙️ Configuración de Impresora [HTML]                      │
+└────────────────────────────────────────────────────────────┘
+```
+
+Al expandir:
+```
+┌────────────────────────────────────────────────────────────┐
+│ 🎛️ Driver de Impresora                                      │
+│ Selecciona el método de salida para los recibos              │
+│                                                             │
+│ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐            │
+│ │   🧪    │ │   📄    │ │   🌐    │ │   🖨️   │            │
+│ │  MOCK   │ │TEXTFILE │ │   HTML  │ │  ESCPOS │            │
+│ │ (Test)  │ │ (Audit) │ │(Preview)│ │(Thermal │            │
+│ └─────────┘ └─────────┘ └─────────┘ └─────────┘            │
+│                                                             │
+│ Driver activo: HTML Printer Driver (Preview/Email)         │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Comportamiento por Driver
+
+| Driver | Al confirmar pago | Resultado |
+|--------|-------------------|-----------|
+| **MOCK** | No hace nada especial | Muestra modal del recibo |
+| **TEXTFILE** | Imprime a archivo | Toast "Guardado en auditoría" |
+| **HTML** | Abre nueva pestaña | Preview HTML del recibo |
+| **ESCPOS** | Envía a impresora | Toast "Impreso" |
+
+### APIs Frontend (api.js)
+
+```javascript
+// Obtener driver activo
+export async function getCurrentPrinterDriver() {
+  const response = await authenticatedFetch(`${API_URL}/api/printers/driver`);
+  return response.json();
+}
+
+// Obtener drivers disponibles
+export async function getAvailablePrinterDrivers() {
+  const response = await authenticatedFetch(`${API_URL}/api/printers/drivers`);
+  return response.json();
+}
+
+// Cambiar driver
+export async function setPrinterDriver(driverType) {
+  const response = await fetch(`${API_URL}/api/printers/driver?driver_type=${driverType}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  return response.json();
+}
+
+// Imprimir recibo
+export async function printReceipt(receiptId) {
+  const response = await fetch(`${API_URL}/api/receipts/${receiptId}/print`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  return response.json();
+}
+
+// Obtener preview HTML
+export async function getReceiptPreview(receiptId) {
+  const response = await fetch(`${API_URL}/api/receipts/${receiptId}/preview`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  return response.json();
+}
+```
+
+### Persistencia del Driver
+
+El driver seleccionado se mantiene a nivel de **sesión del servidor** (no localStorage). Esto significa:
+
+- **Ventaja:** Consistencia entre pestañas y recargas
+- **Consideración:** Si el servidor se reinicia, vuelve al default (MOCK)
+
+Para persistir en el frontend, se puede guardar en localStorage y sincronizar al cargar:
+
+```javascript
+// Al cargar Cashier
+const savedDriver = localStorage.getItem('printer_driver');
+if (savedDriver) {
+  try {
+    await setPrinterDriver(savedDriver);
+  } catch (e) {
+    console.warn('Failed to restore printer driver');
+  }
+}
+```
+
+### Modificación en Backend (complete-payment)
+
+El endpoint `POST /api/payments/pos/complete-payment` ahora retorna `receipt_id` para que el frontend pueda imprimir:
+
+```json
+{
+  "success": true,
+  "order_id": "uuid",
+  "order_number": "ORD-20260424-ABC12",
+  "receipt": { ... },
+  "receipt_id": "uuid-del-receipt"
+}
+```
+
+### Consideraciones de Rendimiento
+
+1. **HTML Preview:** Se abre en nueva pestaña - no bloquea la UI
+2. **Print silencioso:** No muestra confirmación visual (solo logs)
+3. **ESCPOS:** La operación puede tardar 1-2 segundos
+
+### Checklist de Implementación Frontend
+
+- [x] Funciones de API agregadas a `api.js`
+- [x] Panel de configuración colapsable en Cashier
+- [x] Detección de driver al confirmar pago
+- [x] Acción condicional según tipo de driver
+- [x] Botón para cambiar driver con feedback visual
+- [x] Endpoint `complete-payment` retorna `receipt_id`
