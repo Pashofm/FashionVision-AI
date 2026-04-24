@@ -61,6 +61,14 @@ class SessionStatus(str, enum.Enum):
     abandoned = "abandoned"
 
 
+class StockStatus(str, enum.Enum):
+    available = "available"
+    reserved = "reserved"
+    damaged = "damaged"
+    in_transit = "in_transit"
+    returned = "returned"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -98,6 +106,23 @@ class Product(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     sku: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     base_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+
+    cost_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    tax_rate: Mapped[float] = mapped_column(Numeric(5, 4), default=0.16)
+    profit_margin: Mapped[float] = mapped_column(Numeric(5, 4), default=0)
+
+    brand: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    supplier: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    barcode: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
+    weight: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    width: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    height: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    depth: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    min_stock_level: Mapped[int] = mapped_column(Integer, default=0)
+    max_stock_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
+    tags: Mapped[list] = mapped_column(JSONB, default=list)
+
     yolo_class_id: Mapped[int | None] = mapped_column(Integer, unique=True, nullable=True)
     yolo_class_name: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True, index=True)
     images: Mapped[list] = mapped_column(JSONB, default=list)
@@ -109,6 +134,8 @@ class Product(Base):
     variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
     cart_items = relationship("CartItem", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
+    price_history = relationship("PriceHistory", back_populates="product", cascade="all, delete-orphan")
+    attributes = relationship("ProductAttribute", back_populates="product", cascade="all, delete-orphan")
 
 
 class ProductVariant(Base):
@@ -140,6 +167,8 @@ class Inventory(Base):
     quantity_available: Mapped[int] = mapped_column(Integer, default=0)
     quantity_reserved: Mapped[int] = mapped_column(Integer, default=0)
     low_stock_threshold: Mapped[int] = mapped_column(Integer, default=5)
+    stock_status: Mapped[StockStatus] = mapped_column(Enum(StockStatus, native_enum=False), default=StockStatus.available)
+    warehouse_location: Mapped[str | None] = mapped_column(String(50), nullable=True)
     last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
@@ -297,3 +326,59 @@ class DailySalesSummary(Base):
     top_products: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate=lambda: datetime.now())
+
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    contact_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
+
+
+class AttributeOption(Base):
+    __tablename__ = "attribute_options"
+    __table_args__ = (UniqueConstraint('type', 'value', name='uq_attribute_type_value'),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    value: Mapped[str] = mapped_column(String(50), nullable=False)
+    hex_code: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
+
+    product_attributes = relationship("ProductAttribute", back_populates="attribute_option")
+
+
+class ProductAttribute(Base):
+    __tablename__ = "product_attributes"
+    __table_args__ = (UniqueConstraint('product_id', 'attribute_option_id', name='uq_product_attribute'),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    attribute_option_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("attribute_options.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
+
+    product = relationship("Product", back_populates="attributes")
+    attribute_option = relationship("AttributeOption", back_populates="product_attributes")
+
+
+class PriceHistory(Base):
+    __tablename__ = "price_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    price_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    old_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    new_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    changed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
+
+    product = relationship("Product", back_populates="price_history")
