@@ -524,3 +524,58 @@ export async function posCompletePayment(transactionId, cartId) {
   }
   return response.json();
 }
+
+// ==================== PRINTER DRIVER FUNCTIONS ====================
+
+export async function getCurrentPrinterDriver() {
+  const response = await authenticatedFetch(`${API_URL}/api/printers/driver`, {
+    method: 'GET',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to get current printer driver: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getAvailablePrinterDrivers() {
+  const response = await authenticatedFetch(`${API_URL}/api/printers/drivers`, {
+    method: 'GET',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to get available printer drivers: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function setPrinterDriver(driverType) {
+  const response = await fetch(`${API_URL}/api/printers/driver?driver_type=${driverType}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to set printer driver: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function printReceipt(receiptId) {
+  const response = await fetch(`${API_URL}/api/receipts/${receiptId}/print`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to print receipt: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getReceiptPreview(receiptId) {
+  const response = await fetch(`${API_URL}/api/receipts/${receiptId}/preview`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to get receipt preview: ${response.statusText}`);
+  }
+  return response.json();
+}

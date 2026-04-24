@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { performLogout } from '../services/api';
+import { performLogout, getCurrentPrinterDriver, getAvailablePrinterDrivers, setPrinterDriver, printReceipt, getReceiptPreview } from '../services/api';
 import { getPendingCarts, approveCart, rejectCart, processPayment, posInitializePayment, posWaitForCard, posProcessPayment, posCancelTransaction, posCompletePayment } from '../services/api';
 import { formatLocalDateTime } from '../utils/dateUtils';
 import '../styles/home.css';
@@ -18,10 +18,53 @@ const Cashier = () => {
   const [posPayment, setPosPayment] = useState(null);
   const [posStatus, setPosStatus] = useState('');
   const [posLogs, setPosLogs] = useState([]);
+  const [showPrinterSettings, setShowPrinterSettings] = useState(false);
+  const [currentDriver, setCurrentDriver] = useState(null);
+  const [availableDrivers, setAvailableDrivers] = useState([]);
   const navigate = useNavigate();
 
   const addPosLog = (message) => {
     setPosLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), message }]);
+  };
+
+  const fetchPrinterDrivers = async () => {
+    try {
+      const current = await getCurrentPrinterDriver();
+      setCurrentDriver(current);
+      const available = await getAvailablePrinterDrivers();
+      setAvailableDrivers(available.drivers || []);
+    } catch (err) {
+      console.error('Error fetching printer drivers:', err);
+    }
+  };
+
+  const handleSetPrinterDriver = async (driverType) => {
+    try {
+      await setPrinterDriver(driverType);
+      await fetchPrinterDrivers();
+    } catch (err) {
+      console.error('Error setting printer driver:', err);
+      setError('Error al cambiar driver de impresora');
+    }
+  };
+
+  const handlePrintWithDriver = async (receiptId) => {
+    if (!currentDriver || !receiptId) return;
+
+    try {
+      if (currentDriver.type === 'html') {
+        const preview = await getReceiptPreview(receiptId);
+        const newWindow = window.open('', '_blank');
+        if (newWindow) {
+          newWindow.document.write(preview.html);
+          newWindow.document.close();
+        }
+      } else if (currentDriver.type === 'textfile' || currentDriver.type === 'escpos') {
+        await printReceipt(receiptId);
+      }
+    } catch (err) {
+      console.warn('Receipt print skipped:', err.message);
+    }
   };
 
   const handleLogout = () => {
@@ -36,6 +79,7 @@ const Cashier = () => {
       return;
     }
     fetchPendingCarts();
+    fetchPrinterDrivers();
   }, [navigate]);
 
   const fetchPendingCarts = async () => {
@@ -104,6 +148,7 @@ const Cashier = () => {
 
       if (result.receipt) {
         setReceiptData(result.receipt.receipt_data);
+        await handlePrintWithDriver(result.receipt.id);
         setShowReceiptModal(true);
       }
 
@@ -164,6 +209,9 @@ const Cashier = () => {
 
         if (completeResult.success) {
           setReceiptData(completeResult.receipt);
+          if (completeResult.receipt_id) {
+            await handlePrintWithDriver(completeResult.receipt_id);
+          }
           addPosLog('Transacción completada exitosamente');
           setShowReceiptModal(true);
           await fetchPendingCarts();
@@ -221,6 +269,51 @@ const Cashier = () => {
 
       <main className="container">
         {error && <div className="error-message">{error}</div>}
+
+        <div className="printer-settings-toggle">
+          <button
+            className="btn-settings-toggle"
+            onClick={() => setShowPrinterSettings(!showPrinterSettings)}
+          >
+            {showPrinterSettings ? '▼' : '▶'} ⚙️ Configuración de Impresora
+            {currentDriver && (
+              <span className="current-driver-badge">
+                {currentDriver.type.toUpperCase()}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {showPrinterSettings && (
+          <div className="printer-settings-panel">
+            <div className="printer-settings-header">
+              <h4>🎛️ Driver de Impresora</h4>
+              <p className="printer-settings-desc">Selecciona el método de salida para los recibos</p>
+            </div>
+            <div className="printer-driver-options">
+              {availableDrivers.map((driver) => (
+                <button
+                  key={driver.type}
+                  className={`driver-option ${currentDriver?.type === driver.type ? 'active' : ''}`}
+                  onClick={() => handleSetPrinterDriver(driver.type)}
+                >
+                  <span className="driver-icon">
+                    {driver.type === 'mock' && '🧪'}
+                    {driver.type === 'textfile' && '📄'}
+                    {driver.type === 'html' && '🌐'}
+                    {driver.type === 'escpos' && '🖨️'}
+                  </span>
+                  <span className="driver-name">{driver.name}</span>
+                </button>
+              ))}
+            </div>
+            {currentDriver && (
+              <p className="current-driver-info">
+                Driver activo: <strong>{currentDriver.name}</strong>
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="section-header">
           <h2>📋 Pedidos Pendientes</h2>
@@ -751,6 +844,98 @@ const Cashier = () => {
           margin-top: 8px;
           padding-top: 8px;
           border-top: 1px solid #e2e8f0;
+        }
+        .printer-settings-toggle {
+          margin-bottom: 12px;
+        }
+        .btn-settings-toggle {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 16px;
+          background: #f1f5f9;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 14px;
+          color: #475569;
+          transition: all 0.2s;
+        }
+        .btn-settings-toggle:hover {
+          background: #e2e8f0;
+        }
+        .current-driver-badge {
+          background: #667eea;
+          color: white;
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+        .printer-settings-panel {
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 20px;
+        }
+        .printer-settings-header {
+          margin-bottom: 16px;
+        }
+        .printer-settings-header h4 {
+          margin: 0 0 4px 0;
+          font-size: 16px;
+          color: #1e293b;
+        }
+        .printer-settings-desc {
+          margin: 0;
+          font-size: 13px;
+          color: #64748b;
+        }
+        .printer-driver-options {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .driver-option {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 16px 24px;
+          border: 2px solid #e2e8f0;
+          border-radius: 10px;
+          background: white;
+          cursor: pointer;
+          transition: all 0.2s;
+          min-width: 120px;
+        }
+        .driver-option:hover {
+          border-color: #667eea;
+          background: #f8fafc;
+        }
+        .driver-option.active {
+          border-color: #667eea;
+          background: #667eea10;
+        }
+        .driver-icon {
+          font-size: 24px;
+          margin-bottom: 8px;
+        }
+        .driver-name {
+          font-size: 12px;
+          color: #475569;
+          text-align: center;
+        }
+        .current-driver-info {
+          margin-top: 16px;
+          padding: 12px;
+          background: #f8fafc;
+          border-radius: 8px;
+          font-size: 13px;
+          color: #64748b;
+        }
+        .current-driver-info strong {
+          color: #1e293b;
         }
       `}</style>
     </div>
