@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { performLogout } from '../services/api';
 import { getPendingCarts, approveCart, rejectCart, processPayment, posInitializePayment, posWaitForCard, posProcessPayment, posCancelTransaction, posCompletePayment } from '../services/api';
 import { formatLocalDateTime } from '../utils/dateUtils';
 import '../styles/home.css';
@@ -21,6 +22,11 @@ const Cashier = () => {
 
   const addPosLog = (message) => {
     setPosLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), message }]);
+  };
+
+  const handleLogout = () => {
+    performLogout();
+    navigate('/');
   };
 
   useEffect(() => {
@@ -210,6 +216,7 @@ const Cashier = () => {
         <nav>
           <button className="nav-active">Caja</button>
         </nav>
+        <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
       </header>
 
       <main className="container">

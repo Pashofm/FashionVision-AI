@@ -353,6 +353,22 @@ nav button:disabled {
   color: white;
 }
 
+.btn-logout {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.btn-logout:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: white;
+}
+
 @media (max-width: 900px) {
   .stats-cards {
     grid-template-columns: repeat(2, 1fr);
