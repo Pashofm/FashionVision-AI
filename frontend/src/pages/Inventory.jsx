@@ -1,10 +1,20 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getHeaders, getCategories, getLowStockProducts, getInventoryMovements } from '../services/api';
+import { getHeaders, getCategories, getLowStockProducts, getInventoryMovements,
+         getAttributes, getSuppliers, updateInventoryStatus, getPriceBreakdown } from '../services/api';
 import { formatLocalDateTime } from '../utils/dateUtils';
 import './Inventory.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+const STOCK_STATUSES = ['available', 'reserved', 'damaged', 'in_transit', 'returned'];
+const STOCK_STATUS_LABELS = {
+  available: 'Disponible',
+  reserved: 'Reservado',
+  damaged: 'Dañado',
+  in_transit: 'En tránsito',
+  returned: 'Devuelto'
+};
 
 const Inventory = () => {
   const navigate = useNavigate();
@@ -15,21 +25,42 @@ const Inventory = () => {
   const [categories, setCategories] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [showProductModal, setShowProductModal] = useState(false);
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
+  const [showAttributeModal, setShowAttributeModal] = useState(false);
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [showPriceBreakdownModal, setShowPriceBreakdownModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [editingVariant, setEditingVariant] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [movements, setMovements] = useState([]);
   const [error, setError] = useState('');
+  const [attributes, setAttributes] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [priceBreakdown, setPriceBreakdown] = useState(null);
 
   const [productForm, setProductForm] = useState({
     name: '',
     sku: '',
     base_price: '',
+    cost_price: '',
+    tax_rate: '0.16',
+    profit_margin: '',
+    brand: '',
+    supplier: '',
+    barcode: '',
+    weight: '',
+    width: '',
+    height: '',
+    depth: '',
+    min_stock_level: '0',
+    max_stock_level: '',
+    is_featured: false,
+    tags: [],
     description: '',
     category_id: '',
     yolo_class_name: '',
@@ -47,7 +78,23 @@ const Inventory = () => {
   const [stockForm, setStockForm] = useState({
     quantity: '',
     reason: '',
-    type: 'restock'
+    type: 'restock',
+    stock_status: 'available',
+    warehouse_location: ''
+  });
+
+  const [attributeForm, setAttributeForm] = useState({
+    type: 'size',
+    value: '',
+    hex_code: '#000000'
+  });
+
+  const [supplierForm, setSupplierForm] = useState({
+    name: '',
+    contact_name: '',
+    email: '',
+    phone: '',
+    address: ''
   });
 
   const isAdmin = userData?.role === 'admin';
@@ -56,7 +103,7 @@ const Inventory = () => {
     try {
       const headers = getHeaders();
       const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (selectedCategory) params.append('category_id', selectedCategory);
 
       const response = await fetch(`${API_URL}/api/products/stock/all?${params}`, { headers });
@@ -67,7 +114,7 @@ const Inventory = () => {
     } catch (err) {
       console.error('Error loading products:', err);
     }
-  }, [searchTerm, selectedCategory]);
+  }, [debouncedSearch, selectedCategory]);
 
   const loadLowStock = useCallback(async () => {
     try {
@@ -95,6 +142,24 @@ const Inventory = () => {
     }
   }, [loadProducts]);
 
+  const loadAttributes = useCallback(async () => {
+    try {
+      const data = await getAttributes();
+      setAttributes(data);
+    } catch (err) {
+      console.error('Error loading attributes:', err);
+    }
+  }, []);
+
+  const loadSuppliers = useCallback(async () => {
+    try {
+      const data = await getSuppliers(true);
+      setSuppliers(data);
+    } catch (err) {
+      console.error('Error loading suppliers:', err);
+    }
+  }, []);
+
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     setUserData(user);
@@ -103,7 +168,16 @@ const Inventory = () => {
       return;
     }
     loadData();
-  }, [navigate, loadData]);
+    loadAttributes();
+    loadSuppliers();
+  }, [navigate, loadData, loadAttributes, loadSuppliers]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     if (activeTab === 'products') {
@@ -126,11 +200,25 @@ const Inventory = () => {
     if (product) {
       setEditingProduct(product);
       setProductForm({
-        name: product.name,
-        sku: product.sku,
-        base_price: product.base_price,
+        name: product.name || '',
+        sku: product.sku || '',
+        base_price: product.base_price || '',
+        cost_price: product.cost_price || '',
+        tax_rate: product.tax_rate?.toString() || '0.16',
+        profit_margin: product.profit_margin || '',
+        brand: product.brand || '',
+        supplier: product.supplier || '',
+        barcode: product.barcode || '',
+        weight: product.weight || '',
+        width: product.width || '',
+        height: product.height || '',
+        depth: product.depth || '',
+        min_stock_level: product.min_stock_level?.toString() || '0',
+        max_stock_level: product.max_stock_level?.toString() || '',
+        is_featured: product.is_featured || false,
+        tags: product.tags || [],
         description: product.description || '',
-        category_id: product.category_id,
+        category_id: product.category_id || '',
         yolo_class_name: product.yolo_class_name || '',
         images: product.images || []
       });
@@ -140,6 +228,20 @@ const Inventory = () => {
         name: '',
         sku: '',
         base_price: '',
+        cost_price: '',
+        tax_rate: '0.16',
+        profit_margin: '',
+        brand: '',
+        supplier: '',
+        barcode: '',
+        weight: '',
+        width: '',
+        height: '',
+        depth: '',
+        min_stock_level: '0',
+        max_stock_level: '',
+        is_featured: false,
+        tags: [],
         description: '',
         category_id: '',
         yolo_class_name: '',
@@ -172,7 +274,7 @@ const Inventory = () => {
         size: '',
         color: '',
         color_hex: '#000000',
-        sku_variant: `${product.sku}-`,
+        sku_variant: '',
         price_modifier: '0'
       });
     }
@@ -189,7 +291,13 @@ const Inventory = () => {
   const openStockModal = async (product, variant) => {
     setSelectedProduct(product);
     setSelectedVariant(variant);
-    setStockForm({ quantity: '', reason: '', type: 'restock' });
+    setStockForm({
+      quantity: '',
+      reason: '',
+      type: 'restock',
+      stock_status: variant.stock_status || 'available',
+      warehouse_location: variant.warehouse_location || ''
+    });
     await loadMovements(variant.id);
     setShowStockModal(true);
   };
@@ -200,6 +308,107 @@ const Inventory = () => {
     setSelectedVariant(null);
     setMovements([]);
     setError('');
+  };
+
+  const openAttributeModal = () => {
+    setAttributeForm({ type: 'size', value: '', hex_code: '#000000' });
+    setShowAttributeModal(true);
+  };
+
+  const closeAttributeModal = () => {
+    setShowAttributeModal(false);
+    setAttributeForm({ type: 'size', value: '', hex_code: '#000000' });
+    setError('');
+  };
+
+  const openSupplierModal = () => {
+    setSupplierForm({ name: '', contact_name: '', email: '', phone: '', address: '' });
+    setShowSupplierModal(true);
+  };
+
+  const closeSupplierModal = () => {
+    setShowSupplierModal(false);
+    setSupplierForm({ name: '', contact_name: '', email: '', phone: '', address: '' });
+    setError('');
+  };
+
+  const closePriceBreakdownModal = () => {
+    setShowPriceBreakdownModal(false);
+    setPriceBreakdown(null);
+    setSelectedProduct(null);
+    setSelectedVariant(null);
+    setError('');
+  };
+
+  const openPriceBreakdown = async (product, variant = null) => {
+    try {
+      setSelectedProduct(product);
+      setSelectedVariant(variant);
+      const breakdown = await getPriceBreakdown(product.id, variant?.id);
+      setPriceBreakdown(breakdown);
+      setShowPriceBreakdownModal(true);
+    } catch (err) {
+      console.error('Error loading price breakdown:', err);
+      setError('Error al cargar desglose de precio');
+    }
+  };
+
+  const handleAttributeSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      const headers = getHeaders();
+      const response = await fetch(`${API_URL}/api/attributes`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(attributeForm)
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Error al guardar atributo');
+      }
+      closeAttributeModal();
+      loadAttributes();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleSupplierSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      const headers = getHeaders();
+      const response = await fetch(`${API_URL}/api/suppliers`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(supplierForm)
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Error al guardar proveedor');
+      }
+      closeSupplierModal();
+      loadSuppliers();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleStockStatusUpdate = async () => {
+    if (!selectedVariant?.id) return;
+    setError('');
+    try {
+      await updateInventoryStatus(selectedVariant.id, {
+        stock_status: stockForm.stock_status,
+        warehouse_location: stockForm.warehouse_location || null
+      });
+      closeStockModal();
+      loadProducts();
+      loadLowStock();
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const handleProductSubmit = async (e) => {
@@ -214,9 +423,28 @@ const Inventory = () => {
         : `${API_URL}/api/products`;
 
       const payload = {
-        ...productForm,
-        base_price: parseFloat(productForm.base_price),
-        yolo_class_id: productForm.yolo_class_name ? 1 : null
+        name: productForm.name,
+        sku: productForm.sku,
+        base_price: parseFloat(productForm.base_price) || 0,
+        cost_price: parseFloat(productForm.cost_price) || 0,
+        tax_rate: parseFloat(productForm.tax_rate) || 0.16,
+        profit_margin: parseFloat(productForm.profit_margin) || 0,
+        brand: productForm.brand || null,
+        supplier: productForm.supplier || null,
+        barcode: productForm.barcode || null,
+        weight: parseFloat(productForm.weight) || null,
+        width: parseFloat(productForm.width) || null,
+        height: parseFloat(productForm.height) || null,
+        depth: parseFloat(productForm.depth) || null,
+        min_stock_level: parseInt(productForm.min_stock_level) || 0,
+        max_stock_level: parseInt(productForm.max_stock_level) || null,
+        is_featured: productForm.is_featured,
+        tags: productForm.tags || [],
+        description: productForm.description || null,
+        category_id: productForm.category_id,
+        yolo_class_name: productForm.yolo_class_name || null,
+        yolo_class_id: null,
+        images: productForm.images || []
       };
 
       const response = await fetch(url, {
@@ -323,12 +551,6 @@ const Inventory = () => {
     }
   };
 
-  const handleViewProduct = async (product) => {
-    await loadProductDetails(product.id);
-    setEditingProduct(product);
-    setShowProductModal(true);
-  };
-
   const handleImageUpload = async (productId, file) => {
     try {
       const formData = new FormData();
@@ -379,10 +601,14 @@ const Inventory = () => {
       });
 
       if (response.ok) {
-        loadProducts();
+        setProducts(products.filter(p => p.id !== productId));
+      } else {
+        const data = await response.json();
+        alert(data.detail || 'Error al eliminar producto');
       }
     } catch (err) {
       console.error('Error deleting product:', err);
+      alert('Error al eliminar producto');
     }
   };
 
@@ -402,6 +628,24 @@ const Inventory = () => {
       }
     } catch (err) {
       console.error('Error deleting variant:', err);
+    }
+  };
+
+  const deleteAttribute = async (attributeId) => {
+    if (!window.confirm('¿Estás seguro de eliminar este atributo?')) return;
+
+    try {
+      const headers = getHeaders();
+      const response = await fetch(`${API_URL}/api/attributes/${attributeId}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      if (response.ok) {
+        loadAttributes();
+      }
+    } catch (err) {
+      console.error('Error deleting attribute:', err);
     }
   };
 
@@ -445,6 +689,18 @@ const Inventory = () => {
             onClick={() => setActiveTab('lowstock')}
           >
             Stock Bajo ({lowStockItems.length})
+          </button>
+          <button
+            className={activeTab === 'attributes' ? 'active' : ''}
+            onClick={() => { setActiveTab('attributes'); loadAttributes(); }}
+          >
+            Atributos
+          </button>
+          <button
+            className={activeTab === 'suppliers' ? 'active' : ''}
+            onClick={() => { setActiveTab('suppliers'); loadSuppliers(); }}
+          >
+            Proveedores
           </button>
         </div>
 
@@ -509,7 +765,6 @@ const Inventory = () => {
                       {isAdmin && (
                         <td>
                           <div className="action-buttons">
-                            <button className="btn-icon" onClick={() => handleViewProduct(product)} title="Ver">👁️</button>
                             <button className="btn-icon" onClick={() => openProductModal(product)} title="Editar">✏️</button>
                             <button className="btn-icon btn-danger" onClick={() => deleteProduct(product.id)} title="Eliminar">🗑️</button>
                           </div>
@@ -569,6 +824,64 @@ const Inventory = () => {
             )}
           </div>
         )}
+
+        {activeTab === 'attributes' && (
+          <div className="attributes-section">
+            <div className="section-header">
+              <h3>Atributos (Tallas y Colores)</h3>
+              {isAdmin && (
+                <button className="btn-primary" onClick={openAttributeModal}>+ Nuevo Atributo</button>
+              )}
+            </div>
+            <div className="attributes-grid">
+              <div className="attribute-group">
+                <h4>Tallas</h4>
+                {attributes.filter(a => a.type === 'size').map(attr => (
+                  <div key={attr.id} className="attribute-item">
+                    <span>{attr.value}</span>
+                    {isAdmin && <button className="btn-icon btn-danger" onClick={() => deleteAttribute(attr.id)}>×</button>}
+                  </div>
+                ))}
+              </div>
+              <div className="attribute-group">
+                <h4>Colores</h4>
+                {attributes.filter(a => a.type === 'color').map(attr => (
+                  <div key={attr.id} className="attribute-item">
+                    <span style={{ width: '20px', height: '20px', backgroundColor: attr.hex_code || '#000', borderRadius: '3px', marginRight: '8px' }} />
+                    <span>{attr.value}</span>
+                    {isAdmin && <button className="btn-icon btn-danger" onClick={() => deleteAttribute(attr.id)}>×</button>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'suppliers' && (
+          <div className="suppliers-section">
+            <div className="section-header">
+              <h3>Proveedores</h3>
+              {isAdmin && (
+                <button className="btn-primary" onClick={openSupplierModal}>+ Nuevo Proveedor</button>
+              )}
+            </div>
+            <div className="suppliers-list">
+              {suppliers.map(supplier => (
+                <div key={supplier.id} className="supplier-card">
+                  <div className="supplier-info">
+                    <strong>{supplier.name}</strong>
+                    {supplier.contact_name && <span>Contacto: {supplier.contact_name}</span>}
+                    {supplier.email && <span>Email: {supplier.email}</span>}
+                    {supplier.phone && <span>Tel: {supplier.phone}</span>}
+                  </div>
+                </div>
+              ))}
+              {suppliers.length === 0 && (
+                <p className="no-data">No hay proveedores registrados</p>
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {showProductModal && (
@@ -602,7 +915,7 @@ const Inventory = () => {
         />
       )}
 
-      {showStockModal && (
+{showStockModal && (
         <StockModalForm
           product={selectedProduct}
           variant={selectedVariant}
@@ -611,7 +924,36 @@ const Inventory = () => {
           movements={movements}
           onSubmit={handleStockSubmit}
           onClose={closeStockModal}
+          onStatusUpdate={handleStockStatusUpdate}
           error={error}
+        />
+      )}
+
+      {showAttributeModal && (
+        <AttributeModalForm
+          attributeData={attributeForm}
+          setAttributeData={setAttributeForm}
+          onSubmit={handleAttributeSubmit}
+          onClose={closeAttributeModal}
+          error={error}
+        />
+      )}
+
+      {showSupplierModal && (
+        <SupplierModalForm
+          supplierData={supplierForm}
+          setSupplierData={setSupplierForm}
+          onSubmit={handleSupplierSubmit}
+          onClose={closeSupplierModal}
+          error={error}
+        />
+      )}
+
+      {showPriceBreakdownModal && (
+        <PriceBreakdownModal
+          breakdown={priceBreakdown}
+          onClose={closePriceBreakdownModal}
+          formatCurrency={formatCurrency}
         />
       )}
     </div>
@@ -704,6 +1046,152 @@ function ProductModalForm({
                   disabled={!isAdmin}
                 />
               </div>
+              <div className="form-group">
+                <label>Precio de Costo</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={productData.cost_price}
+                  onChange={e => setProductData({ ...productData, cost_price: e.target.value })}
+                  placeholder="0.00"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Margen de Ganancia (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={productData.profit_margin}
+                  onChange={e => setProductData({ ...productData, profit_margin: e.target.value })}
+                  placeholder="0.30 = 30%"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Tasa de IVA</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={productData.tax_rate}
+                  onChange={e => setProductData({ ...productData, tax_rate: e.target.value })}
+                  placeholder="0.16 = 16%"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Marca</label>
+                <input
+                  type="text"
+                  value={productData.brand}
+                  onChange={e => setProductData({ ...productData, brand: e.target.value })}
+                  placeholder="Ej: Lacoste"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Proveedor</label>
+                <input
+                  type="text"
+                  value={productData.supplier}
+                  onChange={e => setProductData({ ...productData, supplier: e.target.value })}
+                  placeholder="Nombre del proveedor"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Barcode</label>
+                <input
+                  type="text"
+                  value={productData.barcode}
+                  onChange={e => setProductData({ ...productData, barcode: e.target.value })}
+                  placeholder="Código de barras"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Peso (kg)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={productData.weight}
+                  onChange={e => setProductData({ ...productData, weight: e.target.value })}
+                  placeholder="0.5"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Ancho (cm)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={productData.width}
+                  onChange={e => setProductData({ ...productData, width: e.target.value })}
+                  placeholder="30"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Alto (cm)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={productData.height}
+                  onChange={e => setProductData({ ...productData, height: e.target.value })}
+                  placeholder="40"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Profundidad (cm)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={productData.depth}
+                  onChange={e => setProductData({ ...productData, depth: e.target.value })}
+                  placeholder="5"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Stock Mínimo</label>
+                <input
+                  type="number"
+                  value={productData.min_stock_level}
+                  onChange={e => setProductData({ ...productData, min_stock_level: e.target.value })}
+                  placeholder="5"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Stock Máximo</label>
+                <input
+                  type="number"
+                  value={productData.max_stock_level}
+                  onChange={e => setProductData({ ...productData, max_stock_level: e.target.value })}
+                  placeholder="100"
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Destacado</label>
+                <input
+                  type="checkbox"
+                  checked={productData.is_featured}
+                  onChange={e => setProductData({ ...productData, is_featured: e.target.checked })}
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="form-group">
+                <label>Tags (separados por coma)</label>
+                <input
+                  type="text"
+                  value={Array.isArray(productData.tags) ? productData.tags.join(', ') : productData.tags}
+                  onChange={e => setProductData({ ...productData, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t) })}
+                  placeholder="tag1, tag2, tag3"
+                  disabled={!isAdmin}
+                />
+              </div>
             </div>
             <div className="modal-actions">
               <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
@@ -724,13 +1212,36 @@ function ProductModalForm({
         <div className="product-detail-grid">
           <div className="product-info-section">
             <div className="info-row"><span className="label">SKU:</span><span className="value">{displayProduct.sku}</span></div>
-            <div className="info-row"><span className="label">Precio:</span><span className="value">{formatCurrency(displayProduct.base_price)}</span></div>
+            <div className="info-row"><span className="label">Precio de Venta:</span><span className="value">{formatCurrency(displayProduct.base_price)}</span></div>
+            {displayProduct.cost_price > 0 && (
+              <div className="info-row"><span className="label">Precio de Costo:</span><span className="value">{formatCurrency(displayProduct.cost_price)}</span></div>
+            )}
+            {displayProduct.profit_margin > 0 && (
+              <div className="info-row"><span className="label">Margen:</span><span className="value">{(displayProduct.profit_margin * 100).toFixed(1)}%</span></div>
+            )}
+            {displayProduct.brand && (
+              <div className="info-row"><span className="label">Marca:</span><span className="value">{displayProduct.brand}</span></div>
+            )}
+            {displayProduct.supplier && (
+              <div className="info-row"><span className="label">Proveedor:</span><span className="value">{displayProduct.supplier}</span></div>
+            )}
+            {displayProduct.barcode && (
+              <div className="info-row"><span className="label">Barcode:</span><span className="value">{displayProduct.barcode}</span></div>
+            )}
             <div className="info-row"><span className="label">Categoría:</span><span className="value">{categories.find(c => c.id === displayProduct.category_id)?.name || '-'}</span></div>
             {displayProduct.yolo_class_name && (
               <div className="info-row"><span className="label">YOLO Class:</span><span className="value">{displayProduct.yolo_class_name}</span></div>
             )}
             {displayProduct.description && (
               <div className="info-row"><span className="label">Descripción:</span><span className="value">{displayProduct.description}</span></div>
+            )}
+            {(displayProduct.weight || displayProduct.width || displayProduct.height || displayProduct.depth) && (
+              <div className="info-row">
+                <span className="label">Dimensiones:</span>
+                <span className="value">
+                  {displayProduct.width && `W:${displayProduct.width}cm`} {displayProduct.height && `H:${displayProduct.height}cm`} {displayProduct.depth && `D:${displayProduct.depth}cm`} {displayProduct.weight && `(P:${displayProduct.weight}kg)`}
+                </span>
+              </div>
             )}
           </div>
 
@@ -858,7 +1369,7 @@ function VariantModalForm({ variant, variantData, setVariantData, onSubmit, onCl
   );
 }
 
-function StockModalForm({ product, variant, stockData, setStockData, movements, onSubmit, onClose, error }) {
+function StockModalForm({ product, variant, stockData, setStockData, movements, onSubmit, onClose, onStatusUpdate, error }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content stock-modal" onClick={e => e.stopPropagation()}>
@@ -867,10 +1378,31 @@ function StockModalForm({ product, variant, stockData, setStockData, movements, 
           <strong>{product?.name}</strong>
           <span>{variant?.size || 'Talla única'} - {variant?.color || 'Color único'}</span>
           <span className="sku">SKU: {variant?.sku_variant}</span>
-          <span className="current-stock">Stock actual: <strong>{variant?.quantity_available || 0}</strong></span>
+          <span className="current-stock">Stock actual: <strong>{variant?.inventory?.quantity_available || variant?.quantity_available || 0}</strong></span>
         </div>
 
         {error && <div className="error-message">{error}</div>}
+
+        <div className="stock-status-section">
+          <h4>Estado y Ubicación</h4>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Estado del Stock</label>
+              <select value={stockData.stock_status} onChange={e => setStockData({ ...stockData, stock_status: e.target.value })}>
+                <option value="available">Disponible</option>
+                <option value="reserved">Reservado</option>
+                <option value="damaged">Dañado</option>
+                <option value="in_transit">En tránsito</option>
+                <option value="returned">Devuelto</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Ubicación en bodega</label>
+              <input type="text" value={stockData.warehouse_location} onChange={e => setStockData({ ...stockData, warehouse_location: e.target.value })} placeholder="Ej: RA-01-A1" />
+            </div>
+          </div>
+          <button type="button" className="btn-secondary" onClick={onStatusUpdate}>Actualizar Estado</button>
+        </div>
 
         <form onSubmit={onSubmit} className="stock-form">
           <div className="form-group">
@@ -911,6 +1443,127 @@ function StockModalForm({ product, variant, stockData, setStockData, movements, 
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function AttributeModalForm({ attributeData, setAttributeData, onSubmit, onClose, error }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <h2>Nuevo Atributo</h2>
+        <form onSubmit={onSubmit}>
+          {error && <div className="error-message">{error}</div>}
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Tipo</label>
+              <select value={attributeData.type} onChange={e => setAttributeData({ ...attributeData, type: e.target.value })}>
+                <option value="size">Talla</option>
+                <option value="color">Color</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Valor</label>
+              <input type="text" value={attributeData.value} onChange={e => setAttributeData({ ...attributeData, value: e.target.value })} placeholder="Ej: M, L, XL, Rojo" required />
+            </div>
+            {attributeData.type === 'color' && (
+              <div className="form-group">
+                <label>Color Hex</label>
+                <input type="color" value={attributeData.hex_code} onChange={e => setAttributeData({ ...attributeData, hex_code: e.target.value })} />
+              </div>
+            )}
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn-primary">Crear</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SupplierModalForm({ supplierData, setSupplierData, onSubmit, onClose, error }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content supplier-modal" onClick={e => e.stopPropagation()}>
+        <h2>Nuevo Proveedor</h2>
+        <form onSubmit={onSubmit}>
+          {error && <div className="error-message">{error}</div>}
+          <div className="form-grid">
+            <div className="form-group full-width">
+              <label>Nombre</label>
+              <input type="text" value={supplierData.name} onChange={e => setSupplierData({ ...supplierData, name: e.target.value })} required />
+            </div>
+            <div className="form-group">
+              <label>Nombre de contacto</label>
+              <input type="text" value={supplierData.contact_name} onChange={e => setSupplierData({ ...supplierData, contact_name: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label>Email</label>
+              <input type="email" value={supplierData.email} onChange={e => setSupplierData({ ...supplierData, email: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label>Teléfono</label>
+              <input type="text" value={supplierData.phone} onChange={e => setSupplierData({ ...supplierData, phone: e.target.value })} />
+            </div>
+            <div className="form-group full-width">
+              <label>Dirección</label>
+              <textarea value={supplierData.address} onChange={e => setSupplierData({ ...supplierData, address: e.target.value })} />
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn-primary">Crear</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function PriceBreakdownModal({ breakdown, onClose, formatCurrency }) {
+  if (!breakdown) return null;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <h2>Desglose de Precio</h2>
+        <div className="price-breakdown">
+          <div className="breakdown-item">
+            <span className="label">Precio de Costo:</span>
+            <span className="value">{formatCurrency(breakdown.cost_price)}</span>
+          </div>
+          <div className="breakdown-item">
+            <span className="label">Margen de Ganancia:</span>
+            <span className="value">{breakdown.profit_margin_percent}%</span>
+          </div>
+          <div className="breakdown-item">
+            <span className="label">Precio de Venta (sin IVA):</span>
+            <span className="value">{formatCurrency(breakdown.selling_price)}</span>
+          </div>
+          <div className="breakdown-item">
+            <span className="label">IVA ({breakdown.tax_rate * 100}%):</span>
+            <span className="value">{formatCurrency(breakdown.tax_amount)}</span>
+          </div>
+          <div className="breakdown-item total">
+            <span className="label">Precio Final:</span>
+            <span className="value">{formatCurrency(breakdown.final_price)}</span>
+          </div>
+          {breakdown.variant_price_modifier !== 0 && (
+            <div className="breakdown-item">
+              <span className="label">Modificador de Variante:</span>
+              <span className="value">{breakdown.variant_price_modifier > 0 ? '+' : ''}{formatCurrency(breakdown.variant_price_modifier)}</span>
+            </div>
+          )}
+          <div className="breakdown-item highlight">
+            <span className="label">Ganancia por unidad:</span>
+            <span className="value">{formatCurrency(breakdown.total_profit)}</span>
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cerrar</button>
+        </div>
       </div>
     </div>
   );

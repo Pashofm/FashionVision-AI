@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,11 +18,13 @@ from backend.app.config import settings, update_session_timeout
 from backend.app.database import AsyncSessionLocal, Base, engine, get_db
 from backend.app.dependencies import get_current_user, require_role
 from backend.app.models import (Cart, CartItem, CartStatus, Category,
-                                DbSession, Inventory, InventoryMovement,
+                                Session, Inventory, InventoryMovement,
                                 MovementType, Order, OrderItem, OrderStatus,
                                 PaymentMethod, PaymentQueue, Product,
                                 ProductVariant, QueuePriority, QueueStatus,
-                                Receipt, SessionStatus, User, UserRole)
+                                Receipt, SessionStatus, StockStatus, Supplier,
+                                AttributeOption, ProductAttribute, PriceHistory,
+                                User, UserRole)
 from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  CartItemCreate, CartItemResponse,
                                  CartResponse, CartStatus, CartUpdate,
@@ -36,12 +38,15 @@ from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  InventoryMovementCreate,
                                  InventoryMovementResponse, InventoryResponse,
                                  InventoryRestock, InventoryUpdate,
+                                 InventoryStatusUpdate,
                                  LoginRequest, LoginResponse,
                                  OrderCreate, OrderResponse,
                                  PaymentQueueCreate, PaymentQueueResponse,
                                  PeriodComparison, POSInitializeRequest,
                                  POSInitializeResponse, POSResultResponse,
-                                 POSStatusResponse, ProductCreate, ProductResponse,
+                                 POSStatusResponse, PriceBreakdownResponse,
+                                 PriceHistoryCreate, PriceHistoryResponse,
+                                 ProductCreate, ProductResponse,
                                  ProductUpdate, ProductVariantCreate,
                                  ProductVariantResponse, ProductVariantUpdate,
                                  ProductWithStockResponse,
@@ -49,8 +54,13 @@ from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  ReceiptResponse, RefreshTokenRequest,
                                  RefreshTokenResponse, SalesByCategory,
                                  SalesByHour, SessionCreate, SessionResponse,
+                                 SupplierCreate, SupplierResponse,
+                                 SupplierUpdate,
+                                 AttributeOptionCreate, AttributeOptionResponse,
+                                 AttributeOptionUpdate, AttributeOptionBase,
+                                 ProductAttributeCreate, ProductAttributeResponse,
                                  UserCreate, UserResponse, UserUpdate,
-                                 VariantWithInventory)
+                                 VariantWithInventory, PriceType, StockStatus)
 from backend.app.services.auth import (create_access_token,
                                        create_refresh_token,
                                        decode_refresh_token, hash_password,
@@ -426,6 +436,22 @@ async def update_category(category_id: uuid.UUID, category_data: CategoryUpdate,
 
 # ==================== PRODUCTS ====================
 
+def _calculate_price_fields(product: Product) -> dict:
+    cost = float(product.cost_price or 0)
+    margin = float(product.profit_margin or 0)
+    tax_rate = float(product.tax_rate or 0.16)
+
+    selling_price = cost * (1 + margin)
+    profit_per_unit = selling_price - cost
+    tax_amount_per_unit = selling_price * tax_rate
+
+    return {
+        "selling_price": round(selling_price, 2),
+        "profit_per_unit": round(profit_per_unit, 2),
+        "tax_amount_per_unit": round(tax_amount_per_unit, 2)
+    }
+
+
 @app.post("/api/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
     product: ProductCreate,
@@ -440,7 +466,17 @@ async def create_product(
     db.add(db_product)
     await db.flush()
     await db.refresh(db_product)
-    return db_product
+
+    price_fields = _calculate_price_fields(db_product)
+    response_data = {
+        **{k: getattr(db_product, k) for k in ['id', 'category_id', 'name', 'description', 'sku',
+          'base_price', 'cost_price', 'tax_rate', 'profit_margin', 'brand', 'supplier',
+          'barcode', 'weight', 'width', 'height', 'depth', 'min_stock_level', 'max_stock_level',
+          'is_featured', 'tags', 'yolo_class_id', 'yolo_class_name', 'images', 'is_active',
+          'created_at', 'updated_at']},
+        **price_fields
+    }
+    return ProductResponse(**response_data)
 
 
 @app.get("/api/products", response_model=List[ProductResponse])
@@ -478,7 +514,119 @@ async def get_product(product_id: uuid.UUID, db: AsyncSession = db_dependency):
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product
+
+    price_fields = _calculate_price_fields(product)
+    response_data = {
+        **{k: getattr(product, k) for k in ['id', 'category_id', 'name', 'description', 'sku',
+          'base_price', 'cost_price', 'tax_rate', 'profit_margin', 'brand', 'supplier',
+          'barcode', 'weight', 'width', 'height', 'depth', 'min_stock_level', 'max_stock_level',
+          'is_featured', 'tags', 'yolo_class_id', 'yolo_class_name', 'images', 'is_active',
+          'created_at', 'updated_at']},
+        **price_fields
+    }
+    return ProductResponse(**response_data)
+
+
+@app.get("/api/products/{product_id}/price-breakdown", response_model=PriceBreakdownResponse)
+async def get_product_price_breakdown(
+    product_id: uuid.UUID,
+    variant_id: uuid.UUID = None,
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    variant_modifier = 0.0
+    if variant_id:
+        var_result = await db.execute(
+            select(ProductVariant).where(ProductVariant.id == variant_id)
+        )
+        variant = var_result.scalar_one_or_none()
+        if variant:
+            variant_modifier = float(variant.price_modifier or 0)
+
+    cost_price = float(product.cost_price or 0)
+    profit_margin = float(product.profit_margin or 0)
+    tax_rate = float(product.tax_rate or 0.16)
+    base_price = float(product.base_price or 0)
+
+    selling_price = cost_price * (1 + profit_margin)
+    tax_amount = selling_price * tax_rate
+    final_price = selling_price + variant_modifier + tax_amount
+    total_profit = selling_price - cost_price
+
+    return PriceBreakdownResponse(
+        product_id=product.id,
+        cost_price=cost_price,
+        profit_margin=profit_margin,
+        profit_margin_percent=round(profit_margin * 100, 2),
+        base_price=base_price,
+        tax_rate=tax_rate,
+        tax_amount=round(tax_amount, 2),
+        selling_price=round(selling_price, 2),
+        total_profit=round(total_profit, 2),
+        variant_price_modifier=variant_modifier,
+        final_price=round(final_price, 2)
+    )
+
+
+@app.post("/api/products/{product_id}/update-prices")
+async def update_product_prices(
+    product_id: uuid.UUID,
+    cost_price: float = None,
+    profit_margin: float = None,
+    tax_rate: float = None,
+    reason: str = "Actualización de precios",
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if cost_price is not None:
+        price_hist = PriceHistory(
+            product_id=product.id,
+            price_type="cost",
+            old_price=float(product.cost_price or 0),
+            new_price=cost_price,
+            changed_by=current_user.id,
+            reason=reason
+        )
+        db.add(price_hist)
+        product.cost_price = cost_price
+
+    if profit_margin is not None:
+        price_hist = PriceHistory(
+            product_id=product.id,
+            price_type="base",
+            old_price=float(product.profit_margin or 0),
+            new_price=profit_margin,
+            changed_by=current_user.id,
+            reason=reason
+        )
+        db.add(price_hist)
+        product.profit_margin = profit_margin
+
+    if tax_rate is not None:
+        price_hist = PriceHistory(
+            product_id=product.id,
+            price_type="special",
+            old_price=float(product.tax_rate or 0),
+            new_price=tax_rate,
+            changed_by=current_user.id,
+            reason=reason
+        )
+        db.add(price_hist)
+        product.tax_rate = tax_rate
+
+    await db.flush()
+    await db.refresh(product)
+
+    return {"message": "Prices updated", "product_id": str(product.id), **(_calculate_price_fields(product))}
 
 
 @app.put("/api/products/{product_id}", response_model=ProductResponse)
@@ -499,7 +647,17 @@ async def update_product(
 
     await db.flush()
     await db.refresh(product)
-    return product
+
+    price_fields = _calculate_price_fields(product)
+    response_data = {
+        **{k: getattr(product, k) for k in ['id', 'category_id', 'name', 'description', 'sku',
+          'base_price', 'cost_price', 'tax_rate', 'profit_margin', 'brand', 'supplier',
+          'barcode', 'weight', 'width', 'height', 'depth', 'min_stock_level', 'max_stock_level',
+          'is_featured', 'tags', 'yolo_class_id', 'yolo_class_name', 'images', 'is_active',
+          'created_at', 'updated_at']},
+        **price_fields
+    }
+    return ProductResponse(**response_data)
 
 
 @app.delete("/api/products/{product_id}")
@@ -512,9 +670,56 @@ async def delete_product(
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
+    # Get all variant IDs for this product
+    variant_result = await db.execute(
+        select(ProductVariant.id).where(ProductVariant.product_id == product_id)
+    )
+    variant_ids = [row[0] for row in variant_result.fetchall()]
+
+    # Check for pending orders containing this product or its variants
+    if variant_ids:
+        order_check = await db.execute(
+            select(OrderItem).join(Order).where(
+                Order.status == OrderStatus.pending,
+                OrderItem.product_variant_id.in_(variant_ids)
+            )
+        )
+        if order_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar el producto: tiene variantes en pedidos pendientes"
+            )
+
+    # Check for pending orders directly referencing this product
+    order_check_direct = await db.execute(
+        select(OrderItem).join(Order).where(
+            Order.status == OrderStatus.pending,
+            OrderItem.product_id == product_id
+        )
+    )
+    if order_check_direct.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar el producto: está en pedidos pendientes"
+        )
+
+    # Delete cart items referencing this product (they are just shopping cart entries)
+    await db.execute(delete(CartItem).where(CartItem.product_id == product_id))
+
+    # Delete cart items referencing this product's variants
+    if variant_ids:
+        await db.execute(
+            delete(CartItem).where(CartItem.product_variant_id.in_(variant_ids))
+        )
+
+    # Delete inventory records for this product's variants
+    if variant_ids:
+        await db.execute(delete(Inventory).where(Inventory.product_variant_id.in_(variant_ids)))
+
+    # Delete the product (variants cascade delete automatically)
     await db.delete(product)
-    return {"message": "Product deleted"}
+    return {"message": "Producto eliminado"}
 
 
 @app.get("/api/products/by-yolo/{yolo_class_name}", response_model=ProductWithVariantsResponse)
@@ -811,6 +1016,53 @@ async def get_inventory(db: AsyncSession = db_dependency):
     return result.scalars().all()
 
 
+@app.get("/api/inventory/low-stock", response_model=List[InventoryLowStockResponse])
+async def get_low_stock_variants(db: AsyncSession = db_dependency):
+    result = await db.execute(
+        select(
+            ProductVariant.id,
+            ProductVariant.product_id,
+            Product.name,
+            Category.name,
+            Product.sku,
+            ProductVariant.sku_variant,
+            ProductVariant.size,
+            ProductVariant.color,
+            Inventory.quantity_available,
+            Inventory.quantity_reserved,
+            Inventory.low_stock_threshold
+        )
+        .select_from(Inventory)
+        .join(ProductVariant)
+        .join(Product)
+        .join(Category)
+        .where(Inventory.quantity_available <= Inventory.low_stock_threshold)
+        .order_by(Inventory.quantity_available.asc())
+    )
+
+    response = []
+    for row in result:
+        qty = row[8] or 0
+        threshold = row[10] or 5
+        status = 'out_of_stock' if qty == 0 else 'low_stock'
+
+        response.append(InventoryLowStockResponse(
+            variant_id=row[0],
+            product_id=row[1],
+            product_name=row[2],
+            category_name=row[3],
+            sku=row[4],
+            sku_variant=row[5],
+            size=row[6],
+            color=row[7],
+            quantity_available=qty,
+            quantity_reserved=row[9] or 0,
+            low_stock_threshold=threshold,
+            status=status
+        ))
+    return response
+
+
 @app.get("/api/inventory/{variant_id}", response_model=InventoryResponse)
 async def get_inventory_by_variant(variant_id: uuid.UUID, db: AsyncSession = db_dependency):
     result = await db.execute(select(Inventory).where(Inventory.product_variant_id == variant_id))
@@ -948,53 +1200,6 @@ async def restock_inventory(
     return db_movement
 
 
-@app.get("/api/inventory/low-stock", response_model=List[InventoryLowStockResponse])
-async def get_low_stock_variants(db: AsyncSession = db_dependency):
-    result = await db.execute(
-        select(
-            ProductVariant.id,
-            ProductVariant.product_id,
-            Product.name,
-            Category.name,
-            Product.sku,
-            ProductVariant.sku_variant,
-            ProductVariant.size,
-            ProductVariant.color,
-            Inventory.quantity_available,
-            Inventory.quantity_reserved,
-            Inventory.low_stock_threshold
-        )
-        .select_from(Inventory)
-        .join(ProductVariant)
-        .join(Product)
-        .join(Category)
-        .where(Inventory.quantity_available <= Inventory.low_stock_threshold)
-        .order_by(Inventory.quantity_available.asc())
-    )
-
-    response = []
-    for row in result:
-        qty = row[8] or 0
-        threshold = row[9] or 5
-        status = 'out_of_stock' if qty == 0 else 'low_stock'
-
-        response.append(InventoryLowStockResponse(
-            variant_id=row[0],
-            product_id=row[1],
-            product_name=row[2],
-            category_name=row[3],
-            sku=row[4],
-            sku_variant=row[5],
-            size=row[6],
-            color=row[7],
-            quantity_available=qty,
-            quantity_reserved=row[9] or 0,
-            low_stock_threshold=threshold,
-            status=status
-        ))
-    return response
-
-
 @app.put("/api/inventory/{variant_id}/threshold")
 async def update_stock_threshold(
     variant_id: uuid.UUID,
@@ -1015,11 +1220,290 @@ async def update_stock_threshold(
     return {"message": "Threshold updated", "threshold": threshold}
 
 
+@app.put("/api/inventory/{variant_id}/status")
+async def update_inventory_status(
+    variant_id: uuid.UUID,
+    status_data: InventoryStatusUpdate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Inventory).where(Inventory.product_variant_id == variant_id))
+    inventory = result.scalar_one_or_none()
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+
+    inventory.stock_status = status_data.stock_status
+    if status_data.warehouse_location is not None:
+        inventory.warehouse_location = status_data.warehouse_location
+    inventory.last_updated = datetime.utcnow()
+    inventory.updated_by = current_user.id
+    await db.flush()
+
+    return {
+        "message": "Status updated",
+        "variant_id": str(variant_id),
+        "stock_status": status_data.stock_status.value,
+        "warehouse_location": inventory.warehouse_location
+    }
+
+
+@app.get("/api/inventory/warehouse/{location}", response_model=List[InventoryResponse])
+async def get_inventory_by_warehouse(
+    location: str,
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(
+        select(Inventory)
+        .where(Inventory.warehouse_location == location)
+        .options(selectinload(Inventory.variant).selectinload(ProductVariant.product))
+    )
+    return result.scalars().all()
+
+
+@app.get("/api/inventory/by-status", response_model=List[InventoryResponse])
+async def get_inventory_by_status(
+    status: StockStatus,
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(
+        select(Inventory)
+        .where(Inventory.stock_status == status)
+        .options(selectinload(Inventory.variant).selectinload(ProductVariant.product))
+    )
+    return result.scalars().all()
+
+
+# ==================== SUPPLIERS ====================
+
+@app.get("/api/suppliers", response_model=List[SupplierResponse])
+async def get_suppliers(
+    is_active: bool = None,
+    db: AsyncSession = db_dependency
+):
+    query = select(Supplier)
+    if is_active is not None:
+        query = query.where(Supplier.is_active == is_active)
+    result = await db.execute(query.order_by(Supplier.name))
+    return result.scalars().all()
+
+
+@app.post("/api/suppliers", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
+async def create_supplier(
+    supplier: SupplierCreate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    db_supplier = Supplier(**supplier.model_dump())
+    db.add(db_supplier)
+    await db.flush()
+    await db.refresh(db_supplier)
+    return db_supplier
+
+
+@app.put("/api/suppliers/{supplier_id}", response_model=SupplierResponse)
+async def update_supplier(
+    supplier_id: uuid.UUID,
+    supplier_data: SupplierUpdate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
+    supplier = result.scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    update_data = supplier_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(supplier, key, value)
+
+    await db.flush()
+    await db.refresh(supplier)
+    return supplier
+
+
+@app.delete("/api/suppliers/{supplier_id}")
+async def delete_supplier(
+    supplier_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
+    supplier = result.scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    supplier.is_active = False
+    await db.flush()
+    return {"message": "Supplier deactivated"}
+
+
+# ==================== ATTRIBUTE OPTIONS ====================
+
+@app.get("/api/attributes", response_model=List[AttributeOptionResponse])
+async def get_attributes(
+    type: str = None,
+    db: AsyncSession = db_dependency
+):
+    query = select(AttributeOption).where(AttributeOption.is_active == True)
+    if type:
+        query = query.where(AttributeOption.type == type)
+    result = await db.execute(query.order_by(AttributeOption.sort_order, AttributeOption.value))
+    return result.scalars().all()
+
+
+@app.post("/api/attributes", response_model=AttributeOptionResponse, status_code=status.HTTP_201_CREATED)
+async def create_attribute(
+    attribute: AttributeOptionCreate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(
+        select(AttributeOption).where(
+            AttributeOption.type == attribute.type,
+            AttributeOption.value == attribute.value
+        )
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Attribute already exists")
+
+    db_attr = AttributeOption(**attribute.model_dump())
+    db.add(db_attr)
+    await db.flush()
+    await db.refresh(db_attr)
+    return db_attr
+
+
+@app.put("/api/attributes/{attribute_id}", response_model=AttributeOptionResponse)
+async def update_attribute(
+    attribute_id: uuid.UUID,
+    attribute_data: AttributeOptionUpdate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(AttributeOption).where(AttributeOption.id == attribute_id))
+    attr = result.scalar_one_or_none()
+    if not attr:
+        raise HTTPException(status_code=404, detail="Attribute not found")
+
+    update_data = attribute_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(attr, key, value)
+
+    await db.flush()
+    await db.refresh(attr)
+    return attr
+
+
+@app.delete("/api/attributes/{attribute_id}")
+async def delete_attribute(
+    attribute_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(AttributeOption).where(AttributeOption.id == attribute_id))
+    attr = result.scalar_one_or_none()
+    if not attr:
+        raise HTTPException(status_code=404, detail="Attribute not found")
+
+    attr.is_active = False
+    await db.flush()
+    return {"message": "Attribute deactivated"}
+
+
+@app.get("/api/products/{product_id}/attributes", response_model=List[AttributeOptionResponse])
+async def get_product_attributes(
+    product_id: uuid.UUID,
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(
+        select(AttributeOption)
+        .join(ProductAttribute, ProductAttribute.attribute_option_id == AttributeOption.id)
+        .where(ProductAttribute.product_id == product_id)
+        .where(AttributeOption.is_active == True)
+    )
+    return result.scalars().all()
+
+
+@app.post("/api/products/{product_id}/attributes")
+async def add_product_attributes(
+    product_id: uuid.UUID,
+    attribute_ids: List[uuid.UUID],
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    added = []
+    for attr_id in attribute_ids:
+        result = await db.execute(select(AttributeOption).where(AttributeOption.id == attr_id))
+        attr = result.scalar_one_or_none()
+        if not attr:
+            continue
+
+        existing = await db.execute(
+            select(ProductAttribute).where(
+                ProductAttribute.product_id == product_id,
+                ProductAttribute.attribute_option_id == attr_id
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+
+        pa = ProductAttribute(product_id=product_id, attribute_option_id=attr_id)
+        db.add(pa)
+        added.append(attr_id)
+
+    await db.flush()
+    return {"message": f"Added {len(added)} attributes", "added": [str(a) for a in added]}
+
+
+@app.delete("/api/products/{product_id}/attributes/{attribute_id}")
+async def remove_product_attribute(
+    product_id: uuid.UUID,
+    attribute_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(
+        select(ProductAttribute).where(
+            ProductAttribute.product_id == product_id,
+            ProductAttribute.attribute_option_id == attribute_id
+        )
+    )
+    pa = result.scalar_one_or_none()
+    if not pa:
+        raise HTTPException(status_code=404, detail="Product attribute not found")
+
+    await db.delete(pa)
+    await db.flush()
+    return {"message": "Attribute removed from product"}
+
+
+# ==================== PRICE HISTORY ====================
+
+@app.get("/api/products/{product_id}/price-history", response_model=List[PriceHistoryResponse])
+async def get_product_price_history(
+    product_id: uuid.UUID,
+    limit: int = 50,
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(
+        select(PriceHistory)
+        .where(PriceHistory.product_id == product_id)
+        .order_by(PriceHistory.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
 # ==================== SESSIONS ====================
 
 @app.post("/api/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_session(session: SessionCreate, db: AsyncSession = db_dependency):
-    db_session = DbSession(station_id=session.station_id, client_user_id=session.client_user_id)
+    db_session = Session(station_id=session.station_id, client_user_id=session.client_user_id)
     db.add(db_session)
     await db.flush()
     await db.refresh(db_session)
@@ -1028,7 +1512,7 @@ async def create_session(session: SessionCreate, db: AsyncSession = db_dependenc
 
 @app.get("/api/sessions", response_model=List[SessionResponse])
 async def get_sessions(db: AsyncSession = db_dependency):
-    result = await db.execute(select(DbSession))
+    result = await db.execute(select(Session))
     return result.scalars().all()
 
 
@@ -1046,7 +1530,7 @@ async def cleanup_sessions(db: AsyncSession = db_dependency):
             .where(
                 Cart.status == CartStatus.building,
                 Cart.session_id.in_(
-                    select(DbSession.id).where(DbSession.status != SessionStatus.active)
+                    select(Session.id).where(Session.status != SessionStatus.active)
                 )
             )
             .values(status=CartStatus.cancelled)

@@ -65,6 +65,20 @@ class SessionStatus(str, Enum):
     abandoned = "abandoned"
 
 
+class StockStatus(str, Enum):
+    available = "available"
+    reserved = "reserved"
+    damaged = "damaged"
+    in_transit = "in_transit"
+    returned = "returned"
+
+
+class PriceType(str, Enum):
+    cost = "cost"
+    base = "base"
+    special = "special"
+
+
 class UserBase(BaseModel):
     name: str
     email: str
@@ -147,13 +161,28 @@ class ProductBase(BaseModel):
     base_price: float
     description: Optional[str] = None
     category_id: uuid.UUID
+    cost_price: float = 0
+    tax_rate: float = 0.16
+    profit_margin: float = 0
+    brand: Optional[str] = None
+    supplier: Optional[str] = None
+    barcode: Optional[str] = None
+    weight: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    depth: Optional[float] = None
+    min_stock_level: int = 0
+    max_stock_level: Optional[int] = None
+    is_featured: bool = False
+    tags: List[str] = []
     yolo_class_id: Optional[int] = None
     yolo_class_name: Optional[str] = None
     images: List[str] = []
 
 
 class ProductCreate(ProductBase):
-    pass
+    yolo_class_id: Optional[int] = None
+    yolo_class_name: Optional[str] = None
 
 
 class ProductUpdate(BaseModel):
@@ -161,6 +190,20 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     sku: Optional[str] = None
     base_price: Optional[float] = None
+    cost_price: Optional[float] = None
+    tax_rate: Optional[float] = None
+    profit_margin: Optional[float] = None
+    brand: Optional[str] = None
+    supplier: Optional[str] = None
+    barcode: Optional[str] = None
+    weight: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    depth: Optional[float] = None
+    min_stock_level: Optional[int] = None
+    max_stock_level: Optional[int] = None
+    is_featured: Optional[bool] = None
+    tags: Optional[List[str]] = None
     category_id: Optional[uuid.UUID] = None
     yolo_class_id: Optional[int] = None
     yolo_class_name: Optional[str] = None
@@ -173,6 +216,9 @@ class ProductResponse(ProductBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    selling_price: Optional[float] = None
+    profit_per_unit: Optional[float] = None
+    tax_amount_per_unit: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -190,6 +236,8 @@ class InventoryBase(BaseModel):
     quantity_available: int = 0
     quantity_reserved: int = 0
     low_stock_threshold: int = 5
+    stock_status: StockStatus = StockStatus.available
+    warehouse_location: Optional[str] = None
 
 
 class InventoryCreate(InventoryBase):
@@ -200,6 +248,8 @@ class InventoryUpdate(BaseModel):
     quantity_available: Optional[int] = None
     quantity_reserved: Optional[int] = None
     low_stock_threshold: Optional[int] = None
+    stock_status: Optional[StockStatus] = None
+    warehouse_location: Optional[str] = None
 
 
 class InventoryResponse(InventoryBase):
@@ -673,3 +723,123 @@ class POSResultResponse(BaseModel):
     error_message: Optional[str] = None
     provider_reference: Optional[str] = None
     timestamp: datetime
+
+
+class SupplierBase(BaseModel):
+    name: str
+    contact_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+
+class SupplierCreate(SupplierBase):
+    pass
+
+
+class SupplierUpdate(BaseModel):
+    name: Optional[str] = None
+    contact_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SupplierResponse(SupplierBase):
+    id: uuid.UUID
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AttributeOptionBase(BaseModel):
+    type: str
+    value: str
+    hex_code: Optional[str] = None
+    sort_order: int = 0
+
+
+class AttributeOptionCreate(AttributeOptionBase):
+    pass
+
+
+class AttributeOptionUpdate(BaseModel):
+    type: Optional[str] = None
+    value: Optional[str] = None
+    hex_code: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class AttributeOptionResponse(AttributeOptionBase):
+    id: uuid.UUID
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProductAttributeBase(BaseModel):
+    product_id: uuid.UUID
+    attribute_option_id: uuid.UUID
+
+
+class ProductAttributeCreate(ProductAttributeBase):
+    pass
+
+
+class ProductAttributeResponse(BaseModel):
+    id: uuid.UUID
+    product_id: uuid.UUID
+    attribute_option: AttributeOptionResponse
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PriceHistoryBase(BaseModel):
+    product_id: uuid.UUID
+    price_type: PriceType
+    old_price: Optional[float] = None
+    new_price: float
+    reason: Optional[str] = None
+
+
+class PriceHistoryCreate(PriceHistoryBase):
+    pass
+
+
+class PriceHistoryResponse(PriceHistoryBase):
+    id: uuid.UUID
+    changed_by: Optional[uuid.UUID]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PriceBreakdownResponse(BaseModel):
+    product_id: uuid.UUID
+    cost_price: float
+    profit_margin: float
+    profit_margin_percent: float
+    base_price: float
+    tax_rate: float
+    tax_amount: float
+    selling_price: float
+    total_profit: float
+    variant_price_modifier: float = 0
+    final_price: float
+
+    class Config:
+        from_attributes = True
+
+
+class InventoryStatusUpdate(BaseModel):
+    stock_status: StockStatus
+    warehouse_location: Optional[str] = None
