@@ -6,6 +6,11 @@ from typing import Optional, List
 from enum import Enum
 
 
+def get_current_datetime() -> datetime:
+    from backend.app.services.timezone_service import get_current_utc_time
+    return get_current_utc_time()
+
+
 class UserRole(str, Enum):
     admin = "admin"
     cashier = "cashier"
@@ -226,6 +231,76 @@ class InventoryMovementResponse(InventoryMovementBase):
 
     class Config:
         from_attributes = True
+
+
+class InventoryAdjust(BaseModel):
+    quantity_change: int
+    reason: str
+    reference_id: Optional[uuid.UUID] = None
+
+
+class InventoryRestock(BaseModel):
+    quantity: int
+    notes: Optional[str] = None
+    reference_id: Optional[uuid.UUID] = None
+
+
+class VariantWithInventory(BaseModel):
+    id: uuid.UUID
+    product_id: uuid.UUID
+    size: Optional[str]
+    color: Optional[str]
+    color_hex: Optional[str]
+    sku_variant: str
+    price_modifier: float
+    is_active: bool
+    created_at: datetime
+    inventory: Optional[InventoryResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProductWithStockResponse(ProductResponse):
+    variants: List[VariantWithInventory] = []
+    total_stock: int = 0
+    has_low_stock: bool = False
+    has_out_of_stock: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class InventoryLowStockResponse(BaseModel):
+    variant_id: uuid.UUID
+    product_id: uuid.UUID
+    product_name: str
+    category_name: str
+    sku: str
+    sku_variant: str
+    size: Optional[str]
+    color: Optional[str]
+    quantity_available: int
+    quantity_reserved: int
+    low_stock_threshold: int
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class ProductVariantUpdate(BaseModel):
+    size: Optional[str] = None
+    color: Optional[str] = None
+    color_hex: Optional[str] = None
+    price_modifier: Optional[float] = None
+    is_active: Optional[bool] = None
+
+
+class ImageUploadResponse(BaseModel):
+    success: bool
+    public_id: str
+    url: str
 
 
 class SessionBase(BaseModel):
@@ -477,6 +552,51 @@ class ActivePaymentQueueItem(BaseModel):
     estimated_total: float
 
 
+class SalesByHour(BaseModel):
+    hour: int
+    total_orders: int
+    total_revenue: float
+
+
+class SalesByCategory(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    total_quantity_sold: int
+    total_revenue: float
+    order_count: int
+
+
+class InventoryAlert(BaseModel):
+    variant_id: uuid.UUID
+    product_id: uuid.UUID
+    product_name: str
+    variant_description: str
+    sku_variant: str
+    quantity_available: int
+    quantity_reserved: int
+    low_stock_threshold: int
+    status: str
+
+
+class PeriodComparison(BaseModel):
+    current_period: float
+    previous_period: float
+    absolute_change: float
+    percentage_change: float
+    trend: str
+
+
+class DashboardSummary(BaseModel):
+    today: DashboardToday
+    weekly_sales: float
+    monthly_sales: float
+    comparison: PeriodComparison
+    sales_by_hour: List[SalesByHour]
+    sales_by_category: List[SalesByCategory]
+    top_products: List[DashboardTopProduct]
+    inventory_alerts: List[InventoryAlert]
+
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -484,5 +604,72 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+    expires_in: int
     user: UserResponse
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class RefreshTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class TokenPayload(BaseModel):
+    sub: str
+    exp: int
+    type: str = "access"
+
+
+class POSPaymentStatus(str, Enum):
+    PENDING = "pending"
+    WAITING_CARD = "waiting_card"
+    PROCESSING = "processing"
+    APPROVED = "approved"
+    DECLINED = "declined"
+    CANCELLED = "cancelled"
+    TIMEOUT = "timeout"
+
+
+class POSInitializeRequest(BaseModel):
+    cart_id: uuid.UUID
+    amount: float
+    currency: str = "MXN"
+
+
+class POSInitializeResponse(BaseModel):
+    success: bool
+    transaction_id: str
+    status: POSPaymentStatus
+    amount: float
+    message: Optional[str] = None
+
+
+class POSStatusResponse(BaseModel):
+    success: bool
+    transaction_id: str
+    status: POSPaymentStatus
+    amount: Optional[float] = None
+    card_last_four: Optional[str] = None
+    authorization_code: Optional[str] = None
+    error_message: Optional[str] = None
+    provider_reference: Optional[str] = None
+    timestamp: Optional[datetime] = None
+
+
+class POSResultResponse(BaseModel):
+    success: bool
+    transaction_id: str
+    status: POSPaymentStatus
+    amount: float
+    card_last_four: Optional[str] = None
+    authorization_code: Optional[str] = None
+    error_message: Optional[str] = None
+    provider_reference: Optional[str] = None
+    timestamp: datetime

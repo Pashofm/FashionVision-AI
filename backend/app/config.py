@@ -7,7 +7,9 @@ class Settings(BaseSettings):
     DATABASE_URL_SYNC: str = "postgresql://fashionvision_ai_user:fashionvision_ai_pass@localhost:5432/fashionvision_ai"
     SECRET_KEY: str = "dev_secret_change_in_production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    SESSION_TIMEOUT_MINUTES: int = 30
     ENVIRONMENT: str = "development"
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
     MEDIA_DIR: str = "/app/media"
@@ -15,6 +17,8 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
+    CLIENT_TIMEZONE_HEADER: str = "X-Timezone"
+    DEFAULT_TIMEZONE: str = "America/Mazatlan"
 
     @property
     def allowed_origins_list(self) -> list[str]:
@@ -26,9 +30,9 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-@lru_cache()
-def get_settings() -> Settings:
-    return Settings()
+settings = Settings()
 
 
-settings = get_settings()
+def update_session_timeout(minutes: int):
+    global settings
+    settings.SESSION_TIMEOUT_MINUTES = minutes

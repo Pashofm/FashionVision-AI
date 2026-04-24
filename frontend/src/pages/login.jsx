@@ -17,9 +17,7 @@ const Login = () => {
 
     try {
       const result = await apiLogin(email, password);
-      localStorage.setItem('token', result.access_token);
-      localStorage.setItem('user', JSON.stringify(result.user));
-      
+
       const role = result.user.role;
       if (role === 'admin') {
         navigate('/dashboard');

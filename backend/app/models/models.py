@@ -171,6 +171,7 @@ class Session(Base):
     station_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     status: Mapped[SessionStatus] = mapped_column(Enum(SessionStatus, native_enum=False), default=SessionStatus.active)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate=lambda: datetime.now())
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     carts = relationship("Cart", back_populates="session")

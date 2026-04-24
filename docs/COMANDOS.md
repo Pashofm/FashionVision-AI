@@ -692,3 +692,4 @@ curl http://localhost:5173
 
 - [Guía de Instalación](./GUIA_INSTALACION.md)
 - [Guía de pgAdmin](./GUIAS_PGADMIN.md)
+- [Sistema de Sesiones y Carritos](./SESIONES_Y_CARRITOS.md)
