@@ -140,7 +140,12 @@ async def root():
 
 @app.get("/health")
 async def health_check(db: AsyncSession = db_dependency):
-    return {"status": "healthy", "database": "connected"}
+    try:
+        model = get_model()
+        model_loaded = model is not None
+    except Exception:
+        model_loaded = False
+    return {"status": "healthy", "database": "connected", "model_loaded": model_loaded}
 
 
 # ==================== YOLO DETECTION ====================
