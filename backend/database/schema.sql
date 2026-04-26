@@ -93,6 +93,29 @@ COMMENT ON TABLE categories IS 'Categorías de ropa: Camisas, Pantalones, Vestid
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
+--  TABLA: store_config — Configuración de la tienda (para receipts, invoices)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE store_config (
+    id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    store_name             VARCHAR(200)     NOT NULL DEFAULT 'FashionVision AI',
+    legal_name              VARCHAR(255),
+    address                 TEXT,
+    phone                   VARCHAR(20),
+    email                   VARCHAR(255),
+    tax_id                  VARCHAR(50),              -- RFC en México
+    website                 VARCHAR(255),
+    default_currency        VARCHAR(3)       NOT NULL DEFAULT 'MXN',
+    default_payment_method  payment_method  NOT NULL DEFAULT 'cash',
+    receipt_footer          TEXT,
+    is_active               BOOLEAN         NOT NULL DEFAULT TRUE,
+    updated_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE store_config IS 'Configuración general de la tienda para receipts e invoices';
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
 --  TABLA: suppliers — Proveedores de mercancía
 -- ─────────────────────────────────────────────────────────────────────────────
 

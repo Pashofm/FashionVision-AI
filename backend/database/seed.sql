@@ -105,3 +105,103 @@ SELECT
     '[{"product_id": "p0000001-0000-0000-0000-000000000001", "name": "Camisa Oxford Azul", "quantity": 5, "revenue": 2250}]'::JSONB AS top_products
 FROM generate_series(0, 6) AS n
 ON CONFLICT DO NOTHING;
+
+-- ─── Proveedores ──────────────────────────────────────────────────────────────
+INSERT INTO suppliers (id, name, contact_name, email, phone, address, is_active) VALUES
+    ('s0000001-0000-0000-0000-000000000001', 'Textiles del Norte', 'Carlos Mendoza', 'carlos@textilesnorte.com', '+52 81 1234 5678', 'Av. Industrial 1500, Monterrey, NL', TRUE),
+    ('s0000001-0000-0000-0000-000000000002', 'Moda Casual SA', 'Laura García', 'laura@modacual.com', '+52 33 9876 5432', 'Calle Reforma 500, Guadalajara, Jal', TRUE),
+    ('s0000001-0000-0000-0000-000000000003', 'Accesorios Premium', 'Roberto Sánchez', 'roberto@accesoriospremium.com', '+52 55 5555 5555', 'Av. Insurgentes 2000, CDMX', TRUE)
+ON CONFLICT DO NOTHING;
+
+-- ─── Opciones de atributos (tallas y colores) ─────────────────────────────────
+INSERT INTO attribute_options (id, type, value, hex_code, sort_order, is_active) VALUES
+    -- Tallas
+    ('ao000001-0000-0000-0000-000000000001', 'size', 'XS', NULL, 1, TRUE),
+    ('ao000001-0000-0000-0000-000000000002', 'size', 'S',  NULL, 2, TRUE),
+    ('ao000001-0000-0000-0000-000000000003', 'size', 'M',  NULL, 3, TRUE),
+    ('ao000001-0000-0000-0000-000000000004', 'size', 'L',  NULL, 4, TRUE),
+    ('ao000001-0000-0000-0000-000000000005', 'size', 'XL', NULL, 5, TRUE),
+    ('ao000001-0000-0000-0000-000000000006', 'size', 'XXL',NULL, 6, TRUE),
+    ('ao000001-0000-0000-0000-000000000007', 'size', '28', NULL, 7, TRUE),
+    ('ao000001-0000-0000-0000-000000000008', 'size', '30', NULL, 8, TRUE),
+    ('ao000001-0000-0000-0000-000000000009', 'size', '32', NULL, 9, TRUE),
+    ('ao000001-0000-0000-0000-000000000010', 'size', '34', NULL, 10, TRUE),
+    ('ao000001-0000-0000-0000-000000000011', 'size', '36', NULL, 11, TRUE),
+    -- Colores
+    ('ao000001-0000-0000-0000-000000000012', 'color', 'Azul Marino', '#1B2A4A', 1, TRUE),
+    ('ao000001-0000-0000-0000-000000000013', 'color', 'Negro', '#1C1C1C', 2, TRUE),
+    ('ao000001-0000-0000-0000-000000000014', 'color', 'Blanco', '#FFFFFF', 3, TRUE),
+    ('ao000001-0000-0000-0000-000000000015', 'color', 'Gris', '#6B7280', 4, TRUE),
+    ('ao000001-0000-0000-0000-000000000016', 'color', 'Rojo', '#DC2626', 5, TRUE),
+    ('ao000001-0000-0000-0000-000000000017', 'color', 'Azul', '#3B82F6', 6, TRUE),
+    ('ao000001-0000-0000-0000-000000000018', 'color', 'Verde', '#22C55E', 7, TRUE),
+    ('ao000001-0000-0000-0000-000000000019', 'color', 'Multicolor', '#FF6B9D', 8, TRUE)
+ON CONFLICT DO NOTHING;
+
+-- ─── Atributos por producto ────────────────────────────────────────────────────
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000001', id FROM attribute_options WHERE value IN ('S', 'M', 'L', 'XL') AND type = 'size'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000001', id FROM attribute_options WHERE value = 'Azul Marino' AND type = 'color'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000002', id FROM attribute_options WHERE value IN ('28', '30', '32') AND type = 'size'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000002', id FROM attribute_options WHERE value = 'Negro' AND type = 'color'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000003', id FROM attribute_options WHERE value IN ('S', 'M') AND type = 'size'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000003', id FROM attribute_options WHERE value = 'Multicolor' AND type = 'color'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000004', id FROM attribute_options WHERE value IN ('S', 'M', 'L') AND type = 'size'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000004', id FROM attribute_options WHERE value = 'Blanco' AND type = 'color'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000005', id FROM attribute_options WHERE value IN ('M', 'L') AND type = 'size'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO product_attributes (product_id, attribute_option_id)
+SELECT 'p0000001-0000-0000-0000-000000000005', id FROM attribute_options WHERE value = 'Negro' AND type = 'color'
+ON CONFLICT DO NOTHING;
+
+-- ─── Configuración de tienda (para receipts e invoices) ─────────────────────
+INSERT INTO store_config (id, store_name, legal_name, address, phone, email, tax_id, receipt_footer, default_payment_method) VALUES
+    ('c0000000-0000-0000-0000-000000000001',
+     'FashionVision AI',
+     'FashionVision AI S.A. de C.V.',
+     'Av. Industrial 1500, Col. Centro, Monterrey, NL, CP 64000',
+     '+52 81 1234 5678',
+     'contacto@fashionvision.ai',
+     'FVA-123456789',
+     '¡Gracias por su compra! Vuelva pronto.',
+     'cash')
+ON CONFLICT DO NOTHING;
+
+-- ─── Movimientos iniciales de inventario (explicar origen del stock) ─────────
+INSERT INTO inventory_movements (product_variant_id, movement_type, quantity_change, quantity_before, quantity_after, notes, created_by)
+SELECT
+    pv.id,
+    'restock'::movement_type,
+    i.quantity_available,
+    0,
+    i.quantity_available,
+    'Stock inicial cargado desde seed',
+    'a0000001-0000-0000-0000-000000000001'::UUID
+FROM product_variants pv
+JOIN inventory i ON i.product_variant_id = pv.id
+ON CONFLICT DO NOTHING;

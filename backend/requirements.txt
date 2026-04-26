@@ -11,7 +11,7 @@ opencv-python==4.10.0.84
 pillow==10.4.0
 python-multipart==0.0.12
 passlib==1.7.4
-bcrypt==4.2.0
+bcrypt<5.0.0
 alembic==1.13.3
 python-jose[cryptography]==3.3.0
 cloudinary==1.44.2

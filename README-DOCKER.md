@@ -285,7 +285,7 @@ docker compose up -d backend
 
 ```bash
 # Conectar a PostgreSQL
-docker exec -it fashionvision_db psql -U fashionvision_user -d fashionvision_ai
+docker exec -it fashionvision_db psql -U fashionvision_ai_user -d fashionvision_ai
 
 # Ver tablas
 \dt
@@ -364,15 +364,16 @@ docker compose up -d
 
 ### Problema: YOLO model not found
 
-**Causa:** El modelo no se copió correctamente.
+**Causa:** El volumen `model_files` está vacío o el modelo no se copió en el build.
 
 **Solución:**
 ```bash
-# Verificar que el volumen tiene el modelo
+# El modelo se copia durante el build. Verificar que existe:
 docker exec fashionvision_backend ls -la /app/models/
 
-# Si está vacío, copiar manualmente
-docker cp backend/models/best.pt fashionvision_backend:/app/models/
+# Si está vacío, hacer rebuild de la imagen:
+docker compose build backend
+docker compose up -d backend
 ```
 
 ### Problema: CORS errors en el navegador
@@ -399,6 +400,25 @@ Cambiar puerto en `.env`:
 ```env
 BACKEND_HOST_PORT=8001
 FRONTEND_HOST_PORT=8080
+```
+
+---
+
+### Problema: Credenciales de DB no funcionan
+
+**Causa:** Las credenciales en `.env` no coinciden con las esperadas por PostgreSQL.
+
+**Solución:**
+Verificar que `.env` usa las credenciales correctas:
+```env
+POSTGRES_USER=fashionvision_ai_user
+POSTGRES_PASSWORD=fashionvision_ai_pass
+```
+
+Si ya se creó el volumen con otras credenciales, eliminar y recrear:
+```bash
+docker compose down -v
+docker compose up -d
 ```
 
 ---
@@ -473,6 +493,61 @@ FashionVision-AI/
 | postgres_data | Docker managed | /var/lib/postgresql/data | Datos PostgreSQL |
 | media_files | Docker managed | /app/media | Archivos subidos |
 | model_files | Docker managed | /app/models:ro | Modelo YOLO (solo lectura) |
+
+---
+
+## Base de Datos - Estructura y Datos Iniciales
+
+### Tablas Creadas por schema.sql
+
+| Tabla | Descripción |
+|-------|-------------|
+| `users` | Usuarios del sistema (admin, cashier, client) |
+| `categories` | Categorías de productos (Camisas, Pantalones, etc.) |
+| `products` | Productos con link a YOLO para detección |
+| `product_variants` | Variantes con tallas y colores |
+| `attribute_options` | Catálogo de tallas y colores disponibles |
+| `product_attributes` | Relación productos ↔ atributos disponibles |
+| `inventory` | Stock actual por variante |
+| `inventory_movements` | Historial de movimientos de inventario |
+| `suppliers` | Catálogo de proveedores |
+| `store_config` | Configuración de la tienda para receipts |
+| `sessions` | Sesiones de kiosco |
+| `carts` | Carritos de compra activos |
+| `cart_items` | Items en carrito |
+| `payment_queue` | Cola de pagos |
+| `orders` | Órdenes completadas |
+| `order_items` | Items de orden (snapshot) |
+| `receipts` | Recibos generados |
+| `price_history` | Historial de cambios de precio |
+| `daily_sales_summary` | Resumen diario de ventas |
+| `sessions` | Sesiones de empleados/POS |
+
+### Datos Iniciales (seed.sql)
+
+El seed.sql se ejecuta automáticamente después del schema en la primera ejecución del contenedor.
+
+#### Datos incluidos:
+
+| Dato | Cantidad | Notas |
+|------|----------|-------|
+| Usuarios | 3 | admin, cashier, client (password: admin123) |
+| Categorías | 5 | Camisas, Pantalones, Vestidos, Playeras, Accesorios |
+| Productos | 5 | Con link a clases YOLO |
+| Variantes | 14 | Combinaciones de tallas/colores |
+| Inventario | ~110 | Stock inicial por variante |
+| Proveedores | 3 | Textiles del Norte, Moda Casual, Accesorios Premium |
+| Atributos | 19 | 11 tallas + 8 colores |
+| Store config | 1 | Configuración para receipts |
+| Movimientos | 14 | Movimientos iniciales de restock |
+
+#### Usuarios de prueba:
+
+| Email | Rol | Password |
+|-------|-----|----------|
+| admin@tienda.com | admin | admin123 |
+| cajero@tienda.com | cashier | admin123 |
+| cliente@demo.com | client | admin123 |
 
 ---
 
