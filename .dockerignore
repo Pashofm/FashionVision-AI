@@ -1,0 +1,70 @@
+# Git
+.git
+.gitignore
+
+# Node (frontend)
+frontend/node_modules
+frontend/.npm
+frontend/.eslintcache
+
+# Python (backend)
+backend/venv
+backend/__pycache__
+backend/*.pyc
+backend/.pytest_cache
+backend/.coverage
+backend/htmlcov
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker (don't include docker files themselves in build context)
+docker/
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Documentation
+*.md
+docs/
+
+# Environment files (use template)
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+*.coverage
+
+# Media and uploaded files (not needed in build)
+media/
+uploads/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.avi
+
+# Model files (we'll copy explicitly in Dockerfile)
+*.pt
+*.onnx
+*.tflite

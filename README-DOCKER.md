@@ -462,26 +462,27 @@ ALLOWED_ORIGINS=https://tudominio.com
 
 ```
 FashionVision-AI/
-├── docker-compose.yml        # Orquestación de servicios
-├── Dockerfile.backend        # Imagen del backend
-├── Dockerfile.frontend       # Imagen del frontend (multi-stage)
-├── nginx.conf                # Configuración de Nginx
-├── .env.template             # Plantilla de variables
-├── .env                      # Variables reales (no commitear)
+├── docker/                      # Archivos de despliegue Docker
+│   ├── Dockerfile.backend        # Imagen del backend (Python 3.12)
+│   ├── Dockerfile.frontend       # Imagen del frontend (multi-stage)
+│   └── nginx.conf                # Configuración de Nginx
+├── docker-compose.yml            # Orquestación de servicios
+├── .dockerignore                 # Exclusiones para el build context
+├── .env.template                 # Plantilla de variables (versionable)
+├── .env                          # Variables reales (NO commitear)
 ├── backend/
 │   ├── app/
-│   │   ├── main.py          # API FastAPI
+│   │   ├── main.py              # API FastAPI
 │   │   ├── services/
-│   │   │   └── detection.py # Servicio YOLO
+│   │   │   └── detection.py     # Servicio YOLO
 │   │   └── ...
 │   ├── models/
-│   │   └── best.pt          # Modelo YOLO
+│   │   └── best.pt              # Modelo YOLO
 │   └── database/
-│       ├── schema.sql        # Esquema DB
-│       └── seed.sql         # Datos iniciales
+│       ├── schema.sql           # Esquema DB
+│       └── seed.sql             # Datos iniciales
 └── frontend/
-    ├── src/                  # Código React
-    └── ...
+    └── src/                     # Código React
 ```
 
 ---
