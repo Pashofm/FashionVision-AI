@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getHeaders, getCategories, getLowStockProducts, getInventoryMovements,
-         getAttributes, getSuppliers, updateInventoryStatus, getPriceBreakdown } from '../services/api';
+         getAttributes, getSuppliers, updateInventoryStatus } from '../services/api';
 import { formatLocalDateTime } from '../utils/dateUtils';
 import './Inventory.css';
 
@@ -338,19 +338,6 @@ const Inventory = () => {
     setSelectedProduct(null);
     setSelectedVariant(null);
     setError('');
-  };
-
-  const openPriceBreakdown = async (product, variant = null) => {
-    try {
-      setSelectedProduct(product);
-      setSelectedVariant(variant);
-      const breakdown = await getPriceBreakdown(product.id, variant?.id);
-      setPriceBreakdown(breakdown);
-      setShowPriceBreakdownModal(true);
-    } catch (err) {
-      console.error('Error loading price breakdown:', err);
-      setError('Error al cargar desglose de precio');
-    }
   };
 
   const handleAttributeSubmit = async (e) => {
