@@ -11,7 +11,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
-      - ./backend/database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql
+      - ./backend/database/migrations/001_add_missing_columns.sql:/docker-entrypoint-initdb.d/02_migrate.sql
+      - ./backend/database/seed.sql:/docker-entrypoint-initdb.d/03_seed.sql
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     healthcheck:
@@ -50,7 +51,6 @@ services:
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
     volumes:
       - media_files:/app/media
-      - model_files:/app/models:ro
     ports:
       - "${BACKEND_HOST_PORT:-8000}:8000"
     depends_on:
@@ -83,7 +83,6 @@ services:
 volumes:
   postgres_data:
   media_files:
-  model_files:
 
 networks:
   fashionnet:
