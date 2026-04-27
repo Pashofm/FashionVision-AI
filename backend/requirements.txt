@@ -6,8 +6,9 @@ asyncpg==0.29.0
 pydantic==2.9.2
 pydantic-settings==2.5.2
 python-dotenv==1.0.1
-ultralytics==8.2.59
-opencv-python==4.10.0.84
+ultralytics==8.3.40
+torch==2.5.1
+opencv-python-headless==4.10.0.84
 pillow==10.4.0
 python-multipart==0.0.12
 passlib==1.7.4
@@ -15,6 +16,7 @@ bcrypt<5.0.0
 alembic==1.13.3
 python-jose[cryptography]==3.3.0
 cloudinary==1.44.2
+pytz==2024.1
 
 # Testing
 pytest==8.3.3

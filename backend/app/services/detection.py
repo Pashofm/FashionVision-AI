@@ -10,11 +10,16 @@ from ultralytics import YOLO
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_PATH = Path("/app/models/best.pt")
+LOCAL_MODEL_PATH = Path(__file__).parent.parent.parent / "models" / "best.pt"
 
 def get_model_path() -> Path:
     env_path = os.environ.get("MODEL_PATH")
     if env_path:
         return Path(env_path)
+    if DEFAULT_MODEL_PATH.exists():
+        return DEFAULT_MODEL_PATH
+    if LOCAL_MODEL_PATH.exists():
+        return LOCAL_MODEL_PATH
     return DEFAULT_MODEL_PATH
 
 model: Optional[YOLO] = None

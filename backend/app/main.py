@@ -69,7 +69,7 @@ from backend.app.services.timezone_service import (
     get_current_utc_time, get_server_time, utc_to_local, local_to_utc,
     get_timezone_from_request, format_datetime_for_response
 )
-from backend.app.services.detection import detect_in_image, get_model
+from backend.app.services.detection import detect_in_image, get_model, get_model_classes
 from backend.app.services.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -173,10 +173,11 @@ async def detect_clothes(file: UploadFile = File(...)):
 async def detection_health_check():
     from backend.app.services import detection
     yolo_model = get_model()
+    model_path = detection.get_model_path()
     return {
         "status": "healthy" if yolo_model else "model_not_loaded",
         "model_loaded": yolo_model is not None,
-        "model_path": str(detection.MODEL_PATH)
+        "model_path": str(model_path)
     }
 
 
@@ -1789,12 +1790,34 @@ async def add_cart_item(cart_id: uuid.UUID, item: CartItemCreate, db: AsyncSessi
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
     
+    variant_id = item.product_variant_id
+    unit_price = item.unit_price
+    if not variant_id:
+        variant_result = await db.execute(
+            select(ProductVariant).where(ProductVariant.product_id == item.product_id).limit(1)
+        )
+        variant = variant_result.scalar_one_or_none()
+        if not variant:
+            raise HTTPException(status_code=400, detail="No variants available for this product")
+        variant_id = variant.id
+        if unit_price is None:
+            unit_price = float(variant.price_modifier) + 999.99  # base price fallback
+    
+    if unit_price is None:
+        product_result = await db.execute(select(Product).where(Product.id == item.product_id))
+        product = product_result.scalar_one_or_none()
+        if product:
+            unit_price = float(product.base_price)
+    
+    if unit_price is None:
+        raise HTTPException(status_code=400, detail="Could not determine unit price")
+    
     db_item = CartItem(
         cart_id=cart_id,
         product_id=item.product_id,
-        product_variant_id=item.product_variant_id,
+        product_variant_id=variant_id,
         quantity=item.quantity,
-        unit_price=item.unit_price,
+        unit_price=unit_price,
         detection_confidence=item.detection_confidence,
         detection_image_path=item.detection_image_path,
         detection_bbox=item.detection_bbox
@@ -2354,7 +2377,12 @@ async def pos_complete_payment(
             detail=f"Payment not approved. Status: {result.status.value}"
         )
 
-    cart_result = await db.execute(select(Cart).where(Cart.id == cart_id))
+    cart_result = await db.execute(
+        select(Cart)
+        .options(selectinload(Cart.items).selectinload(CartItem.product))
+        .options(selectinload(Cart.items).selectinload(CartItem.product_variant))
+        .where(Cart.id == cart_id)
+    )
     cart = cart_result.scalar_one_or_none()
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
