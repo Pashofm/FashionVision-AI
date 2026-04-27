@@ -14,3 +14,8 @@ backend/*.pyc
 
 # Node (frontend)
 node_modules/
+
+# Environment files (contain credentials)
+.env
+.env.local
+.env.*.local

@@ -377,7 +377,7 @@ class CartItemBase(BaseModel):
     product_id: uuid.UUID
     product_variant_id: Optional[uuid.UUID] = None
     quantity: int = 1
-    unit_price: float
+    unit_price: Optional[float] = None
     detection_confidence: Optional[float] = None
     detection_image_path: Optional[str] = None
     detection_bbox: Optional[dict] = None
