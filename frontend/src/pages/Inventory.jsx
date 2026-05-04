@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getHeaders, getCategories, getLowStockProducts, getInventoryMovements,
-         getAttributes, getSuppliers, updateInventoryStatus } from '../services/api';
+         getSuppliers, updateInventoryStatus, getPriceBreakdown,
+         getProductPriceHistory, performLogout, getAllAttributes, reactivateAttribute } from '../services/api';
 import { formatLocalDateTime } from '../utils/dateUtils';
 import './Inventory.css';
 
@@ -27,6 +28,7 @@ const Inventory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [showFeaturedOnly, setShowFeaturedOnly] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
@@ -40,8 +42,11 @@ const Inventory = () => {
   const [movements, setMovements] = useState([]);
   const [error, setError] = useState('');
   const [attributes, setAttributes] = useState([]);
+  const [showInactiveAttributes, setShowInactiveAttributes] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
   const [priceBreakdown, setPriceBreakdown] = useState(null);
+  const [priceHistory, setPriceHistory] = useState([]);
+  const [showPriceHistory, setShowPriceHistory] = useState(false);
 
   const [productForm, setProductForm] = useState({
     name: '',
@@ -99,12 +104,18 @@ const Inventory = () => {
 
   const isAdmin = userData?.role === 'admin';
 
+  const handleLogout = () => {
+    performLogout();
+    navigate('/');
+  };
+
   const loadProducts = useCallback(async () => {
     try {
       const headers = getHeaders();
       const params = new URLSearchParams();
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (selectedCategory) params.append('category_id', selectedCategory);
+      if (showFeaturedOnly) params.append('is_featured', 'true');
 
       const response = await fetch(`${API_URL}/api/products/stock/all?${params}`, { headers });
       if (response.ok) {
@@ -114,7 +125,7 @@ const Inventory = () => {
     } catch (err) {
       console.error('Error loading products:', err);
     }
-  }, [debouncedSearch, selectedCategory]);
+  }, [debouncedSearch, selectedCategory, showFeaturedOnly]);
 
   const loadLowStock = useCallback(async () => {
     try {
@@ -144,12 +155,12 @@ const Inventory = () => {
 
   const loadAttributes = useCallback(async () => {
     try {
-      const data = await getAttributes();
+      const data = await getAllAttributes(showInactiveAttributes);
       setAttributes(data);
     } catch (err) {
       console.error('Error loading attributes:', err);
     }
-  }, []);
+  }, [showInactiveAttributes]);
 
   const loadSuppliers = useCallback(async () => {
     try {
@@ -338,6 +349,31 @@ const Inventory = () => {
     setSelectedProduct(null);
     setSelectedVariant(null);
     setError('');
+  };
+
+  const openPriceBreakdownModal = async (product, variant = null) => {
+    setSelectedProduct(product);
+    setSelectedVariant(variant);
+    setError('');
+    try {
+      const data = await getPriceBreakdown(product.id, variant?.id || null);
+      setPriceBreakdown(data);
+      setShowPriceBreakdownModal(true);
+    } catch (err) {
+      console.error('Error loading price breakdown:', err);
+      setError('Error al cargar desglose de precio');
+    }
+  };
+
+  const loadPriceHistory = async (productId) => {
+    try {
+      const data = await getProductPriceHistory(productId, 20);
+      setPriceHistory(data);
+      setShowPriceHistory(true);
+    } catch (err) {
+      console.error('Error loading price history:', err);
+      setError('Error al cargar historial de precios');
+    }
   };
 
   const handleAttributeSubmit = async (e) => {
@@ -619,7 +655,7 @@ const Inventory = () => {
   };
 
   const deleteAttribute = async (attributeId) => {
-    if (!window.confirm('¿Estás seguro de eliminar este atributo?')) return;
+    if (!window.confirm('¿Desactivar este atributo? (Podrás reactivarlo después)')) return;
 
     try {
       const headers = getHeaders();
@@ -632,7 +668,16 @@ const Inventory = () => {
         loadAttributes();
       }
     } catch (err) {
-      console.error('Error deleting attribute:', err);
+      console.error('Error deactivating attribute:', err);
+    }
+  };
+
+  const reactivateAttributeFn = async (attributeId) => {
+    try {
+      await reactivateAttribute(attributeId);
+      loadAttributes();
+    } catch (err) {
+      console.error('Error reactivating attribute:', err);
     }
   };
 
@@ -661,6 +706,7 @@ const Inventory = () => {
           <button onClick={() => navigate('/dashboard')}>Dashboard</button>
           <button className="nav-active" onClick={() => {}}>Inventario</button>
         </nav>
+        <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
       </header>
 
       <main className="inventory-container">
@@ -697,10 +743,11 @@ const Inventory = () => {
               <div className="search-box">
                 <input
                   type="text"
-                  placeholder="Buscar productos..."
+                  placeholder="Buscar por nombre o barcode..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
+                <span className="search-hint">Búsqueda por nombre o código de barras</span>
               </div>
               <select
                 value={selectedCategory}
@@ -711,6 +758,14 @@ const Inventory = () => {
                   <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
               </select>
+              <label className="featured-filter">
+                <input
+                  type="checkbox"
+                  checked={showFeaturedOnly}
+                  onChange={(e) => setShowFeaturedOnly(e.target.checked)}
+                />
+                Solo destacados
+              </label>
               {isAdmin && (
                 <button className="btn-primary" onClick={() => openProductModal()}>
                   + Nuevo Producto
@@ -722,6 +777,7 @@ const Inventory = () => {
               <table className="products-table">
                 <thead>
                   <tr>
+                    <th>⭐</th>
                     <th>Producto</th>
                     <th>SKU</th>
                     <th>Categoría</th>
@@ -735,6 +791,7 @@ const Inventory = () => {
                 <tbody>
                   {products.map(product => (
                     <tr key={product.id}>
+                      <td>{product.is_featured ? '⭐' : ''}</td>
                       <td><strong>{product.name}</strong></td>
                       <td>{product.sku}</td>
                       <td>{categories.find(c => c.id === product.category_id)?.name || '-'}</td>
@@ -820,25 +877,90 @@ const Inventory = () => {
                 <button className="btn-primary" onClick={openAttributeModal}>+ Nuevo Atributo</button>
               )}
             </div>
+            <label className="show-inactive-filter">
+              <input
+                type="checkbox"
+                checked={showInactiveAttributes}
+                onChange={(e) => {
+                  setShowInactiveAttributes(e.target.checked);
+                }}
+              />
+              Ver desactivados
+            </label>
             <div className="attributes-grid">
               <div className="attribute-group">
                 <h4>Tallas</h4>
-                {attributes.filter(a => a.type === 'size').map(attr => (
-                  <div key={attr.id} className="attribute-item">
-                    <span>{attr.value}</span>
-                    {isAdmin && <button className="btn-icon btn-danger" onClick={() => deleteAttribute(attr.id)}>×</button>}
-                  </div>
-                ))}
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Valor</th>
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attributes.filter(a => a.type === 'size').map(attr => (
+                      <tr key={attr.id} className={!attr.is_active ? 'inactive-row' : ''}>
+                        <td><span className={!attr.is_active ? 'text-inactive' : ''}>{attr.value}</span></td>
+                        <td>
+                          <span className={`status-badge ${attr.is_active ? 'active' : 'inactive'}`}>
+                            {attr.is_active ? 'Activo' : 'Desactivado'}
+                          </span>
+                        </td>
+                        <td>
+                          {isAdmin && (
+                            attr.is_active ? (
+                              <button className="btn-icon btn-warning" onClick={() => deleteAttribute(attr.id)} title="Desactivar">✕</button>
+                            ) : (
+                              <button className="btn-icon btn-success" onClick={() => reactivateAttributeFn(attr.id)} title="Reactivar">↻</button>
+                            )
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {attributes.filter(a => a.type === 'size').length === 0 && (
+                      <tr><td colSpan="3" className="no-data-cell">No hay tallas registradas</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
               <div className="attribute-group">
                 <h4>Colores</h4>
-                {attributes.filter(a => a.type === 'color').map(attr => (
-                  <div key={attr.id} className="attribute-item">
-                    <span style={{ width: '20px', height: '20px', backgroundColor: attr.hex_code || '#000', borderRadius: '3px', marginRight: '8px' }} />
-                    <span>{attr.value}</span>
-                    {isAdmin && <button className="btn-icon btn-danger" onClick={() => deleteAttribute(attr.id)}>×</button>}
-                  </div>
-                ))}
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Color</th>
+                      <th>Valor</th>
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attributes.filter(a => a.type === 'color').map(attr => (
+                      <tr key={attr.id} className={!attr.is_active ? 'inactive-row' : ''}>
+                        <td><span className="color-swatch" style={{ backgroundColor: attr.hex_code || '#000' }} /></td>
+                        <td><span className={!attr.is_active ? 'text-inactive' : ''}>{attr.value}</span></td>
+                        <td>
+                          <span className={`status-badge ${attr.is_active ? 'active' : 'inactive'}`}>
+                            {attr.is_active ? 'Activo' : 'Desactivado'}
+                          </span>
+                        </td>
+                        <td>
+                          {isAdmin && (
+                            attr.is_active ? (
+                              <button className="btn-icon btn-warning" onClick={() => deleteAttribute(attr.id)} title="Desactivar">✕</button>
+                            ) : (
+                              <button className="btn-icon btn-success" onClick={() => reactivateAttributeFn(attr.id)} title="Reactivar">↻</button>
+                            )
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {attributes.filter(a => a.type === 'color').length === 0 && (
+                      <tr><td colSpan="4" className="no-data-cell">No hay colores registrados</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -852,21 +974,29 @@ const Inventory = () => {
                 <button className="btn-primary" onClick={openSupplierModal}>+ Nuevo Proveedor</button>
               )}
             </div>
-            <div className="suppliers-list">
-              {suppliers.map(supplier => (
-                <div key={supplier.id} className="supplier-card">
-                  <div className="supplier-info">
-                    <strong>{supplier.name}</strong>
-                    {supplier.contact_name && <span>Contacto: {supplier.contact_name}</span>}
-                    {supplier.email && <span>Email: {supplier.email}</span>}
-                    {supplier.phone && <span>Tel: {supplier.phone}</span>}
-                  </div>
-                </div>
-              ))}
-              {suppliers.length === 0 && (
-                <p className="no-data">No hay proveedores registrados</p>
-              )}
-            </div>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Contacto</th>
+                  <th>Email</th>
+                  <th>Teléfono</th>
+                </tr>
+              </thead>
+              <tbody>
+                {suppliers.map(supplier => (
+                  <tr key={supplier.id}>
+                    <td><strong>{supplier.name}</strong></td>
+                    <td>{supplier.contact_name || '-'}</td>
+                    <td>{supplier.email || '-'}</td>
+                    <td>{supplier.phone || '-'}</td>
+                  </tr>
+                ))}
+                {suppliers.length === 0 && (
+                  <tr><td colSpan="4" className="no-data-cell">No hay proveedores registrados</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
         )}
       </main>
@@ -883,6 +1013,8 @@ const Inventory = () => {
           onClose={closeProductModal}
           onOpenVariant={openVariantModal}
           onOpenStock={openStockModal}
+          onOpenPriceBreakdown={openPriceBreakdownModal}
+          onLoadPriceHistory={loadPriceHistory}
           onImageUpload={handleImageUpload}
           onImageDelete={handleImageDelete}
           onDeleteVariant={deleteVariant}
@@ -943,14 +1075,52 @@ const Inventory = () => {
           formatCurrency={formatCurrency}
         />
       )}
+
+      {showPriceHistory && (
+        <div className="modal-overlay" onClick={() => setShowPriceHistory(false)}>
+          <div className="modal-content price-history-modal" onClick={e => e.stopPropagation()}>
+            <h2>Historial de Precios</h2>
+            {error && <div className="error-message">{error}</div>}
+            {priceHistory.length > 0 ? (
+              <table className="price-history-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Precio Anterior</th>
+                    <th>Nuevo Precio</th>
+                    <th>Notas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {priceHistory.map((item) => (
+                    <tr key={item.id}>
+                      <td>{formatLocalDateTime(item.created_at)}</td>
+                      <td><span className={`price-type-badge ${item.price_type}`}>{item.price_type}</span></td>
+                      <td>{item.old_price ? formatCurrency(item.old_price) : '-'}</td>
+                      <td>{formatCurrency(item.new_price)}</td>
+                      <td>{item.reason || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="no-data">No hay historial de precios</p>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => setShowPriceHistory(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 function ProductModalForm({
   product, productData, setProductData, selectedProduct, categories, isAdmin,
-  onSubmit, onClose, onOpenVariant, onOpenStock, onImageUpload, onImageDelete,
-  onDeleteVariant, error, formatCurrency
+  onSubmit, onClose, onOpenVariant, onOpenStock, onOpenPriceBreakdown, onLoadPriceHistory,
+  onImageUpload, onImageDelete, onDeleteVariant, error, formatCurrency
 }) {
   const isEditMode = !!product;
   const isViewMode = !!selectedProduct && !isEditMode;
@@ -1203,6 +1373,14 @@ function ProductModalForm({
             {displayProduct.cost_price > 0 && (
               <div className="info-row"><span className="label">Precio de Costo:</span><span className="value">{formatCurrency(displayProduct.cost_price)}</span></div>
             )}
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => onLoadPriceHistory(displayProduct.id)}
+              style={{ marginBottom: '10px' }}
+            >
+              📜 Ver Historial de Precios
+            </button>
             {displayProduct.profit_margin > 0 && (
               <div className="info-row"><span className="label">Margen:</span><span className="value">{(displayProduct.profit_margin * 100).toFixed(1)}%</span></div>
             )}
@@ -1225,8 +1403,11 @@ function ProductModalForm({
             {(displayProduct.weight || displayProduct.width || displayProduct.height || displayProduct.depth) && (
               <div className="info-row">
                 <span className="label">Dimensiones:</span>
-                <span className="value">
-                  {displayProduct.width && `W:${displayProduct.width}cm`} {displayProduct.height && `H:${displayProduct.height}cm`} {displayProduct.depth && `D:${displayProduct.depth}cm`} {displayProduct.weight && `(P:${displayProduct.weight}kg)`}
+                <span className="value dimensions-value">
+                  {displayProduct.width && <span>Ancho: {displayProduct.width}cm</span>}
+                  {displayProduct.height && <span>Alto: {displayProduct.height}cm</span>}
+                  {displayProduct.depth && <span>Fondo: {displayProduct.depth}cm</span>}
+                  {displayProduct.weight && <span>Peso: {displayProduct.weight}kg</span>}
                 </span>
               </div>
             )}
@@ -1294,6 +1475,7 @@ function ProductModalForm({
                         <div className="action-buttons">
                           <button className="btn-icon" onClick={() => onOpenVariant(displayProduct, v)} title="Editar">✏️</button>
                           <button className="btn-icon" onClick={() => onOpenStock(displayProduct, v)} title="Stock">📦</button>
+                          <button className="btn-icon" onClick={() => onOpenPriceBreakdown(displayProduct, v)} title="Ver Precio">💰</button>
                           <button className="btn-icon btn-danger" onClick={() => onDeleteVariant(displayProduct.id, v.id)} title="Eliminar">🗑️</button>
                         </div>
                       </td>
@@ -1416,18 +1598,32 @@ function StockModalForm({ product, variant, stockData, setStockData, movements, 
         {movements.length > 0 && (
           <div className="movements-section">
             <h4>Historial de Movimientos</h4>
-            <div className="movements-list">
-              {movements.slice(0, 10).map(m => (
-                <div key={m.id} className="movement-item">
-                  <span className="movement-type">{m.movement_type}</span>
-                  <span className={`movement-qty ${m.quantity_change > 0 ? 'positive' : 'negative'}`}>
-                    {m.quantity_change > 0 ? '+' : ''}{m.quantity_change}
-                  </span>
-                  <span className="movement-date">{formatLocalDateTime(m.created_at)}</span>
-                  {m.notes && <span className="movement-notes">{m.notes}</span>}
-                </div>
-              ))}
-            </div>
+            <table className="movements-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th>Antes</th>
+                  <th>Cambio</th>
+                  <th>Después</th>
+                  <th>Notas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.slice(0, 20).map(m => (
+                  <tr key={m.id}>
+                    <td>{formatLocalDateTime(m.created_at)}</td>
+                    <td><span className={`movement-type-badge ${m.movement_type}`}>{m.movement_type}</span></td>
+                    <td>{m.quantity_before}</td>
+                    <td className={m.quantity_change > 0 ? 'positive' : 'negative'}>
+                      {m.quantity_change > 0 ? '+' : ''}{m.quantity_change}
+                    </td>
+                    <td>{m.quantity_after}</td>
+                    <td>{m.notes || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

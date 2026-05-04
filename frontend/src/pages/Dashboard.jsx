@@ -12,6 +12,8 @@ import {
   PieChart,
   Pie,
   Cell,
+  LineChart,
+  Line,
 } from 'recharts';
 import './Dashboard.css';
 
@@ -25,6 +27,7 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
   const [salesData, setSalesData] = useState([]);
+  const [trendData, setTrendData] = useState([]);
   const userData = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
@@ -61,6 +64,17 @@ const Dashboard = () => {
         };
       });
       setSalesData(formattedHourData);
+
+      const trendData = (data.sales_trend || []).map((item, index) => {
+        const date = new Date();
+        date.setDate(date.getDate() - (27 - index));
+        return {
+          date: date.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }),
+          ventas: item.total_orders,
+          revenue: item.total_revenue,
+        };
+      });
+      setTrendData(trendData);
     } catch (err) {
       console.error('Error fetching dashboard:', err);
       setError(err.message);
@@ -232,6 +246,23 @@ const Dashboard = () => {
           </div>
         </section>
 
+        <section className="charts-row">
+          <div className="chart-card full-width">
+            <h2 className="section-title">Tendencia de Ventas (Últimas 4 semanas)</h2>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} />
+                  <YAxis tick={{ fill: '#64748b' }} />
+                  <Tooltip formatter={(value) => formatCurrency(value)} />
+                  <Line type="monotone" dataKey="revenue" stroke="#4da6ff" strokeWidth={2} dot={false} name="Revenue" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </section>
+
         <section className="top-products-section">
           <h2 className="section-title">Productos Más Vendidos</h2>
           <p className="section-subtitle">Últimos 30 días</p>
@@ -307,7 +338,7 @@ const Dashboard = () => {
           <div className="action-card analytics-card">
             <h3>Estadísticas Avanzadas</h3>
             <p>Ver análisis detallados y reportes</p>
-            <button className="action-btn btn-analytics" onClick={() => alert('Próximamente: Reportes detallados')}>
+            <button className="action-btn btn-analytics" onClick={() => navigate('/reportes')}>
               VER REPORTES
             </button>
           </div>

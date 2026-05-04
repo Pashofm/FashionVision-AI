@@ -894,6 +894,8 @@ async def get_all_products_with_stock(
     limit: int = 100,
     category_id: uuid.UUID = None,
     search: str = None,
+    barcode: str = None,
+    is_featured: bool = None,
     db: AsyncSession = db_dependency
 ):
     query = select(Product).options(
@@ -904,6 +906,10 @@ async def get_all_products_with_stock(
         query = query.where(Product.category_id == category_id)
     if search:
         query = query.where(Product.name.ilike(f"%{search}%"))
+    if barcode:
+        query = query.where(Product.barcode.ilike(f"%{barcode}%"))
+    if is_featured is not None:
+        query = query.where(Product.is_featured == is_featured)
 
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
@@ -933,6 +939,7 @@ async def get_all_products_with_stock(
             "category_id": str(product.category_id),
             "base_price": float(product.base_price),
             "is_active": product.is_active,
+            "is_featured": product.is_featured,
             "variants_count": len(product.variants),
             "total_stock": total_stock,
             "has_low_stock": has_low_stock,
@@ -1348,13 +1355,33 @@ async def delete_supplier(
 @app.get("/api/attributes", response_model=List[AttributeOptionResponse])
 async def get_attributes(
     type: str = None,
+    include_inactive: bool = False,
     db: AsyncSession = db_dependency
 ):
-    query = select(AttributeOption).where(AttributeOption.is_active == True)
+    query = select(AttributeOption)
+    if not include_inactive:
+        query = query.where(AttributeOption.is_active == True)
     if type:
         query = query.where(AttributeOption.type == type)
     result = await db.execute(query.order_by(AttributeOption.sort_order, AttributeOption.value))
     return result.scalars().all()
+
+
+@app.put("/api/attributes/{attribute_id}/reactivate", response_model=AttributeOptionResponse)
+async def reactivate_attribute(
+    attribute_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(select(AttributeOption).where(AttributeOption.id == attribute_id))
+    attr = result.scalar_one_or_none()
+    if not attr:
+        raise HTTPException(status_code=404, detail="Attribute not found")
+
+    attr.is_active = True
+    await db.flush()
+    await db.refresh(attr)
+    return attr
 
 
 @app.post("/api/attributes", response_model=AttributeOptionResponse, status_code=status.HTTP_201_CREATED)
@@ -2208,6 +2235,37 @@ async def get_period_comparison(period: str = 'weekly', db: AsyncSession = db_de
     )
 
 
+@app.get("/api/analytics/sales-trend", response_model=List[SalesByHour])
+async def get_sales_trend(days: int = 28, db: AsyncSession = db_dependency):
+    now = datetime.now()
+    daily_data = []
+
+    for i in range(days - 1, -1, -1):
+        target_date = (now - timedelta(days=i)).date()
+        day_start = datetime.combine(target_date, datetime.min.time())
+        day_end = datetime.combine(target_date, datetime.max.time())
+
+        result = await db.execute(
+            select(
+                func.count(Order.id).label('total_orders'),
+                func.coalesce(func.sum(Order.total_amount), 0).label('total_revenue')
+            )
+            .where(and_(
+                Order.status == OrderStatus.completed,
+                Order.completed_at >= day_start,
+                Order.completed_at <= day_end
+            ))
+        )
+        row = result.first()
+        daily_data.append(SalesByHour(
+            hour=i,
+            total_orders=row[0] or 0,
+            total_revenue=float(row[1] or 0)
+        ))
+
+    return daily_data
+
+
 @app.get("/api/analytics/dashboard/summary", response_model=DashboardSummary)
 async def get_dashboard_summary(db: AsyncSession = db_dependency):
     now = datetime.now()
@@ -2256,6 +2314,7 @@ async def get_dashboard_summary(db: AsyncSession = db_dependency):
     sales_by_category = await get_sales_by_category('weekly', db)
     top_products = await get_top_products(30, db)
     inventory_alerts = await get_inventory_alerts(db)
+    sales_trend = await get_sales_trend(28, db)
 
     return DashboardSummary(
         today=today_data,
@@ -2265,7 +2324,8 @@ async def get_dashboard_summary(db: AsyncSession = db_dependency):
         sales_by_hour=sales_by_hour,
         sales_by_category=sales_by_category,
         top_products=top_products,
-        inventory_alerts=inventory_alerts
+        inventory_alerts=inventory_alerts,
+        sales_trend=sales_trend
     )
 
 

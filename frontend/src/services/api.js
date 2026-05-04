@@ -639,6 +639,26 @@ export async function getAttributes(type = null) {
   return response.json();
 }
 
+export async function getAllAttributes(includeInactive = false) {
+  let url = `${API_URL}/api/attributes?include_inactive=${includeInactive}`;
+  const response = await fetch(url, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch attributes: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function reactivateAttribute(attributeId) {
+  const response = await fetch(`${API_URL}/api/attributes/${attributeId}/reactivate`, {
+    method: 'PUT',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to reactivate attribute: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export async function createAttribute(attributeData) {
   const response = await fetch(`${API_URL}/api/attributes`, {
     method: 'POST',
