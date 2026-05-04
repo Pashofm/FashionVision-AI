@@ -645,6 +645,7 @@ class DashboardSummary(BaseModel):
     sales_by_category: List[SalesByCategory]
     top_products: List[DashboardTopProduct]
     inventory_alerts: List[InventoryAlert]
+    sales_trend: List[SalesByHour]
 
 
 class LoginRequest(BaseModel):
