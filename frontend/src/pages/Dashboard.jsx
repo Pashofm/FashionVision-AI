@@ -15,7 +15,7 @@ import {
   LineChart,
   Line,
 } from 'recharts';
-import './Dashboard.css';
+import '../styles/Dashboard.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -246,8 +246,8 @@ const Dashboard = () => {
           </div>
         </section>
 
-        <section className="charts-row">
-          <div className="chart-card full-width">
+        <section className="dashboard-trend-section">
+          <div className="chart-card trend-card">
             <h2 className="section-title">Tendencia de Ventas (Últimas 4 semanas)</h2>
             <div className="chart-wrapper">
               <ResponsiveContainer width="100%" height={250}>
@@ -260,6 +260,14 @@ const Dashboard = () => {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          </div>
+
+          <div className="chart-card analytics-inline-card">
+            <h2 className="section-title">Estadísticas Avanzadas</h2>
+            <p className="section-subtitle">Ver análisis detallados y reportes</p>
+            <button className="action-btn btn-analytics" onClick={() => navigate('/reportes')}>
+              VER REPORTES
+            </button>
           </div>
         </section>
 
@@ -325,24 +333,6 @@ const Dashboard = () => {
             </div>
           </section>
         )}
-
-        <section className="actions-section">
-          <div className="action-card inventario-card">
-            <h3>Gestionar Inventario</h3>
-            <p>Agregar, editar o eliminar productos y variantes</p>
-            <button className="action-btn btn-inventario" onClick={() => navigate('/inventory')}>
-              INVENTARIO
-            </button>
-          </div>
-
-          <div className="action-card analytics-card">
-            <h3>Estadísticas Avanzadas</h3>
-            <p>Ver análisis detallados y reportes</p>
-            <button className="action-btn btn-analytics" onClick={() => navigate('/reportes')}>
-              VER REPORTES
-            </button>
-          </div>
-        </section>
       </main>
     </div>
   );

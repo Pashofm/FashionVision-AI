@@ -134,8 +134,8 @@ class CategoryResponse(CategoryBase):
 
 
 class ProductVariantBase(BaseModel):
-    size: Optional[str] = None
-    color: Optional[str] = None
+    size_attribute_id: Optional[uuid.UUID] = None
+    color_attribute_id: Optional[uuid.UUID] = None
     color_hex: Optional[str] = None
     sku_variant: str
     price_modifier: float = 0
@@ -150,6 +150,9 @@ class ProductVariantResponse(ProductVariantBase):
     product_id: uuid.UUID
     is_active: bool
     created_at: datetime
+    size_attribute: Optional[AttributeOptionResponse] = None
+    color_attribute: Optional[AttributeOptionResponse] = None
+    inventory: Optional[InventoryResponse] = None
 
     class Config:
         from_attributes = True
@@ -298,13 +301,15 @@ class InventoryRestock(BaseModel):
 class VariantWithInventory(BaseModel):
     id: uuid.UUID
     product_id: uuid.UUID
-    size: Optional[str]
-    color: Optional[str]
-    color_hex: Optional[str]
+    size_attribute_id: Optional[uuid.UUID] = None
+    color_attribute_id: Optional[uuid.UUID] = None
+    color_hex: Optional[str] = None
     sku_variant: str
     price_modifier: float
     is_active: bool
     created_at: datetime
+    size_attribute: Optional[AttributeOptionResponse] = None
+    color_attribute: Optional[AttributeOptionResponse] = None
     inventory: Optional[InventoryResponse] = None
 
     class Config:
@@ -328,8 +333,8 @@ class InventoryLowStockResponse(BaseModel):
     category_name: str
     sku: str
     sku_variant: str
-    size: Optional[str]
-    color: Optional[str]
+    size_attribute_id: Optional[uuid.UUID] = None
+    color_attribute_id: Optional[uuid.UUID] = None
     quantity_available: int
     quantity_reserved: int
     low_stock_threshold: int
@@ -339,9 +344,20 @@ class InventoryLowStockResponse(BaseModel):
         from_attributes = True
 
 
+class VariantSearchResponse(BaseModel):
+    variant_id: uuid.UUID
+    sku_variant: str
+    price_modifier: float
+    quantity_available: int
+    stock_status: str
+
+    class Config:
+        from_attributes = True
+
+
 class ProductVariantUpdate(BaseModel):
-    size: Optional[str] = None
-    color: Optional[str] = None
+    size_attribute_id: Optional[uuid.UUID] = None
+    color_attribute_id: Optional[uuid.UUID] = None
     color_hex: Optional[str] = None
     price_modifier: Optional[float] = None
     is_active: Optional[bool] = None
@@ -784,23 +800,33 @@ class AttributeOptionResponse(AttributeOptionBase):
         from_attributes = True
 
 
-class ProductAttributeBase(BaseModel):
-    product_id: uuid.UUID
-    attribute_option_id: uuid.UUID
+class AttributeWithStockStatus(AttributeOptionResponse):
+    is_effective: bool = False
+    has_products_linked: bool = False
+    total_stock: int = 0
+    variants_count: int = 0
 
 
-class ProductAttributeCreate(ProductAttributeBase):
-    pass
+class AttributeListWithStockResponse(BaseModel):
+    attributes: List[AttributeWithStockStatus]
 
 
-class ProductAttributeResponse(BaseModel):
+class DetectionAttributeItem(BaseModel):
+    attribute_id: uuid.UUID
+    value: str
+    hex_code: Optional[str] = None
+    stock: int = 0
+
+
+class DetectionProductResponse(BaseModel):
     id: uuid.UUID
-    product_id: uuid.UUID
-    attribute_option: AttributeOptionResponse
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+    name: str
+    sku: str
+    base_price: float
+    yolo_class_name: Optional[str] = None
+    category_name: Optional[str] = None
+    sizes: List[DetectionAttributeItem] = []
+    colors: List[DetectionAttributeItem] = []
 
 
 class PriceHistoryBase(BaseModel):

@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useCamera from '../hooks/useCamera';
 import { useKioskTimeout } from '../hooks/useKioskTimeout';
-import { detectClothes, getProductByYoloClass, createSession, getOrCreateCartBySession, getCart, addCartItem, removeCartItem, submitCart, performLogout, extendSession } from '../services/api';
+import { detectClothes, getDetectionProduct, searchProductVariant, createSession, getOrCreateCartBySession, getCart, addCartItem, removeCartItem, submitCart, performLogout, extendSession } from '../services/api';
 import '../styles/client-detection.css';
 
 const STORAGE_KEY_SESSION = 'client_session_id';
@@ -27,10 +27,13 @@ const getDefaultSizes = (yoloClassName) => {
   return sizeMap[yoloClassName?.toLowerCase()] || ['S', 'M', 'L', 'XL'];
 };
 
-const extractSizesFromVariants = (variants) => {
-  if (!variants || variants.length === 0) return null;
-  const sizes = [...new Set(variants.map(v => v.size).filter(s => s))];
-  return sizes.length > 0 ? sizes : null;
+const getDefaultColors = (yoloClassName) => {
+  const colorMap = {
+    'gorra-roja-lacoste': ['Rojo'],
+    'top': ['Blanco', 'Negro', 'Azul'],
+    'pants': ['Azul Marino', 'Negro', 'Gris']
+  };
+  return colorMap[yoloClassName?.toLowerCase()] || ['Unico'];
 };
 
 const ClientDetection = () => {
@@ -46,6 +49,10 @@ const ClientDetection = () => {
   const [_sessionId, setSessionId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [showCountdown, setShowCountdown] = useState(false);
+  const [selectedSize, setSelectedSize] = useState(null);
+  const [selectedColor, setSelectedColor] = useState(null);
+  const [matchingVariant, setMatchingVariant] = useState(null);
+  const [selectionError, setSelectionError] = useState('');
   const navigate = useNavigate();
 
   const handleKioskLogout = useCallback(async () => {
@@ -169,21 +176,20 @@ const ClientDetection = () => {
             setDetections(result.detections);
             setImageSize(result.image_size);
 
-            const dbProduct = await getProductByYoloClass(detection.class);
+            const detectionProduct = await getDetectionProduct(detection.class);
 
-            if (dbProduct) {
-              const variantSizes = extractSizesFromVariants(dbProduct.variants);
+            if (detectionProduct) {
               const productoData = {
-                name: dbProduct.name,
-                price: parseFloat(dbProduct.base_price),
-                brand: dbProduct.category?.name || 'FashionCo',
-                sku: dbProduct.sku,
+                name: detectionProduct.name,
+                price: parseFloat(detectionProduct.base_price),
+                brand: detectionProduct.category_name || 'FashionCo',
+                sku: detectionProduct.sku,
                 tipoPrenda: traducirCategoria(detection.class),
                 confidence: detection.confidence,
-                colors: ['Rojo'],
-                sizes: variantSizes || getDefaultSizes(detection.class),
-                yolo_class_name: dbProduct.yolo_class_name,
-                product_id: dbProduct.id
+                colors: detectionProduct.colors.map(c => ({ id: c.attribute_id, name: c.value, hex: c.hex_code, stock: c.stock })),
+                sizes: detectionProduct.sizes.map(s => ({ id: s.attribute_id, name: s.value, stock: s.stock })),
+                yolo_class_name: detectionProduct.yolo_class_name,
+                product_id: detectionProduct.id
               };
               setProducto(productoData);
             } else {
@@ -194,8 +200,8 @@ const ClientDetection = () => {
                 sku: 'N/A',
                 tipoPrenda: traducirCategoria(detection.class),
                 confidence: detection.confidence,
-                colors: [],
-                sizes: getDefaultSizes(detection.class),
+                colors: getDefaultColors(detection.class).map(c => ({ name: c, hex: null, stock: 0 })),
+                sizes: getDefaultSizes(detection.class).map(s => ({ name: s, stock: 0 })),
                 yolo_class_name: detection.class
               });
             }
@@ -232,13 +238,55 @@ const ClientDetection = () => {
     }
   }, [captureFrame, closeCamera, processDetection]);
 
+  const searchVariant = async () => {
+    if (!producto || !selectedSize || !selectedColor) return;
+
+    try {
+      const variant = await searchProductVariant(
+        producto.product_id,
+        selectedSize.id,
+        selectedColor.id
+      );
+
+      if (!variant || variant.quantity_available <= 0) {
+        setMatchingVariant(null);
+        setSelectionError('Esta combinación no está disponible');
+      } else {
+        setMatchingVariant(variant);
+        setSelectionError('');
+      }
+    } catch (err) {
+      console.error('Error searching variant:', err);
+      setMatchingVariant(null);
+      setSelectionError('Esta combinación no está disponible');
+    }
+  };
+
+  const handleSizeSelect = (size) => {
+    setSelectedSize(size);
+    setSelectionError('');
+    if (selectedColor) {
+      searchVariant();
+    }
+  };
+
+  const handleColorSelect = (color) => {
+    setSelectedColor(color);
+    setSelectionError('');
+    if (selectedSize) {
+      searchVariant();
+    }
+  };
+
+  const canAddToCart = producto && selectedSize && selectedColor && matchingVariant && matchingVariant.quantity_available > 0;
+
   const agregarAlCarrito = async () => {
-    if (!producto || !cartId) return;
+    if (!producto || !cartId || !canAddToCart) return;
 
     try {
       const newItem = await addCartItem(cartId, {
         product_id: producto.product_id,
-        product_variant_id: null,
+        product_variant_id: matchingVariant.variant_id,
         quantity: 1,
         unit_price: producto.price,
         detection_confidence: producto.confidence
@@ -248,6 +296,10 @@ const ClientDetection = () => {
       setProducto(null);
       setImagen(null);
       setDetections(null);
+      setSelectedSize(null);
+      setSelectedColor(null);
+      setMatchingVariant(null);
+      setSelectionError('');
       try {
         await extendSession();
       } catch (err) {
@@ -308,6 +360,10 @@ const ClientDetection = () => {
     setDetections(null);
     setImageSize(null);
     setError('');
+    setSelectedSize(null);
+    setSelectedColor(null);
+    setMatchingVariant(null);
+    setSelectionError('');
   };
 
   const drawBoundingBoxes = useCallback(() => {
@@ -510,7 +566,14 @@ const ClientDetection = () => {
                       <span className="tags-label">Tallas</span>
                       <div className="tags-list">
                         {producto.sizes.map(s => (
-                          <span key={s} className="tag">{s}</span>
+                          <button
+                            key={s.id}
+                            className={`tag ${selectedSize?.id === s.id ? 'selected' : ''} ${s.stock === 0 ? 'out-of-stock' : ''}`}
+                            onClick={() => s.stock > 0 && handleSizeSelect(s)}
+                            disabled={s.stock === 0}
+                          >
+                            {s.name}
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -521,14 +584,27 @@ const ClientDetection = () => {
                       <span className="tags-label">Colores</span>
                       <div className="tags-list">
                         {producto.colors.map(c => (
-                          <span key={c} className="tag">{c}</span>
+                          <button
+                            key={c.id}
+                            className={`tag ${selectedColor?.id === c.id ? 'selected' : ''} ${c.stock === 0 ? 'out-of-stock' : ''}`}
+                            onClick={() => c.stock > 0 && handleColorSelect(c)}
+                            disabled={c.stock === 0}
+                          >
+                            {c.name}
+                          </button>
                         ))}
                       </div>
                     </div>
                   )}
 
+                  {selectionError && (
+                    <div className="selection-error">
+                      {selectionError}
+                    </div>
+                  )}
+
                   <div className="action-buttons">
-                    <button className="btn-add-cart" onClick={agregarAlCarrito}>
+                    <button className="btn-add-cart" onClick={agregarAlCarrito} disabled={!canAddToCart}>
                       🛒 Agregar al Carrito
                     </button>
                     <button className="btn-reset" onClick={reset}>
