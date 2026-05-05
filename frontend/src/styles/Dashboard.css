@@ -200,6 +200,42 @@ nav button:disabled {
   gap: 24px;
 }
 
+.dashboard-trend-section {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+.trend-card {
+  min-height: 320px;
+}
+
+.analytics-inline-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  min-height: 320px;
+}
+
+.analytics-inline-card .section-subtitle {
+  margin: 0 0 16px 0;
+}
+
+.btn-analytics {
+  background: #764ba2;
+  border-color: #764ba2;
+  color: white;
+}
+
+.btn-analytics:hover {
+  background: #5c3a82;
+  border-color: #5c3a82;
+  color: white;
+}
+
 .chart-card {
   background: white;
   padding: 24px;

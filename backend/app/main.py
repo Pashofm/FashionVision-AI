@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -23,7 +23,7 @@ from backend.app.models import (Cart, CartItem, CartStatus, Category,
                                 PaymentMethod, PaymentQueue, Product,
                                 ProductVariant, QueuePriority, QueueStatus,
                                 Receipt, SessionStatus, StockStatus, Supplier,
-                                AttributeOption, ProductAttribute, PriceHistory,
+                                AttributeOption, PriceHistory,
                                 User, UserRole)
 from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  CartItemCreate, CartItemResponse,
@@ -54,13 +54,15 @@ from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                  ReceiptResponse, RefreshTokenRequest,
                                  RefreshTokenResponse, SalesByCategory,
                                  SalesByHour, SessionCreate, SessionResponse,
-                                 SupplierCreate, SupplierResponse,
-                                 SupplierUpdate,
-                                 AttributeOptionCreate, AttributeOptionResponse,
-                                 AttributeOptionUpdate, AttributeOptionBase,
-                                 ProductAttributeCreate, ProductAttributeResponse,
-                                 UserCreate, UserResponse, UserUpdate,
-                                 VariantWithInventory, PriceType, StockStatus)
+                                  SupplierCreate, SupplierResponse,
+                                  SupplierUpdate,
+AttributeOptionCreate, AttributeOptionResponse,
+                                   AttributeOptionUpdate, AttributeOptionBase,
+                                   AttributeWithStockStatus, AttributeListWithStockResponse,
+                                   DetectionProductResponse, DetectionAttributeItem,
+                                  UserCreate, UserResponse, UserUpdate,
+                                  VariantWithInventory, VariantSearchResponse,
+                                  PriceType, StockStatus)
 from backend.app.services.auth import (create_access_token,
                                        create_refresh_token,
                                        decode_refresh_token, hash_password,
@@ -492,17 +494,22 @@ async def get_products(
     category_id: uuid.UUID = None,
     search: str = None,
     yolo_class_name: str = None,
+    attribute_id: uuid.UUID = None,
     db: AsyncSession = db_dependency
 ):
     query = select(Product)
-    
+
     if category_id:
         query = query.where(Product.category_id == category_id)
     if search:
         query = query.where(Product.name.ilike(f"%{search}%"))
     if yolo_class_name:
         query = query.where(Product.yolo_class_name == yolo_class_name)
-    
+    if attribute_id:
+        query = query.join(Product.variants).where(
+            or_(ProductVariant.size_attribute_id == attribute_id, ProductVariant.color_attribute_id == attribute_id)
+        )
+
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
@@ -732,13 +739,87 @@ async def delete_product(
 async def get_product_by_yolo(yolo_class_name: str, db: AsyncSession = db_dependency):
     result = await db.execute(
         select(Product)
-        .where(Product.yolo_class_name == yolo_class_name)
-        .options(selectinload(Product.variants))
+        .where(func.lower(Product.yolo_class_name) == func.lower(yolo_class_name))
+        .options(selectinload(Product.variants).selectinload(ProductVariant.inventory))
     )
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail=f"No product found for YOLO class: {yolo_class_name}")
     return product
+
+
+@app.get("/api/detect/product/{yolo_class_name}", response_model=DetectionProductResponse)
+async def get_detection_product(yolo_class_name: str, db: AsyncSession = db_dependency):
+    result = await db.execute(
+        select(Product)
+        .where(func.lower(Product.yolo_class_name) == func.lower(yolo_class_name))
+        .options(
+            selectinload(Product.variants).selectinload(ProductVariant.inventory),
+            selectinload(Product.variants).selectinload(ProductVariant.size_attribute),
+            selectinload(Product.variants).selectinload(ProductVariant.color_attribute),
+            selectinload(Product.category)
+        )
+    )
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail=f"No product found for YOLO class: {yolo_class_name}")
+
+    size_stock_map = {}
+    color_stock_map = {}
+
+    for variant in product.variants:
+        if variant.size_attribute:
+            size_val = variant.size_attribute.value
+            if size_val not in size_stock_map:
+                size_stock_map[size_val] = 0
+            if variant.inventory:
+                size_stock_map[size_val] += variant.inventory.quantity_available or 0
+        if variant.color_attribute:
+            color_val = variant.color_attribute.value
+            hex_code = variant.color_attribute.hex_code or variant.color_hex
+            if color_val not in color_stock_map:
+                color_stock_map[color_val] = {"stock": 0, "hex": hex_code}
+            if variant.inventory:
+                color_stock_map[color_val]["stock"] += variant.inventory.quantity_available or 0
+
+    assigned_sizes = set()
+    assigned_colors = set()
+    for variant in product.variants:
+        if variant.size_attribute and variant.size_attribute.type == "size":
+            assigned_sizes.add(variant.size_attribute.value)
+        if variant.color_attribute and variant.color_attribute.type == "color":
+            assigned_colors.add(variant.color_attribute.value)
+
+    sizes = []
+    for size_val in assigned_sizes:
+        size_attr = next(v.size_attribute for v in product.variants if v.size_attribute and v.size_attribute.value == size_val)
+        sizes.append(DetectionAttributeItem(
+            attribute_id=size_attr.id,
+            value=size_val,
+            stock=size_stock_map.get(size_val, 0)
+        ))
+
+    colors = []
+    for color_val in assigned_colors:
+        color_attr = next(v.color_attribute for v in product.variants if v.color_attribute and v.color_attribute.value == color_val)
+        color_info = color_stock_map.get(color_val, {"stock": 0, "hex": None})
+        colors.append(DetectionAttributeItem(
+            attribute_id=color_attr.id,
+            value=color_val,
+            hex_code=color_info.get("hex"),
+            stock=color_info.get("stock", 0)
+        ))
+
+    return DetectionProductResponse(
+        id=product.id,
+        name=product.name,
+        sku=product.sku,
+        base_price=product.base_price,
+        yolo_class_name=product.yolo_class_name,
+        category_name=product.category.name if product.category else None,
+        sizes=sizes,
+        colors=colors
+    )
 
 
 # ==================== PRODUCT VARIANTS ====================
@@ -757,22 +838,88 @@ async def create_product_variant(
 
     db_variant = ProductVariant(
         product_id=product_id,
-        size=variant.size,
-        color=variant.color,
+        size_attribute_id=variant.size_attribute_id,
+        color_attribute_id=variant.color_attribute_id,
         color_hex=variant.color_hex,
         sku_variant=variant.sku_variant,
         price_modifier=variant.price_modifier
     )
     db.add(db_variant)
     await db.flush()
-    await db.refresh(db_variant)
+
+    db_inventory = Inventory(
+        product_variant_id=db_variant.id,
+        quantity_available=0,
+        low_stock_threshold=5,
+        stock_status=StockStatus.available
+    )
+    db.add(db_inventory)
+    await db.flush()
+
+    result = await db.execute(
+        select(ProductVariant)
+        .where(ProductVariant.id == db_variant.id)
+        .options(
+            selectinload(ProductVariant.size_attribute),
+            selectinload(ProductVariant.color_attribute),
+            selectinload(ProductVariant.inventory)
+        )
+    )
+    db_variant = result.scalar_one()
+
     return db_variant
 
 
 @app.get("/api/products/{product_id}/variants", response_model=List[ProductVariantResponse])
 async def get_product_variants(product_id: uuid.UUID, db: AsyncSession = db_dependency):
-    result = await db.execute(select(ProductVariant).where(ProductVariant.product_id == product_id))
+    result = await db.execute(
+        select(ProductVariant)
+        .where(ProductVariant.product_id == product_id)
+        .options(
+            selectinload(ProductVariant.size_attribute),
+            selectinload(ProductVariant.color_attribute),
+            selectinload(ProductVariant.inventory)
+        )
+    )
     return result.scalars().all()
+
+
+@app.get("/api/products/{product_id}/variants/search", response_model=VariantSearchResponse)
+async def search_product_variant_by_attributes(
+    product_id: uuid.UUID,
+    size_attribute_id: uuid.UUID = None,
+    color_attribute_id: uuid.UUID = None,
+    db: AsyncSession = db_dependency
+):
+    if not size_attribute_id and not color_attribute_id:
+        raise HTTPException(status_code=400, detail="At least one of size_attribute_id or color_attribute_id is required")
+
+    query = select(ProductVariant).where(ProductVariant.product_id == product_id)
+    if size_attribute_id:
+        query = query.where(ProductVariant.size_attribute_id == size_attribute_id)
+    if color_attribute_id:
+        query = query.where(ProductVariant.color_attribute_id == color_attribute_id)
+
+    result = await db.execute(
+        query.options(
+            selectinload(ProductVariant.inventory)
+        )
+    )
+    variant = result.scalar_one_or_none()
+
+    if not variant:
+        raise HTTPException(status_code=404, detail="Variant not found for this combination")
+
+    if not variant.inventory or variant.inventory.quantity_available <= 0:
+        raise HTTPException(status_code=404, detail="Variant not found for this combination")
+
+    return VariantSearchResponse(
+        variant_id=variant.id,
+        sku_variant=variant.sku_variant,
+        price_modifier=float(variant.price_modifier) if variant.price_modifier else 0,
+        quantity_available=variant.inventory.quantity_available,
+        stock_status=variant.inventory.stock_status.value if variant.inventory.stock_status else "available"
+    )
 
 
 @app.put("/api/products/{product_id}/variants/{variant_id}", response_model=ProductVariantResponse)
@@ -784,8 +931,12 @@ async def update_product_variant(
     db: AsyncSession = db_dependency
 ):
     result = await db.execute(
-        select(ProductVariant).where(
-            and_(ProductVariant.id == variant_id, ProductVariant.product_id == product_id)
+        select(ProductVariant)
+        .where(and_(ProductVariant.id == variant_id, ProductVariant.product_id == product_id))
+        .options(
+            selectinload(ProductVariant.size_attribute),
+            selectinload(ProductVariant.color_attribute),
+            selectinload(ProductVariant.inventory)
         )
     )
     variant = result.scalar_one_or_none()
@@ -826,7 +977,14 @@ async def get_product_stock(product_id: uuid.UUID, db: AsyncSession = db_depende
     result = await db.execute(
         select(Product)
         .where(Product.id == product_id)
-        .options(selectinload(Product.variants).selectinload(ProductVariant.inventory))
+        .options(
+            selectinload(Product.variants)
+            .selectinload(ProductVariant.inventory),
+            selectinload(Product.variants)
+            .selectinload(ProductVariant.size_attribute),
+            selectinload(Product.variants)
+            .selectinload(ProductVariant.color_attribute)
+        )
     )
     product = result.scalar_one_or_none()
     if not product:
@@ -834,7 +992,6 @@ async def get_product_stock(product_id: uuid.UUID, db: AsyncSession = db_depende
 
     total_stock = 0
     has_low_stock = False
-    has_out_of_stock = False
 
     variants_data = []
     for v in product.variants:
@@ -843,21 +1000,21 @@ async def get_product_stock(product_id: uuid.UUID, db: AsyncSession = db_depende
         total_stock += qty
         threshold = inv.low_stock_threshold if inv else 5
 
-        if qty == 0:
-            has_out_of_stock = True
-        elif qty <= threshold:
+        if qty <= threshold and qty > 0:
             has_low_stock = True
 
         variants_data.append(VariantWithInventory(
             id=v.id,
             product_id=v.product_id,
-            size=v.size,
-            color=v.color,
+            size_attribute_id=v.size_attribute_id,
+            color_attribute_id=v.color_attribute_id,
             color_hex=v.color_hex,
             sku_variant=v.sku_variant,
             price_modifier=float(v.price_modifier) if v.price_modifier else 0,
             is_active=v.is_active,
             created_at=v.created_at,
+            size_attribute=AttributeOptionResponse.model_validate(v.size_attribute) if v.size_attribute else None,
+            color_attribute=AttributeOptionResponse.model_validate(v.color_attribute) if v.color_attribute else None,
             inventory=InventoryResponse(
                 id=inv.id,
                 product_variant_id=inv.product_variant_id,
@@ -884,7 +1041,7 @@ async def get_product_stock(product_id: uuid.UUID, db: AsyncSession = db_depende
         variants=variants_data,
         total_stock=total_stock,
         has_low_stock=has_low_stock,
-        has_out_of_stock=has_out_of_stock
+        has_out_of_stock=total_stock == 0
     )
 
 
@@ -896,6 +1053,7 @@ async def get_all_products_with_stock(
     search: str = None,
     barcode: str = None,
     is_featured: bool = None,
+    attribute_id: uuid.UUID = None,
     db: AsyncSession = db_dependency
 ):
     query = select(Product).options(
@@ -910,6 +1068,10 @@ async def get_all_products_with_stock(
         query = query.where(Product.barcode.ilike(f"%{barcode}%"))
     if is_featured is not None:
         query = query.where(Product.is_featured == is_featured)
+    if attribute_id:
+        query = query.join(Product.variants).where(
+            or_(ProductVariant.size_attribute_id == attribute_id, ProductVariant.color_attribute_id == attribute_id)
+        )
 
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
@@ -919,7 +1081,6 @@ async def get_all_products_with_stock(
     for product in products:
         total_stock = 0
         has_low_stock = False
-        has_out_of_stock = False
 
         for v in product.variants:
             inv = v.inventory
@@ -927,9 +1088,7 @@ async def get_all_products_with_stock(
             total_stock += qty
             threshold = inv.low_stock_threshold if inv else 5
 
-            if qty == 0:
-                has_out_of_stock = True
-            elif qty <= threshold:
+            if qty <= threshold and qty > 0:
                 has_low_stock = True
 
         response.append({
@@ -943,7 +1102,7 @@ async def get_all_products_with_stock(
             "variants_count": len(product.variants),
             "total_stock": total_stock,
             "has_low_stock": has_low_stock,
-            "has_out_of_stock": has_out_of_stock
+            "has_out_of_stock": total_stock == 0
         })
 
     return response
@@ -1039,8 +1198,8 @@ async def get_low_stock_variants(db: AsyncSession = db_dependency):
             Category.name,
             Product.sku,
             ProductVariant.sku_variant,
-            ProductVariant.size,
-            ProductVariant.color,
+            ProductVariant.size_attribute_id,
+            ProductVariant.color_attribute_id,
             Inventory.quantity_available,
             Inventory.quantity_reserved,
             Inventory.low_stock_threshold
@@ -1066,8 +1225,8 @@ async def get_low_stock_variants(db: AsyncSession = db_dependency):
             category_name=row[3],
             sku=row[4],
             sku_variant=row[5],
-            size=row[6],
-            color=row[7],
+            size_attribute_id=row[6],
+            color_attribute_id=row[7],
             quantity_available=qty,
             quantity_reserved=row[9] or 0,
             low_stock_threshold=threshold,
@@ -1367,6 +1526,63 @@ async def get_attributes(
     return result.scalars().all()
 
 
+@app.get("/api/attributes/with-stock-status", response_model=AttributeListWithStockResponse)
+async def get_attributes_with_stock_status(
+    type: str = None,
+    include_inactive: bool = False,
+    db: AsyncSession = db_dependency
+):
+    query = select(AttributeOption)
+    if not include_inactive:
+        query = query.where(AttributeOption.is_active == True)
+    if type:
+        query = query.where(AttributeOption.type == type)
+    result = await db.execute(query.order_by(AttributeOption.sort_order, AttributeOption.value))
+    attributes = result.scalars().all()
+
+    enriched_attributes = []
+    for attr in attributes:
+        linked_variants_result = await db.execute(
+            select(ProductVariant)
+            .join(Product)
+            .where(
+                or_(
+                    ProductVariant.size_attribute_id == attr.id,
+                    ProductVariant.color_attribute_id == attr.id
+                )
+            )
+            .options(selectinload(ProductVariant.inventory))
+        )
+        linked_variants = linked_variants_result.scalars().all()
+
+        linked_product_ids = set()
+        total_stock = 0
+
+        for variant in linked_variants:
+            linked_product_ids.add(variant.product_id)
+            if variant.inventory:
+                total_stock += variant.inventory.quantity_available or 0
+
+        has_products_linked = len(linked_product_ids) > 0
+        is_effective = total_stock > 0
+
+        enriched_attributes.append(AttributeWithStockStatus(
+            id=attr.id,
+            type=attr.type,
+            value=attr.value,
+            hex_code=attr.hex_code,
+            sort_order=attr.sort_order,
+            is_active=attr.is_active,
+            created_at=attr.created_at,
+            is_effective=is_effective,
+            has_products_linked=has_products_linked,
+            total_stock=total_stock,
+            variants_count=len(linked_variants)
+        ))
+
+    return AttributeListWithStockResponse(attributes=enriched_attributes)
+
+
 @app.put("/api/attributes/{attribute_id}/reactivate", response_model=AttributeOptionResponse)
 async def reactivate_attribute(
     attribute_id: uuid.UUID,
@@ -1441,78 +1657,6 @@ async def delete_attribute(
     attr.is_active = False
     await db.flush()
     return {"message": "Attribute deactivated"}
-
-
-@app.get("/api/products/{product_id}/attributes", response_model=List[AttributeOptionResponse])
-async def get_product_attributes(
-    product_id: uuid.UUID,
-    db: AsyncSession = db_dependency
-):
-    result = await db.execute(
-        select(AttributeOption)
-        .join(ProductAttribute, ProductAttribute.attribute_option_id == AttributeOption.id)
-        .where(ProductAttribute.product_id == product_id)
-        .where(AttributeOption.is_active == True)
-    )
-    return result.scalars().all()
-
-
-@app.post("/api/products/{product_id}/attributes")
-async def add_product_attributes(
-    product_id: uuid.UUID,
-    attribute_ids: List[uuid.UUID],
-    current_user: User = Depends(require_role(UserRole.admin)),
-    db: AsyncSession = db_dependency
-):
-    result = await db.execute(select(Product).where(Product.id == product_id))
-    product = result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    added = []
-    for attr_id in attribute_ids:
-        result = await db.execute(select(AttributeOption).where(AttributeOption.id == attr_id))
-        attr = result.scalar_one_or_none()
-        if not attr:
-            continue
-
-        existing = await db.execute(
-            select(ProductAttribute).where(
-                ProductAttribute.product_id == product_id,
-                ProductAttribute.attribute_option_id == attr_id
-            )
-        )
-        if existing.scalar_one_or_none():
-            continue
-
-        pa = ProductAttribute(product_id=product_id, attribute_option_id=attr_id)
-        db.add(pa)
-        added.append(attr_id)
-
-    await db.flush()
-    return {"message": f"Added {len(added)} attributes", "added": [str(a) for a in added]}
-
-
-@app.delete("/api/products/{product_id}/attributes/{attribute_id}")
-async def remove_product_attribute(
-    product_id: uuid.UUID,
-    attribute_id: uuid.UUID,
-    current_user: User = Depends(require_role(UserRole.admin)),
-    db: AsyncSession = db_dependency
-):
-    result = await db.execute(
-        select(ProductAttribute).where(
-            ProductAttribute.product_id == product_id,
-            ProductAttribute.attribute_option_id == attribute_id
-        )
-    )
-    pa = result.scalar_one_or_none()
-    if not pa:
-        raise HTTPException(status_code=404, detail="Product attribute not found")
-
-    await db.delete(pa)
-    await db.flush()
-    return {"message": "Attribute removed from product"}
 
 
 # ==================== PRICE HISTORY ====================
@@ -1685,7 +1829,12 @@ async def get_cart(cart_id: uuid.UUID, db: AsyncSession = db_dependency):
 
 
 @app.put("/api/carts/{cart_id}")
-async def update_cart(cart_id: uuid.UUID, cart_data: CartUpdate, db: AsyncSession = db_dependency):
+async def update_cart(
+    cart_id: uuid.UUID,
+    cart_data: CartUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = db_dependency
+):
     result = await db.execute(select(Cart).where(Cart.id == cart_id))
     cart = result.scalar_one_or_none()
     if not cart:
@@ -1755,7 +1904,25 @@ async def update_cart(cart_id: uuid.UUID, cart_data: CartUpdate, db: AsyncSessio
             product_result = await db.execute(select(Product).where(Product.id == item.product_id))
             product = product_result.scalar_one_or_none()
             product_name = product.name if product else "Producto"
-            
+
+            # Validar stock suficiente antes de crear orden
+            inventory_result = await db.execute(
+                select(Inventory).where(Inventory.product_variant_id == item.product_variant_id)
+            )
+            inventory = inventory_result.scalar_one_or_none()
+
+            if not inventory:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No existe inventario para la variante {item.product_variant_id}"
+                )
+
+            if inventory.quantity_available < item.quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Stock insuficiente para '{product_name}'. Disponible: {inventory.quantity_available}, Solicitado: {item.quantity}"
+                )
+
             db_order_item = OrderItem(
                 order_id=db_order.id,
                 product_id=item.product_id,
@@ -1766,13 +1933,31 @@ async def update_cart(cart_id: uuid.UUID, cart_data: CartUpdate, db: AsyncSessio
                 subtotal=float(item.unit_price) * item.quantity
             )
             db.add(db_order_item)
+
+            # Reducir inventario
+            quantity_before = inventory.quantity_available
+            inventory.quantity_available -= item.quantity
+
+            # Crear movimiento de inventario
+            movement = InventoryMovement(
+                product_variant_id=item.product_variant_id,
+                movement_type=MovementType.sale,
+                quantity_change=-item.quantity,
+                quantity_before=quantity_before,
+                quantity_after=inventory.quantity_available,
+                reference_id=db_order.id,
+                notes=f"Venta orden {order_number}",
+                created_by=current_user.id
+            )
+            db.add(movement)
+
             order_items_list.append({
                 "name": product_name,
                 "quantity": item.quantity,
                 "unit_price": float(item.unit_price),
                 "subtotal": float(item.unit_price) * item.quantity
             })
-        
+
         await db.flush()
         
         receipt_number = f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:5].upper()}"
@@ -2146,36 +2331,38 @@ async def get_sales_by_category(period: str = 'weekly', db: AsyncSession = db_de
 @app.get("/api/analytics/inventory-alerts", response_model=List[InventoryAlert])
 async def get_inventory_alerts(db: AsyncSession = db_dependency):
     result = await db.execute(
-        select(
-            ProductVariant.id,
-            ProductVariant.product_id,
-            Product.name,
-            func.concat(func.coalesce(ProductVariant.size, ''), ' - ', func.coalesce(ProductVariant.color, '')).label('variant_desc'),
-            ProductVariant.sku_variant,
-            Inventory.quantity_available,
-            Inventory.quantity_reserved,
-            Inventory.low_stock_threshold
-        )
-        .select_from(Inventory)
+        select(Inventory)
         .join(ProductVariant)
         .join(Product)
         .where(Inventory.quantity_available <= Inventory.low_stock_threshold)
+        .options(
+            selectinload(Inventory.variant).selectinload(ProductVariant.product),
+            selectinload(Inventory.variant).selectinload(ProductVariant.size_attribute),
+            selectinload(Inventory.variant).selectinload(ProductVariant.color_attribute)
+        )
         .order_by(Inventory.quantity_available.asc())
     )
+    inventories = result.scalars().all()
 
     response = []
-    for row in result:
-        qty_available = row[5] or 0
-        threshold = row[6] or 5
+    for inv in inventories:
+        qty_available = inv.quantity_available or 0
+        threshold = inv.low_stock_threshold or 5
         status = 'out_of_stock' if qty_available == 0 else 'low_stock'
+
+        variant = inv.variant
+        size_val = variant.size_attribute.value if variant.size_attribute else ''
+        color_val = variant.color_attribute.value if variant.color_attribute else ''
+        variant_desc = f"{size_val} - {color_val}".strip(" -")
+
         response.append(InventoryAlert(
-            variant_id=row[0],
-            product_id=row[1],
-            product_name=row[2],
-            variant_description=row[3] or '',
-            sku_variant=row[4],
+            variant_id=variant.id,
+            product_id=variant.product_id,
+            product_name=variant.product.name,
+            variant_description=variant_desc,
+            sku_variant=variant.sku_variant,
             quantity_available=qty_available,
-            quantity_reserved=row[6] or 0,
+            quantity_reserved=inv.quantity_reserved or 0,
             low_stock_threshold=threshold,
             status=status
         ))
@@ -2473,7 +2660,7 @@ async def pos_complete_payment(
             product_id=item.product_id,
             product_variant_id=item.product_variant_id,
             product_name=item.product.name if item.product else "Unknown",
-            variant_description=f"{item.product_variant.size if item.product_variant else ''} - {item.product_variant.color if item.product_variant else ''}",
+            variant_description=f"{item.product_variant.size_attribute.value if item.product_variant and item.product_variant.size_attribute else ''} - {item.product_variant.color_attribute.value if item.product_variant and item.product_variant.color_attribute else ''}",
             quantity=item.quantity,
             unit_price=float(item.unit_price),
             subtotal=float(item.unit_price) * item.quantity
@@ -2485,13 +2672,20 @@ async def pos_complete_payment(
         )
         inventory = inventory_result.scalar_one_or_none()
         if inventory:
+            if inventory.quantity_available < item.quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Stock insuficiente para '{item.product.name if item.product else 'producto'}'. Disponible: {inventory.quantity_available}, Solicitado: {item.quantity}"
+                )
+
+            quantity_before = inventory.quantity_available
             inventory.quantity_available -= item.quantity
 
             movement = InventoryMovement(
                 product_variant_id=item.product_variant_id,
                 movement_type=MovementType.sale,
                 quantity_change=-item.quantity,
-                quantity_before=inventory.quantity_available + item.quantity,
+                quantity_before=quantity_before,
                 quantity_after=inventory.quantity_available,
                 reference_id=order.id,
                 notes=f"Venta orden {order.order_number}",

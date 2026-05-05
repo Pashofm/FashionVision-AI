@@ -155,6 +155,32 @@ export async function getProductByYoloClass(yoloClassName) {
   return response.json();
 }
 
+export async function getDetectionProduct(yoloClassName) {
+  const response = await fetch(`${API_URL}/api/detect/product/${yoloClassName}`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error(`Failed to fetch detection product: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function searchProductVariant(productId, sizeAttributeId, colorAttributeId) {
+  const params = new URLSearchParams();
+  if (sizeAttributeId) params.append('size_attribute_id', sizeAttributeId);
+  if (colorAttributeId) params.append('color_attribute_id', colorAttributeId);
+
+  const response = await fetch(`${API_URL}/api/products/${productId}/variants/search?${params}`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error(`Error searching variant: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export async function getCategories() {
   const response = await fetch(`${API_URL}/api/categories`);
   if (!response.ok) {
@@ -694,6 +720,16 @@ export async function deleteAttribute(attributeId) {
   return response.json();
 }
 
+export async function getAttributesWithStock(type = null, includeInactive = false) {
+  let url = `${API_URL}/api/attributes/with-stock-status?include_inactive=${includeInactive}`;
+  if (type) url += `&type=${type}`;
+  const response = await fetch(url, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch attributes with stock: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 // ==================== PRODUCT ATTRIBUTES ====================
 
 export async function getProductAttributes(productId) {
@@ -723,6 +759,34 @@ export async function removeProductAttribute(productId, attributeId) {
   });
   if (!response.ok) {
     throw new Error(`Failed to remove product attribute: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getProductAttributesWithStock(productId) {
+  const response = await fetch(`${API_URL}/api/products/${productId}/attributes-with-stock`, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch product attributes with stock: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getAvailableProductAttributes(productId) {
+  const response = await fetch(`${API_URL}/api/products/${productId}/available-attributes`, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch available product attributes: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function linkProductAttributes(productId, attributeIds) {
+  const response = await fetch(`${API_URL}/api/products/${productId}/attributes/link`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ attribute_ids: attributeIds }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to link product attributes: ${response.statusText}`);
   }
   return response.json();
 }
