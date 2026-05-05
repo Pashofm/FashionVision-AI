@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import Cashier from './pages/Cashier';
 import ClientDetection from './pages/ClientDetection';
+import Reportes from './pages/Reportes';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/caja" element={<Cashier />} />
         <Route path="/cliente" element={<ClientDetection />} />
+        <Route path="/reportes" element={<Reportes />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>

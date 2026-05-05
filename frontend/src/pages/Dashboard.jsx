@@ -12,8 +12,10 @@ import {
   PieChart,
   Pie,
   Cell,
+  LineChart,
+  Line,
 } from 'recharts';
-import './Dashboard.css';
+import '../styles/Dashboard.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -25,6 +27,7 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
   const [salesData, setSalesData] = useState([]);
+  const [trendData, setTrendData] = useState([]);
   const userData = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
@@ -61,6 +64,17 @@ const Dashboard = () => {
         };
       });
       setSalesData(formattedHourData);
+
+      const trendData = (data.sales_trend || []).map((item, index) => {
+        const date = new Date();
+        date.setDate(date.getDate() - (27 - index));
+        return {
+          date: date.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }),
+          ventas: item.total_orders,
+          revenue: item.total_revenue,
+        };
+      });
+      setTrendData(trendData);
     } catch (err) {
       console.error('Error fetching dashboard:', err);
       setError(err.message);
@@ -232,6 +246,31 @@ const Dashboard = () => {
           </div>
         </section>
 
+        <section className="dashboard-trend-section">
+          <div className="chart-card trend-card">
+            <h2 className="section-title">Tendencia de Ventas (Últimas 4 semanas)</h2>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} />
+                  <YAxis tick={{ fill: '#64748b' }} />
+                  <Tooltip formatter={(value) => formatCurrency(value)} />
+                  <Line type="monotone" dataKey="revenue" stroke="#4da6ff" strokeWidth={2} dot={false} name="Revenue" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="chart-card analytics-inline-card">
+            <h2 className="section-title">Estadísticas Avanzadas</h2>
+            <p className="section-subtitle">Ver análisis detallados y reportes</p>
+            <button className="action-btn btn-analytics" onClick={() => navigate('/reportes')}>
+              VER REPORTES
+            </button>
+          </div>
+        </section>
+
         <section className="top-products-section">
           <h2 className="section-title">Productos Más Vendidos</h2>
           <p className="section-subtitle">Últimos 30 días</p>
@@ -294,24 +333,6 @@ const Dashboard = () => {
             </div>
           </section>
         )}
-
-        <section className="actions-section">
-          <div className="action-card inventario-card">
-            <h3>Gestionar Inventario</h3>
-            <p>Agregar, editar o eliminar productos y variantes</p>
-            <button className="action-btn btn-inventario" onClick={() => navigate('/inventory')}>
-              INVENTARIO
-            </button>
-          </div>
-
-          <div className="action-card analytics-card">
-            <h3>Estadísticas Avanzadas</h3>
-            <p>Ver análisis detallados y reportes</p>
-            <button className="action-btn btn-analytics" onClick={() => alert('Próximamente: Reportes detallados')}>
-              VER REPORTES
-            </button>
-          </div>
-        </section>
       </main>
     </div>
   );
