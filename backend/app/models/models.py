@@ -135,17 +135,16 @@ class Product(Base):
     cart_items = relationship("CartItem", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
     price_history = relationship("PriceHistory", back_populates="product", cascade="all, delete-orphan")
-    attributes = relationship("ProductAttribute", back_populates="product", cascade="all, delete-orphan")
 
 
 class ProductVariant(Base):
     __tablename__ = "product_variants"
-    __table_args__ = (UniqueConstraint('product_id', 'size', 'color', name='uq_product_size_color'),)
+    __table_args__ = (UniqueConstraint('product_id', 'size_attribute_id', 'color_attribute_id', name='uq_product_size_color'),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
-    size: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    color: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    size_attribute_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("attribute_options.id"), nullable=True)
+    color_attribute_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("attribute_options.id"), nullable=True)
     color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     sku_variant: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     price_modifier: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
@@ -157,6 +156,8 @@ class ProductVariant(Base):
     cart_items = relationship("CartItem", back_populates="product_variant")
     order_items = relationship("OrderItem", back_populates="product_variant")
     inventory_movements = relationship("InventoryMovement", back_populates="product_variant")
+    size_attribute = relationship("AttributeOption", foreign_keys=[size_attribute_id])
+    color_attribute = relationship("AttributeOption", foreign_keys=[color_attribute_id])
 
 
 class Inventory(Base):
@@ -352,21 +353,6 @@ class AttributeOption(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
-
-    product_attributes = relationship("ProductAttribute", back_populates="attribute_option")
-
-
-class ProductAttribute(Base):
-    __tablename__ = "product_attributes"
-    __table_args__ = (UniqueConstraint('product_id', 'attribute_option_id', name='uq_product_attribute'),)
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
-    attribute_option_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("attribute_options.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
-
-    product = relationship("Product", back_populates="attributes")
-    attribute_option = relationship("AttributeOption", back_populates="product_attributes")
 
 
 class PriceHistory(Base):
