@@ -2,86 +2,186 @@
 
 **Sistema Inteligente de Reconocimiento de Prendas y Análisis Predictivo**
 
-FashionVision AI es una solución tecnológica diseñada para democratizar el uso de Inteligencia Artificial en pequeñas y medianas tiendas de ropa. El sistema automatiza el control de inventario y facilita el proceso de autocobro mediante visión por computadora (YOLO) y análisis de datos.
+FashionVision AI es una solución tecnológica diseñada para pequeñas y medianas tiendas de ropa. Automatiza el control de inventario y facilita el proceso de venta mediante visión por computadora (YOLO) y análisis de datos.
+
+---
+
+## Tabla de Contenidos
+
+- [Stack Tecnológico](#stack-tecnológico)
+- [Requisitos Previos](#requisitos-previos)
+- [Instalación Rápida](#instalación-rápida)
+- [Arquitectura del Sistema](#arquitectura-del-sistema)
+- [Modos de Uso](#modos-de-uso)
+- [Documentación](#documentación)
+- [Endpoints de la API](#endpoints-de-la-api)
 
 ---
 
 ## Stack Tecnológico
 
-- **Frontend:** React 19 + Vite + CSS Moderno
-- **Backend:** Python 3.10+ con FastAPI
-- **Modelo de IA:** YOLO (Ultralytics) para detección de prendas
-- **Servidor Web:** Uvicorn
+| Componente | Tecnología | Versión |
+|------------|------------|---------|
+| Frontend | React 19 + Vite | 19.2.0 / 7.3.1 |
+| Backend | Python 3.12 + FastAPI | 0.115.0 |
+| Base de Datos | PostgreSQL 16 | - |
+| Modelo IA | YOLO (Ultralytics) | 8.3.40 |
+| ORM | SQLAlchemy + Alembic | 2.0.35 / 1.18.4 |
+| Contenedores | Docker + Docker Compose | - |
 
 ---
 
-## Características
+## Requisitos Previos
 
-- **Detección de prendas** con YOLO: Identifica prendas de vestir en tiempo real
-- **Bounding boxes verdes** sobre las prendas detectadas
-- **Base de datos de productos**: Información detallada de cada prenda (precio, marca, tallas, colores)
-- **Detección de color**: Analiza el color dominante de la prenda
-- **Interfaz moderna** con React y CSS gradient
+| Software | Versión | Notas |
+|----------|---------|-------|
+| Python | 3.12+ | Para entorno virtual |
+| Node.js | 20+ | Para frontend |
+| Docker Desktop | 4.0+ | Para base de datos |
+| Git | Any | Para clonar repositorio |
+
+**En Windows:** Se recomienda usar WSL2 con Ubuntu para mejor compatibilidad.
 
 ---
 
-## Instalación y Uso
+## Instalación Rápida
 
-### 1. Requisitos Previos
-
-- Node.js y npm instalados
-- Python 3.10 o superior instalado
-
-### 2. Configuración del Backend (Python)
+### Paso 1: Clonar el repositorio
 
 ```bash
-cd backend
-
-# Crear entorno virtual
-python -m venv venv
-
-# Activar entorno virtual
-# En Linux/Mac:
-source venv/bin/activate
-# En Windows:
-.\venv\Scripts\activate
-
-# Instalar dependencias
-pip install -r requirements.txt
-
-# Iniciar servidor
-uvicorn main:app --reload --port 8000
+git clone <repo-url> FashionVision-AI
+cd FashionVision-AI
 ```
 
-El backend estará corriendo en: **http://localhost:8000**
-
-### 3. Configuración del Frontend (Vite + React)
+### Paso 2: Configurar variables de entorno
 
 ```bash
+cp .env.template .env
+```
+
+**Importante:** Revisar el archivo `.env` y ajustar las credenciales según sea necesario.
+
+### Paso 3: Iniciar entorno de desarrollo (recomendado)
+
+```bash
+# Ejecutar script de inicio (levanta DB + pgAdmin + dependencias)
+./scripts/dev-start.sh
+```
+
+### Paso 4: Iniciar servicios manualmente
+
+**Terminal 1 - Backend:**
+```bash
+cd backend
+source venv/bin/activate
+export PYTHONPATH=$PWD
+uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
+```
+
+**Terminal 2 - Frontend:**
+```bash
 cd frontend
-
-# Instalar dependencias
-npm install
-
-# Iniciar entorno de desarrollo
 npm run dev
 ```
 
-El frontend estará disponible en: **http://localhost:5173**
+---
+
+## Arquitectura del Sistema
+
+### Modo Desarrollo (Local + Docker)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Tu Equipo de Desarrollo                  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
+│   │   Frontend   │   │   Backend    │   │     DB       │   │
+│   │    Local     │   │    Local     │   │   Docker     │   │
+│   │   :5173      │   │   :8000      │   │   :5432      │   │
+│   │  (Vite)      │   │  (HotReload) │   │              │   │
+│   └──────────────┘   └──────────────┘   └──────────────┘   │
+│                                              │              │
+│                                              ▼              │
+│                                       ┌──────────────┐     │
+│                                       │   pgAdmin    │     │
+│                                       │   Docker     │     │
+│                                       │   :5050      │     │
+│                                       └──────────────┘     │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Modo Producción (Docker Completo)
+
+```bash
+# Todo en contenedores Docker
+docker compose up -d
+```
 
 ---
 
-## Uso
+## Modos de Uso
 
-1. Abre el navegador en **http://localhost:5173**
-2. Haz clic en **"Abrir Cámara"**
-3. Apunta la cámara a una prenda (gorra roja Lacoste, camiseta o pantalón)
-4. Presiona **"Capturar"**
-5. Visualiza:
-   - Imagen con bounding box verde
-   - Información del producto detectado
-   - Precio, marca, tallas disponibles
-   - Porcentaje de confianza
+### Modo A: Desarrollo (Hot-Reload Activo)
+
+Para desarrollo activo cuando necesitas iterar rápido.
+
+```bash
+# 1. Iniciar base de datos + pgAdmin en Docker
+docker compose up -d db pgadmin
+
+# 2. Backend con hot-reload
+cd backend
+source venv/bin/activate
+export PYTHONPATH=$PWD
+uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
+
+# 3. Frontend con hot-reload
+cd frontend
+npm run dev
+```
+
+**Acceso:**
+| Servicio | URL |
+|----------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8000 |
+| API Docs | http://localhost:8000/docs |
+| pgAdmin | http://localhost:5050 |
+
+---
+
+### Modo B: Testing / Demo (Docker Completo)
+
+Para testing, demos a clientes, o cuando no necesitas hot-reload.
+
+```bash
+# Todo en Docker (comando único)
+docker compose up -d
+```
+
+**Acceso:**
+| Servicio | URL |
+|----------|-----|
+| App | http://localhost |
+| Backend API | http://localhost:8000 |
+| API Docs | http://localhost:8000/docs |
+| pgAdmin | http://localhost:5050 |
+
+---
+
+## Documentación
+
+| Documento | Descripción |
+|-----------|-------------|
+| [QUICKSTART.md](./QUICKSTART.md) | Guía rápida para nuevos desarrolladores |
+| [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Guía completa de desarrollo |
+| [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) | Entorno Docker con migraciones |
+| [docs/INSTALACION_LINUX.md](./docs/INSTALACION_LINUX.md) | Instalación para Linux |
+| [docs/INSTALACION_WINDOWS.md](./docs/INSTALACION_WINDOWS.md) | Instalación para Windows |
+| [docs/COMANDOS.md](./docs/COMANDOS.md) | Comandos importantes del proyecto |
+| [docs/GUIAS_PGADMIN.md](./docs/GUIAS_PGADMIN.md) | Guía de pgAdmin |
 
 ---
 
@@ -89,15 +189,16 @@ El frontend estará disponible en: **http://localhost:5173**
 
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
-| GET | `/` | Endpoint raíz |
-| GET | `/health` | Estado del servidor y modelo |
-| POST | `/api/detect` | Detectar prendas en imagen |
-| POST | `/api/sessions` | Crear sesión de cliente |
-| GET | `/api/carts/{id}` | Obtener carrito con items |
+| GET | `/health` | Estado del servidor y base de datos |
+| GET | `/api/categories` | Listar categorías |
+| GET | `/api/products` | Listar productos |
+| POST | `/api/detect` | Detectar prendas en imagen (YOLO) |
+| POST | `/api/auth/login` | Iniciar sesión |
+| POST | `/api/carts` | Crear carrito |
 | POST | `/api/carts/{id}/items` | Agregar item al carrito |
-| DELETE | `/api/carts/{id}/items/{item_id}` | Eliminar item del carrito |
+| GET | `/api/orders` | Listar órdenes |
 
-### Detección de Prendas
+### Detección de Prendas (YOLO)
 
 ```bash
 curl -X POST "http://localhost:8000/api/detect" \
@@ -120,23 +221,84 @@ curl -X POST "http://localhost:8000/api/detect" \
 
 ---
 
-## Productos Detectables
+## Gestión de Base de Datos (Migraciones)
 
-| Clase YOLO | Producto | Precio |
-|------------|----------|--------|
-| `gorra-roja-lacoste` | Gorra Roja Lacoste | $999.99 |
-| `top` | Camiseta Algodon | $299.99 |
-| `pants` | Jean Slim Fit | $599.99 |
+El sistema usa **Alembic** para gestionar cambios en el schema de forma versionada.
+
+```bash
+# Ver estado de migraciones
+./scripts/migrate.sh status
+
+# Ver historial
+source backend/venv/bin/activate
+export PYTHONPATH=$PWD
+alembic history
+
+# Crear nueva migración
+alembic revision --autogenerate -m "descripcion_del_cambio"
+```
+
+**Flujo de trabajo:**
+1. Modificar modelos en `backend/app/models/`
+2. Crear migración: `alembic revision --autogenerate -m "mensaje"`
+3. Commit y push
+4. Otros desarrolladores ejecutan `./scripts/dev-start.sh` y las migraciones se aplican automáticamente
 
 ---
 
-## Modelo YOLO
+## Estructura del Proyecto
 
-- **Ubicación:** `backend/models/best.pt`
-- **Framework:** Ultralytics YOLO
-- **Entrenamiento:** Dataset personalizado de prendas de ropa
+```
+FashionVision-AI/
+├── backend/
+│   ├── app/
+│   │   ├── main.py          # FastAPI application
+│   │   ├── config.py        # Configuración
+│   │   ├── database.py      # Conexión a DB
+│   │   ├── models/          # Modelos SQLAlchemy
+│   │   ├── schemas/         # Schemas Pydantic
+│   │   └── services/        # Servicios (auth, detection, etc)
+│   ├── alembic/             # Migraciones de base de datos
+│   ├── models/              # Modelo YOLO (best.pt)
+│   ├── database/            # SQL scripts (schema.sql, seed.sql)
+│   └── requirements.txt     # Dependencias Python
+├── frontend/
+│   ├── src/
+│   │   ├── pages/           # Páginas React
+│   │   ├── components/      # Componentes reutilizables
+│   │   ├── hooks/           # Custom hooks
+│   │   ├── services/        # Servicios API
+│   │   └── styles/          # Estilos CSS
+│   └── package.json         # Dependencias npm
+├── docker/                  # Dockerfiles
+├── scripts/                 # Scripts de ayuda
+├── docs/                    # Documentación
+└── docker-compose.yml       # Orquestación Docker
+```
 
-Para entrenar con nuevas clases, consulta `prueba-yolo/backend/train.py`.
+---
+
+## Scripts de Ayuda
+
+| Script | Uso | Descripción |
+|--------|-----|-------------|
+| `dev-start.sh` | `./scripts/dev-start.sh` | Inicia modo desarrollo completo |
+| `dev-stop.sh` | `./scripts/dev-stop.sh` | Detiene servicios Docker |
+| `docker-start.sh` | `./scripts/docker-start.sh` | Inicia todo en Docker |
+| `migrate.sh` | `./scripts/migrate.sh` | Control de migraciones |
+| `pgadmin-start.sh` | `./scripts/pgadmin-start.sh` | Inicia pgAdmin |
+| `pgadmin-stop.sh` | `./scripts/pgadmin-stop.sh` | Detiene pgAdmin |
+| `db-reset.sh` | `./scripts/db-reset.sh` | Reinicia la base de datos |
+
+---
+
+## Credenciales
+
+| Servicio | Usuario | Contraseña | Puerto |
+|----------|---------|------------|--------|
+| pgAdmin | `admin@fashionvision.com` | `admin123` | 5050 |
+| PostgreSQL | `fashionvision_ai_user` | `fashionvision_ai_pass` | 5432 |
+| Login (desarrollo) | `admin@tienda.com` | `admin123` | - |
 
 ---
 
@@ -148,48 +310,80 @@ cd frontend
 npm run dev          # Desarrollo
 npm run build        # Build producción
 npm run lint         # ESLint
+npm run test         # Tests
 
 # Backend
 cd backend
-uvicorn main:app --reload --port 8000
+source venv/bin/activate
+export PYTHONPATH=$PWD
+uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
 
-# Linting single file
-npx eslint src/pages/home.jsx --fix
+# Docker
+docker compose up -d          # Iniciar todo
+docker compose ps             # Ver estado
+docker compose logs -f        # Ver logs
+docker compose down           # Detener todo
 ```
 
 ---
 
-## Estructura del Proyecto
+## Verificación del Sistema
 
-```
-FashionVision-AI/
-├── frontend/
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── home.jsx          # Página de detección principal
-│   │   │   ├── Dashboard.jsx     # Dashboard con gráficos
-│   │   │   └── login.jsx         # Página de login
-│   │   ├── components/
-│   │   │   ├── ButtonGroup.jsx   # Botones de acción
-│   │   │   └── CameraSection.jsx # Sección de cámara
-│   │   ├── hooks/
-│   │   │   └── useCamera.js      # Hook para cámara
-│   │   ├── services/
-│   │   │   └── api.js            # Cliente API
-│   │   └── styles/
-│   │       └── home.css          # Estilos de detección
-│   └── package.json
-│
-├── backend/
-│   ├── main.py                   # FastAPI con endpoints YOLO
-│   ├── models/
-│   │   └── best.pt              # Modelo entrenado
-│   └── requirements.txt
-│
-├── docs/
-│   ├── COMANDOS.md              # Comandos de referencia rápida
-│   ├── SESIONES_Y_CARRITOS.md  # Sistema de sesiones y carritos
-│   └── detection.md             # Documentación de detección
+```bash
+# 1. Health check del backend
+curl http://localhost:8000/health
 
-└── prueba-yolo/                 # Implementación alternativa legacy
+# 2. Verificar frontend
+curl http://localhost:5173 | head -20
+
+# 3. Verificar pgAdmin
+curl http://localhost:5050
+
+# 4. Ver estado de migraciones
+source backend/venv/bin/activate
+export PYTHONPATH=$PWD
+cd backend
+alembic current
 ```
+
+---
+
+## Troubleshooting
+
+### Error: `ModuleNotFoundError: No module named 'backend'`
+
+```bash
+export PYTHONPATH=$PWD
+# Ejecutar desde la raíz del proyecto
+```
+
+### Error: `connection refused` en PostgreSQL
+
+```bash
+# Verificar que Docker está corriendo
+docker compose ps db
+
+# Reiniciar si es necesario
+docker compose restart db
+```
+
+### Error: Puerto en uso
+
+```bash
+# Linux/Mac
+lsof -i :8000
+kill -9 <PID>
+
+# Windows
+netstat -ano | findstr :8000
+taskkill /PID <PID> /F
+```
+
+---
+
+## Próximos Pasos
+
+1. Revisar [QUICKSTART.md](./QUICKSTART.md) para configuración inicial
+2. Revisar [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) para flujo de trabajo
+3. Revisar [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) para gestión de migraciones
+4. Explorar la API en http://localhost:8000/docs

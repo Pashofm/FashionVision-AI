@@ -10,10 +10,11 @@ Sistema completo para levantar y ejecutar FashionVision-AI en entorno Windows.
 2. [Instalación](#2-instalación)
 3. [Configuración del Entorno](#3-configuración-del-entorno)
 4. [Levantar Base de Datos](#4-levantar-base-de-datos)
-5. [Levantar el Backend](#5-levantar-el-backend)
-6. [Levantar el Frontend](#6-levantar-el-frontend)
-7. [Verificar que Todo Funciona](#7-verificar-que-todo-funciona)
-8. [Solución de Problemas](#8-solución-de-problemas)
+5. [Configurar pgAdmin (Opcional)](#5-configurar-pgadmin-opcional)
+6. [Levantar el Backend](#6-levantar-el-backend)
+7. [Levantar el Frontend](#7-levantar-el-frontend)
+8. [Verificar que Todo Funciona](#8-verificar-que-todo-funciona)
+9. [Solución de Problemas](#9-solución-de-problemas)
 
 ---
 
@@ -23,10 +24,10 @@ Sistema completo para levantar y ejecutar FashionVision-AI en entorno Windows.
 
 | Software | Versión Mínima | Descargar |
 |----------|----------------|----------|
-| Python | 3.10+ (3.12 recomendado) | https://www.python.org/downloads/ |
+| Python | 3.12+ | https://www.python.org/downloads/ |
 | Docker Desktop | Latest | https://www.docker.com/products/docker-desktop/ |
 | Git | 2.30+ | https://git-scm.com/download |
-| Node.js | 18+ | https://nodejs.org/ |
+| Node.js | 20+ | https://nodejs.org/ |
 
 ### Verificar Instalaciones (PowerShell)
 
@@ -157,8 +158,8 @@ MAX_IMAGE_SIZE_MB=5
 ### Iniciar PostgreSQL con Docker
 
 ```powershell
-cd backend
-docker-compose up -d
+cd C:\ruta\al\proyecto\FashionVision-AI
+docker compose up -d db
 ```
 
 **Nota**: Ejecutar en CMD o PowerShell, NO en Git Bash.
@@ -189,17 +190,56 @@ Comandos útiles en psql:
 
 ---
 
-## 5. Levantar el Backend
+## 5. Configurar pgAdmin (Opcional)
+
+pgAdmin es una interfaz gráfica para administrar la base de datos.
+
+### Iniciar pgAdmin
+
+```powershell
+docker compose up -d pgadmin
+```
+
+### Acceder a pgAdmin
+
+1. Abrir navegador en: http://localhost:5050
+2. Login con:
+   - Email: `admin@fashionvision.com`
+   - Password: `admin123`
+
+### Conectar a la Base de Datos
+
+1. Click derecho en "Servers" → "Create" → "Server..."
+2. En pestaña "General":
+   - Name: `FashionVision DB`
+3. En pestaña "Connection":
+   - Host name/address: `fashionvision_db`
+   - Port: `5432`
+   - Maintenance database: `fashionvision_ai`
+   - Username: `fashionvision_ai_user`
+   - Password: (la configurada en .env)
+
+---
+
+## 6. Levantar el Backend
 
 ### En PowerShell:
 
 ```powershell
 # Activar entorno virtual
 cd C:\ruta\al\proyecto\FashionVision-AI\backend
+python -m venv venv
 .\venv\Scripts\activate
+
+# Instalar dependencias
+pip install -r requirements.txt
 
 # Configurar PYTHONPATH
 $env:PYTHONPATH = $PWD
+
+# Las migraciones se ejecutan automáticamente con dev-start.sh
+# O manualmente así:
+alembic upgrade head
 
 # Iniciar servidor
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -228,12 +268,13 @@ Abrir en navegador:
 
 ---
 
-## 6. Levantar el Frontend
+## 7. Levantar el Frontend
 
 ### En otra terminal:
 
 ```powershell
 cd C:\ruta\al\proyecto\FashionVision-AI\frontend
+npm install
 npm run dev
 ```
 
@@ -243,7 +284,7 @@ Abrir en navegador: http://localhost:5173
 
 ---
 
-## 7. Verificar que Todo Funciona
+## 8. Verificar que Todo Funciona
 
 ### Test desde Terminal
 
@@ -269,7 +310,7 @@ curl http://localhost:8000/api/products
 
 ---
 
-## 8. Solución de Problemas
+## 9. Solución de Problemas
 
 ### Error: "Port already in use"
 
@@ -296,21 +337,20 @@ Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All -All
 
 ```powershell
 # Verificar que Docker está corriendo
-docker ps
+docker compose ps
 
 # Reiniciar contenedor
-cd backend
-docker-compose restart
+docker compose restart db
 
 # Ver logs
-docker-compose logs db
+docker compose logs db
 ```
 
 ### Error: Module not found (Python)
 
 ```powershell
 # Asegurarse que PYTHONPATH está configurado
-$env:PYTHONPATH = "C:\ruta\al\proyecto"
+$env:PYTHONPATH = "C:\ruta\al\proyecto\FashionVision-AI"
 
 # Verificar que entorno virtual está activo
 # Debe aparecer (venv) antes del prompt
@@ -327,10 +367,24 @@ pip install 'bcrypt<5.0.0'
 
 ```powershell
 # Crear entorno virtual nuevamente
-cd backend
+cd C:\ruta\al\proyecto\FashionVision-AI\backend
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+### Error: Migraciones de Alembic fallan
+
+```powershell
+# Ver estado de migraciones
+.\venv\Scripts\activate
+$env:PYTHONPATH = $PWD
+cd C:\ruta\al\proyecto\FashionVision-AI\backend
+alembic current
+alembic history
+
+# Forzar upgrade
+alembic upgrade head
 ```
 
 ### Error: Docker en WSL2
@@ -350,9 +404,10 @@ O ejecutar Docker directamente en Windows.
 
 | Servicio | Usuario | Contraseña | Puerto |
 |----------|---------|------------|--------|
-| PostgreSQL | fashionvision_ai_user | fashionvision_ai_pass | 5432 |
+| PostgreSQL | fashionvision_ai_user | (del .env) | 5432 |
+| pgAdmin | admin@fashionvision.com | admin123 | 5050 |
 | Backend API | - | - | 8000 |
-| Frontend | - | - | 5173 |
+| Frontend (dev) | - | - | 5173 |
 | Login por defecto | admin@tienda.com | admin123 | - |
 
 ---
@@ -362,3 +417,4 @@ O ejecutar Docker directamente en Windows.
 Una vez configurado el entorno, ver:
 - [Guía de pgAdmin](./GUIAS_PGADMIN.md) - Para administrar la base de datos visualmente
 - [Comandos Importantes](./COMANDOS.md) - Referencia rápida de comandos del proyecto
+- [Entorno Docker](./DOCKER_ENVIRONMENT.md) - Migraciones y gestión de contenedores

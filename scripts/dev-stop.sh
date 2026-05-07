@@ -14,7 +14,7 @@ echo ""
 
 # Stop Docker services
 echo "Stopping Docker services..."
-docker compose stop db frontend backend 2>/dev/null || true
+docker compose stop db pgadmin 2>/dev/null || true
 
 echo ""
 echo -e "\033[0;32mAll services stopped!\033[0m"
