@@ -10,9 +10,6 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
-      - ./backend/database/migrations/001_add_missing_columns.sql:/docker-entrypoint-initdb.d/02_migrate.sql
-      - ./backend/database/seed.sql:/docker-entrypoint-initdb.d/03_seed.sql
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     healthcheck:
@@ -80,9 +77,28 @@ services:
     networks:
       - fashionnet
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: fashionvision_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@fashionvision.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "${PGADMIN_HOST_PORT:-5050}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - fashionnet
+
 volumes:
   postgres_data:
   media_files:
+  pgadmin_data:
 
 networks:
   fashionnet:
