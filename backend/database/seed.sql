@@ -32,9 +32,16 @@ INSERT INTO products (id, category_id, name, sku, base_price, yolo_class_id, yol
 ON CONFLICT DO NOTHING;
 
 -- ─── Variantes de productos ───────────────────────────────────────────────────
-INSERT INTO product_variants (id, product_id, size, color, color_hex, sku_variant, price_modifier) VALUES
-    -- Gorra Roja Lacoste - Only One Size
-    ('f0000001-0000-0000-0000-000000000001', 'b0000001-0000-0000-0000-000000000001', 'One Size', 'Rojo', '#DC2626', 'GOR-RED-001-OS-ROJ', 0)
+-- NOTE: Variants now use size_attribute_id and color_attribute_id FK to attribute_options
+INSERT INTO product_variants (id, product_id, size_attribute_id, color_attribute_id, color_hex, sku_variant, price_modifier) VALUES
+    -- Gorra Roja Lacoste - One Size, Rojo
+    ('f0000001-0000-0000-0000-000000000001',
+     'b0000001-0000-0000-0000-000000000001',
+     'e0000001-0000-0000-0000-000000000020',  -- One Size
+     'e0000001-0000-0000-0000-000000000016',  -- Rojo
+     '#DC2626',
+     'GOR-RED-001-OS-ROJ',
+     0)
 ON CONFLICT DO NOTHING;
 
 -- ─── Inventario inicial ───────────────────────────────────────────────────────

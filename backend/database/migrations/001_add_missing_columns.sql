@@ -54,6 +54,18 @@ BEGIN
 END $$;
 
 -- ============================================
+-- Add size/color attribute FK columns to product_variants
+-- ============================================
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS size_attribute_id UUID REFERENCES attribute_options(id) ON DELETE SET NULL;
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS color_attribute_id UUID REFERENCES attribute_options(id) ON DELETE SET NULL;
+
+-- ============================================
+-- Create indexes for new FK columns
+-- ============================================
+CREATE INDEX IF NOT EXISTS idx_variants_size_attr ON product_variants(size_attribute_id);
+CREATE INDEX IF NOT EXISTS idx_variants_color_attr ON product_variants(color_attribute_id);
+
+-- ============================================
 -- Create suppliers table
 -- ============================================
 CREATE TABLE IF NOT EXISTS suppliers (

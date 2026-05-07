@@ -192,23 +192,24 @@ CREATE INDEX idx_products_active ON products(is_active) WHERE is_active = TRUE;
 --  TABLA: product_variants — Variantes (talla + color)
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE product_variants (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    product_id      UUID            NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    size            VARCHAR(20),
-    color           VARCHAR(50),
-    color_hex       CHAR(7),
-    sku_variant     VARCHAR(150)    NOT NULL UNIQUE,
-    price_modifier   NUMERIC(10,2)   NOT NULL DEFAULT 0,
-    is_active       BOOLEAN         NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_product_size_color UNIQUE (product_id, size, color)
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id          UUID            NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    size_attribute_id  UUID            REFERENCES attribute_options(id) ON DELETE SET NULL,
+    color_attribute_id UUID            REFERENCES attribute_options(id) ON DELETE SET NULL,
+    color_hex           CHAR(7),
+    sku_variant         VARCHAR(150)    NOT NULL UNIQUE,
+    price_modifier      NUMERIC(10,2)   NOT NULL DEFAULT 0,
+    is_active           BOOLEAN         NOT NULL DEFAULT TRUE,
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_product_size_color UNIQUE (product_id, size_attribute_id, color_attribute_id)
 );
 
 COMMENT ON TABLE product_variants IS 'Variantes: combina talla + color por producto';
 
 CREATE INDEX idx_variants_product ON product_variants(product_id);
 CREATE INDEX idx_variants_sku ON product_variants(sku_variant);
-CREATE INDEX idx_variants_size ON product_variants(size);
+CREATE INDEX idx_variants_size ON product_variants(size_attribute_id);
+CREATE INDEX idx_variants_color ON product_variants(color_attribute_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 --  TABLA: product_attributes — Relación productos ↔ atributos disponibles
