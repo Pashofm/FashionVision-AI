@@ -10,10 +10,11 @@ Sistema completo para levantar y ejecutar FashionVision-AI en entorno Linux.
 2. [Instalación](#2-instalación)
 3. [Configuración del Entorno](#3-configuración-del-entorno)
 4. [Levantar Base de Datos](#4-levantar-base-de-datos)
-5. [Levantar el Backend](#5-levantar-el-backend)
-6. [Levantar el Frontend](#6-levantar-el-frontend)
-7. [Verificar que Todo Funciona](#7-verificar-que-todo-funciona)
-8. [Solución de Problemas](#8-solución-de-problemas)
+5. [Configurar pgAdmin (Opcional)](#5-configurar-pgadmin-opcional)
+6. [Levantar el Backend](#6-levantar-el-backend)
+7. [Levantar el Frontend](#7-levantar-el-frontend)
+8. [Verificar que Todo Funciona](#8-verificar-que-todo-funciona)
+9. [Solución de Problemas](#9-solución-de-problemas)
 
 ---
 
@@ -23,10 +24,10 @@ Sistema completo para levantar y ejecutar FashionVision-AI en entorno Linux.
 
 | Software | Versión Mínima | Comando de Instalación |
 |----------|----------------|------------------------|
-| Python | 3.10+ (3.12 recomendado) | `sudo apt install python3 python3-pip` |
+| Python | 3.12+ | `sudo apt install python3 python3-pip` |
 | Docker | Latest | `sudo apt install docker.io docker-compose` |
 | Git | 2.30+ | `sudo apt install git` |
-| Node.js | 18+ | https://nodejs.org/ |
+| Node.js | 20+ | https://nodejs.org/ |
 
 ### Verificar Instalaciones
 
@@ -153,14 +154,14 @@ MAX_IMAGE_SIZE_MB=5
 ### Iniciar PostgreSQL con Docker
 
 ```bash
-cd backend
-sudo docker-compose up -d
+cd ~/FashionVision-AI
+docker compose up -d db
 ```
 
 ### Verificar que PostgreSQL Está Corriendo
 
 ```bash
-sudo docker ps
+docker ps
 ```
 
 Deberías ver algo como:
@@ -172,7 +173,7 @@ xxxxx         postgres:16     Up 5 hours     0.0.0.0:5432->5432/tcp
 ### Verificar Conexión a PostgreSQL
 
 ```bash
-PGPASSWORD=fashionvision_ai_pass psql -h localhost -p 5432 -U fashionvision_ai_user -d fashionvision_ai
+docker exec -it fashionvision_db psql -U fashionvision_ai_user -d fashionvision_ai
 ```
 
 Comandos útiles en psql:
@@ -183,17 +184,56 @@ Comandos útiles en psql:
 
 ---
 
-## 5. Levantar el Backend
+## 5. Configurar pgAdmin (Opcional)
+
+pgAdmin es una interfaz gráfica para administrar la base de datos.
+
+### Iniciar pgAdmin
+
+```bash
+docker compose up -d pgadmin
+```
+
+### Acceder a pgAdmin
+
+1. Abrir navegador en: http://localhost:5050
+2. Login con:
+   - Email: `admin@fashionvision.com`
+   - Password: `admin123`
+
+### Conectar a la Base de Datos
+
+1. Click derecho en "Servers" → "Create" → "Server..."
+2. En pestaña "General":
+   - Name: `FashionVision DB`
+3. En pestaña "Connection":
+   - Host name/address: `fashionvision_db`
+   - Port: `5432`
+   - Maintenance database: `fashionvision_ai`
+   - Username: `fashionvision_ai_user`
+   - Password: (la configurada en .env)
+
+---
+
+## 6. Levantar el Backend
 
 ### En una terminal:
 
 ```bash
 # Activar entorno virtual
-cd /ruta/al/proyecto/FashionVision-AI
-source backend/venv/bin/activate
+cd ~/FashionVision-AI/backend
+python3 -m venv venv
+source venv/bin/activate
+
+# Instalar dependencias (incluye Alembic para migraciones)
+pip install -r requirements.txt
 
 # Configurar PYTHONPATH
-export PYTHONPATH=$PWD
+export PYTHONPATH=~/FashionVision-AI
+
+# Las migraciones se ejecutan automáticamente con dev-start.sh
+# O manualmente así:
+alembic upgrade head
 
 # Iniciar servidor
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -208,12 +248,13 @@ Abrir en navegador:
 
 ---
 
-## 6. Levantar el Frontend
+## 7. Levantar el Frontend
 
 ### En otra terminal:
 
 ```bash
-cd /ruta/al/proyecto/FashionVision-AI/frontend
+cd ~/FashionVision-AI/frontend
+npm install
 npm run dev
 ```
 
@@ -223,7 +264,7 @@ Abrir en navegador: http://localhost:5173
 
 ---
 
-## 7. Verificar que Todo Funciona
+## 8. Verificar que Todo Funciona
 
 ### Test desde Terminal
 
@@ -249,7 +290,7 @@ curl http://localhost:8000/api/products
 
 ---
 
-## 8. Solución de Problemas
+## 9. Solución de Problemas
 
 ### Error: "Port already in use" (Errno 98)
 
@@ -266,7 +307,7 @@ uvicorn backend.app.main:app --port 8001
 
 ```bash
 # Usar sudo o agregar usuario al grupo docker
-sudo docker-compose up -d
+sudo docker compose up -d
 sudo usermod -aG docker $USER
 ```
 
@@ -274,21 +315,20 @@ sudo usermod -aG docker $USER
 
 ```bash
 # Verificar que Docker está corriendo
-sudo docker ps
+docker compose ps
 
 # Reiniciar contenedor
-cd backend
-sudo docker-compose restart
+docker compose restart db
 
 # Ver logs
-sudo docker-compose logs db
+docker compose logs db
 ```
 
 ### Error: Module not found (Python)
 
 ```bash
 # Asegurarse que PYTHONPATH está configurado
-export PYTHONPATH=/ruta/al/proyecto
+export PYTHONPATH=~/FashionVision-AI
 
 # Verificar que entorno virtual está activo
 # Debe aparecer (venv) antes del prompt
@@ -305,10 +345,24 @@ pip install 'bcrypt<5.0.0'
 
 ```bash
 # Crear entorno virtual nuevamente
-cd backend
+cd ~/FashionVision-AI/backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+```
+
+### Error: Migraciones de Alembic fallan
+
+```bash
+# Ver estado de migraciones
+source venv/bin/activate
+export PYTHONPATH=~/FashionVision-AI
+cd ~/FashionVision-AI/backend
+alembic current
+alembic history
+
+# Forzar upgrade
+alembic upgrade head
 ```
 
 ---
@@ -317,9 +371,10 @@ pip install -r requirements.txt
 
 | Servicio | Usuario | Contraseña | Puerto |
 |----------|---------|------------|--------|
-| PostgreSQL | fashionvision_ai_user | fashionvision_ai_pass | 5432 |
+| PostgreSQL | fashionvision_ai_user | (del .env) | 5432 |
+| pgAdmin | admin@fashionvision.com | admin123 | 5050 |
 | Backend API | - | - | 8000 |
-| Frontend | - | - | 5173 |
+| Frontend (dev) | - | - | 5173 |
 | Login por defecto | admin@tienda.com | admin123 | - |
 
 ---
@@ -329,3 +384,4 @@ pip install -r requirements.txt
 Una vez configurado el entorno, ver:
 - [Guía de pgAdmin](./GUIAS_PGADMIN.md) - Para administrar la base de datos visualmente
 - [Comandos Importantes](./COMANDOS.md) - Referencia rápida de comandos del proyecto
+- [Entorno Docker](./DOCKER_ENVIRONMENT.md) - Migraciones y gestión de contenedores

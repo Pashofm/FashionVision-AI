@@ -25,8 +25,8 @@ if [ ! -f "$PROJECT_ROOT/.env" ]; then
     exit 1
 fi
 
-# Start database in Docker
-echo -e "${GREEN}[1/4] Starting database (Docker)...${NC}"
+# Start database and pgAdmin in Docker
+echo -e "${GREEN}[1/5] Starting database (Docker)...${NC}"
 docker compose up -d db
 echo "Waiting for database to be healthy..."
 sleep 5
@@ -39,8 +39,14 @@ done
 echo -e "${GREEN}Database is ready!${NC}"
 echo ""
 
+# Start pgAdmin
+echo -e "${GREEN}[2/5] Starting pgAdmin (Docker)...${NC}"
+docker compose up -d pgadmin
+echo -e "${GREEN}pgAdmin is ready!${NC}"
+echo ""
+
 # Backend setup
-echo -e "${GREEN}[2/4] Backend setup${NC}"
+echo -e "${GREEN}[3/5] Backend setup${NC}"
 if [ ! -d "$PROJECT_ROOT/backend/venv" ]; then
     echo "Creating Python virtual environment..."
     cd "$PROJECT_ROOT/backend"
@@ -51,11 +57,20 @@ echo "Installing dependencies..."
 source "$PROJECT_ROOT/backend/venv/bin/activate"
 pip install -q -r requirements.txt
 
-echo -e "${GREEN}Backend ready!${NC}"
+echo -e "${GREEN}Backend dependencies ready!${NC}"
+echo ""
+
+# Run database migrations
+echo -e "${GREEN}[4/5] Running database migrations (Alembic)...${NC}"
+source "$PROJECT_ROOT/backend/venv/bin/activate"
+export PYTHONPATH=$PROJECT_ROOT
+cd $PROJECT_ROOT
+alembic upgrade head
+echo -e "${GREEN}Migrations applied!${NC}"
 echo ""
 
 # Frontend setup
-echo -e "${GREEN}[3/4] Frontend setup${NC}"
+echo -e "${GREEN}[5/5] Frontend setup${NC}"
 if [ ! -d "$PROJECT_ROOT/frontend/node_modules" ]; then
     echo "Installing npm dependencies..."
     cd "$PROJECT_ROOT/frontend"
@@ -81,9 +96,12 @@ echo "  cd $PROJECT_ROOT/frontend"
 echo "  npm run dev"
 echo ""
 echo -e "${YELLOW}Access points:${NC}"
-echo "  Frontend: http://localhost:5173"
-echo "  Backend:  http://localhost:8000"
-echo "  API Docs: http://localhost:8000/docs"
+echo "  Frontend:  http://localhost:5173"
+echo "  Backend:   http://localhost:8000"
+echo "  API Docs:   http://localhost:8000/docs"
+echo "  pgAdmin:    http://localhost:5050"
+echo "    Email:    ${PGADMIN_EMAIL:-admin@fashionvision.com}"
+echo "    Password: ${PGADMIN_PASSWORD:-admin123}"
 echo ""
 echo "Or use ./scripts/dev-stop.sh to stop all services"
 echo ""
