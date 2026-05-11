@@ -29,6 +29,12 @@ build/
 .env
 .env.local
 .env.*.local
+backend/.env
+backend/.env.local
+backend/.env.*.local
+
+# Environment templates (safe to commit)
+!.env.template
 
 # IDE
 .idea/
@@ -55,3 +61,6 @@ docker/*.local.*
 # Media files (uploaded by users)
 backend/media/
 media/
+
+# Alembic (keep versions but not generated .pyc)
+backend/alembic/__pycache__/

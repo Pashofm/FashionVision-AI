@@ -10,7 +10,7 @@ Sistema completo para levantar y ejecutar FashionVision-AI en entorno Linux.
 2. [Instalación](#2-instalación)
 3. [Configuración del Entorno](#3-configuración-del-entorno)
 4. [Levantar Base de Datos](#4-levantar-base-de-datos)
-5. [Configurar pgAdmin (Opcional)](#5-configurar-pgadmin-opcional)
+5. [Configurar pgAdmin](#5-configurar-pgadmin)
 6. [Levantar el Backend](#6-levantar-el-backend)
 7. [Levantar el Frontend](#7-levantar-el-frontend)
 8. [Verificar que Todo Funciona](#8-verificar-que-todo-funciona)
@@ -78,9 +78,6 @@ source venv/bin/activate
 
 # Instalar dependencias
 pip install -r requirements.txt
-
-# Si hay errores con bcrypt, instalar versión compatible:
-pip install 'bcrypt<5.0.0'
 ```
 
 ### Paso 2.4: Configurar Docker
@@ -113,29 +110,25 @@ npm install
 
 ```bash
 # Desde la raíz del proyecto
-cp backend/.env.example backend/.env
-
-# Crear symlink
-ln -s backend/.env .env
+cp .env.template .env
 ```
 
 ### Paso 3.2: Configurar .env
 
-El archivo `backend/.env` debe contener:
+Editar el archivo `.env` en la raíz del proyecto:
 
 ```env
 # Database
-DATABASE_URL=postgresql+asyncpg://fashionvision_ai_user:fashionvision_ai_pass@localhost:5432/fashionvision_ai
-DATABASE_URL_SYNC=postgresql://fashionvision_ai_user:fashionvision_ai_pass@localhost:5432/fashionvision_ai
+DATABASE_URL=postgresql+asyncpg://fashionvision_ai_user:tu_password@localhost:5432/fashionvision_ai
+DATABASE_URL_SYNC=postgresql://fashionvision_ai_user:tu_password@localhost:5432/fashionvision_ai
 POSTGRES_DB=fashionvision_ai
 POSTGRES_USER=fashionvision_ai_user
-POSTGRES_PASSWORD=fashionvision_ai_pass
-POSTGRES_PORT=5432
+POSTGRES_PASSWORD=tu_password
 
 # Security
-SECRET_KEY=dev_secret_change_in_production
+SECRET_KEY=generate_with_openssl_rand_base64_32
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=480
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 # App
 ENVIRONMENT=development
@@ -143,7 +136,7 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 BACKEND_PORT=8000
 
 # Files
-MEDIA_DIR=/app/media
+MEDIA_DIR=backend/media
 MAX_IMAGE_SIZE_MB=5
 ```
 
@@ -197,9 +190,7 @@ docker compose up -d pgadmin
 ### Acceder a pgAdmin
 
 1. Abrir navegador en: http://localhost:5050
-2. Login con:
-   - Email: `admin@fashionvision.com`
-   - Password: `admin123`
+2. Login con credenciales del .env
 
 ### Conectar a la Base de Datos
 
@@ -207,7 +198,7 @@ docker compose up -d pgadmin
 2. En pestaña "General":
    - Name: `FashionVision DB`
 3. En pestaña "Connection":
-   - Host name/address: `fashionvision_db`
+   - Host name/address: `localhost`
    - Port: `5432`
    - Maintenance database: `fashionvision_ai`
    - Username: `fashionvision_ai_user`
@@ -231,8 +222,7 @@ pip install -r requirements.txt
 # Configurar PYTHONPATH
 export PYTHONPATH=~/FashionVision-AI
 
-# Las migraciones se ejecutan automáticamente con dev-start.sh
-# O manualmente así:
+# Ejecutar migraciones
 alembic upgrade head
 
 # Iniciar servidor
@@ -334,13 +324,6 @@ export PYTHONPATH=~/FashionVision-AI
 # Debe aparecer (venv) antes del prompt
 ```
 
-### Error: bcrypt installation failed
-
-```bash
-# Instalar versión compatible
-pip install 'bcrypt<5.0.0'
-```
-
 ### Error: "virtual environment not found"
 
 ```bash
@@ -372,7 +355,7 @@ alembic upgrade head
 | Servicio | Usuario | Contraseña | Puerto |
 |----------|---------|------------|--------|
 | PostgreSQL | fashionvision_ai_user | (del .env) | 5432 |
-| pgAdmin | admin@fashionvision.com | admin123 | 5050 |
+| pgAdmin | (del .env) | (del .env) | 5050 |
 | Backend API | - | - | 8000 |
 | Frontend (dev) | - | - | 5173 |
 | Login por defecto | admin@tienda.com | admin123 | - |
@@ -385,3 +368,4 @@ Una vez configurado el entorno, ver:
 - [Guía de pgAdmin](./GUIAS_PGADMIN.md) - Para administrar la base de datos visualmente
 - [Comandos Importantes](./COMANDOS.md) - Referencia rápida de comandos del proyecto
 - [Entorno Docker](./DOCKER_ENVIRONMENT.md) - Migraciones y gestión de contenedores
+- [Guía de Despliegue](./DEPLOYMENT.md) - Para producción
