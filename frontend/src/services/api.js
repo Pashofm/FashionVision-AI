@@ -1,4 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = BASE_URL === '/' ? '' : BASE_URL;
 
 const TOKEN_REFRESH_BUFFER_SECONDS = 60;
 

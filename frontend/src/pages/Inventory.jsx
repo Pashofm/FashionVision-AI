@@ -7,7 +7,8 @@ import { getHeaders, getCategories, getLowStockProducts, getInventoryMovements,
 import { formatLocalDateTime } from '../utils/dateUtils';
 import '../styles/Inventory.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = BASE_URL === '/' ? '' : BASE_URL;
 
 const STOCK_STATUSES = ['available', 'reserved', 'damaged', 'in_transit', 'returned'];
 const STOCK_STATUS_LABELS = {

@@ -17,7 +17,8 @@ import {
 } from 'recharts';
 import '../styles/Dashboard.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = BASE_URL === '/' ? '' : BASE_URL;
 
 const COLORS = ['#4da6ff', '#764ba2', '#f5576c', '#11998e', '#fc8181', '#68d391'];
 
