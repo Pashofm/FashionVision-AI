@@ -14,7 +14,8 @@ import {
 } from 'recharts';
 import '../styles/Reportes.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = BASE_URL === '/' ? '' : BASE_URL;
 
 const Reportes = () => {
   const navigate = useNavigate();
