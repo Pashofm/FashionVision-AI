@@ -7,6 +7,27 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+if [ -f "$SCRIPT_DIR/common_versions.sh" ]; then
+    source "$SCRIPT_DIR/common_versions.sh"
+fi
+
+generate_secret_key() {
+    head -c 32 /dev/urandom | base64 | tr -d '\n'
+}
+
+validate_and_fix_env() {
+    if [ -f "$PROJECT_ROOT/.env" ]; then
+        if grep -q "Base64_32\|changeme\|your_password\|your_secret" "$PROJECT_ROOT/.env" 2>/dev/null; then
+            echo -e "${YELLOW}WARNING: .env contains placeholder values. Auto-generating SECRET_KEY...${NC}"
+            NEW_SECRET=$(generate_secret_key)
+            sed -i "s/SECRET_KEY=.*/SECRET_KEY=$NEW_SECRET/" "$PROJECT_ROOT/.env"
+            echo -e "${GREEN}Generated new SECRET_KEY${NC}"
+        fi
+    fi
+}
+
 echo "=============================================="
 echo "  FashionVision-AI - Deploy Local"
 echo "=============================================="
@@ -17,7 +38,14 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Check if .env exists
+echo -e "${GREEN}[1/6] Setting up Python environment...${NC}"
+setup_python_environment || exit 1
+echo ""
+
+echo -e "${GREEN}[2/6] Setting up Node.js environment...${NC}"
+setup_node_environment || exit 1
+echo ""
+
 if [ ! -f "$PROJECT_ROOT/.env" ]; then
     if [ -f "$PROJECT_ROOT/.env.template" ]; then
         echo -e "${YELLOW}No .env found. Creating from template...${NC}"
@@ -30,12 +58,12 @@ if [ ! -f "$PROJECT_ROOT/.env" ]; then
     fi
 fi
 
-# Load .env
+validate_and_fix_env
+
 set -a
 source "$PROJECT_ROOT/.env"
 set +a
 
-# Check if database is running
 if ! docker compose ps db 2>/dev/null | grep -q "Up"; then
     echo -e "${YELLOW}Database not running. Starting it first...${NC}"
     docker compose up -d db
@@ -43,7 +71,6 @@ if ! docker compose ps db 2>/dev/null | grep -q "Up"; then
     sleep 5
 fi
 
-# Kill any existing backend/frontend processes on those ports
 kill_port() {
     local port=$1
     local name=$2
@@ -70,20 +97,31 @@ kill_port 8000 "backend"
 kill_port 5173 "frontend"
 echo ""
 
-# Start backend
-echo -e "${GREEN}[1/2] Starting Backend...${NC}"
-cd "$PROJECT_ROOT/backend"
+echo -e "${GREEN}[3/6] Setting up Python venv...${NC}"
+ensure_python_venv "$PROJECT_ROOT" || exit 1
+
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init - bash 2>/dev/null)" || true
 
 VENV_ACTIVATE="$PROJECT_ROOT/backend/venv/bin/activate"
 if [ -f "$PROJECT_ROOT/backend/venv/Scripts/activate" ]; then
     VENV_ACTIVATE="$PROJECT_ROOT/backend/venv/Scripts/activate"
 fi
 
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+echo -e "${GREEN}[4/6] Starting Backend...${NC}"
+cd "$PROJECT_ROOT/backend"
+
 nohup bash -c "
     source '$VENV_ACTIVATE'
     export PYTHONPATH='$PROJECT_ROOT'
+    export PYTHON_BIN='$PYTHON_BIN'
     export DATABASE_URL='$DATABASE_URL'
     export DATABASE_URL_SYNC='$DATABASE_URL_SYNC'
+    pip install -r '$PROJECT_ROOT/backend/requirements.txt'
     uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
 " > /tmp/fashionvision-backend.log 2>&1 &
 
@@ -92,7 +130,6 @@ echo "Backend started with PID: $BACKEND_PID"
 echo "Backend logs: /tmp/fashionvision-backend.log"
 echo ""
 
-# Wait for backend to be ready
 echo "Waiting for backend to be ready..."
 max_attempts=30
 attempt=0
@@ -107,8 +144,11 @@ done
 echo -e "${GREEN}Backend is ready!${NC}"
 echo ""
 
-# Start frontend
-echo -e "${GREEN}[2/2] Starting Frontend...${NC}"
+echo -e "${GREEN}[5/6] Setting up frontend dependencies...${NC}"
+ensure_node_deps "$PROJECT_ROOT" || exit 1
+echo ""
+
+echo -e "${GREEN}[6/6] Starting Frontend...${NC}"
 cd "$PROJECT_ROOT/frontend"
 
 nohup npm run dev > /tmp/fashionvision-frontend.log 2>&1 &
@@ -118,7 +158,6 @@ echo "Frontend started with PID: $FRONTEND_PID"
 echo "Frontend logs: /tmp/fashionvision-frontend.log"
 echo ""
 
-# Wait for frontend to be ready
 echo "Waiting for frontend to be ready..."
 sleep 5
 
@@ -141,6 +180,5 @@ echo "  kill $BACKEND_PID $FRONTEND_PID"
 echo "  docker compose stop db pgadmin"
 echo ""
 
-# Save PIDs for later cleanup
 echo "$BACKEND_PID" > /tmp/fashionvision-backend.pid
 echo "$FRONTEND_PID" > /tmp/fashionvision-frontend.pid

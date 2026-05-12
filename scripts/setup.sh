@@ -7,6 +7,27 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+if [ -f "$SCRIPT_DIR/common_versions.sh" ]; then
+    source "$SCRIPT_DIR/common_versions.sh"
+fi
+
+generate_secret_key() {
+    head -c 32 /dev/urandom | base64 | tr -d '\n'
+}
+
+validate_and_fix_env() {
+    if [ -f "$PROJECT_ROOT/.env" ]; then
+        if grep -q "Base64_32\|changeme\|your_password\|your_secret" "$PROJECT_ROOT/.env" 2>/dev/null; then
+            echo -e "${YELLOW}WARNING: .env contains placeholder values. Auto-generating SECRET_KEY...${NC}"
+            NEW_SECRET=$(generate_secret_key)
+            sed -i "s/SECRET_KEY=.*/SECRET_KEY=$NEW_SECRET/" "$PROJECT_ROOT/.env"
+            echo -e "${GREEN}Generated new SECRET_KEY${NC}"
+        fi
+    fi
+}
+
 echo "=============================================="
 echo "  FashionVision-AI - Initial Setup"
 echo "=============================================="
@@ -16,9 +37,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
-
-# Check prerequisites
-echo -e "${GREEN}[1/6] Checking prerequisites...${NC}"
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -30,25 +48,20 @@ if ! command_exists docker; then
     exit 1
 fi
 
-if ! command_exists python3 && ! command_exists python; then
-    echo -e "${RED}ERROR: Python is not installed.${NC}"
-    exit 1
-fi
-
-if ! command_exists node; then
-    echo -e "${RED}ERROR: Node.js is not installed.${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}All prerequisites installed!${NC}"
+echo -e "${GREEN}[1/6] Setting up Python environment...${NC}"
+setup_python_environment || exit 1
 echo ""
 
-# Create .env from template
-echo -e "${GREEN}[2/6] Setting up environment...${NC}"
+echo -e "${GREEN}[2/6] Setting up Node.js environment...${NC}"
+setup_node_environment || exit 1
+echo ""
+
+echo -e "${GREEN}[3/6] Setting up environment...${NC}"
 if [ ! -f ".env" ]; then
     if [ -f ".env.template" ]; then
         echo "Creating .env from template..."
         cp .env.template .env
+        validate_and_fix_env
         echo -e "${YELLOW}Please edit .env with your credentials, then run this script again.${NC}"
         echo ""
         echo "After editing .env, run: ./scripts/setup.sh"
@@ -59,11 +72,11 @@ if [ ! -f ".env" ]; then
     fi
 else
     echo "Using existing .env file"
+    validate_and_fix_env
 fi
 echo ""
 
-# Start database
-echo -e "${GREEN}[3/6] Starting database...${NC}"
+echo -e "${GREEN}[4/6] Starting database...${NC}"
 docker compose up -d db
 
 max_attempts=30
@@ -80,37 +93,39 @@ done
 echo -e "${GREEN}Database ready!${NC}"
 echo ""
 
-# Backend setup
-echo -e "${GREEN}[4/6] Setting up Python backend...${NC}"
-cd "$PROJECT_ROOT/backend"
+echo -e "${GREEN}[5/6] Setting up Python backend...${NC}"
+ensure_python_venv "$PROJECT_ROOT" || exit 1
 
-if [ ! -d "venv" ]; then
-    echo "Creating Python virtual environment..."
-    python3 -m venv venv 2>/dev/null || python -m venv venv
-fi
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init - bash 2>/dev/null)" || true
 
 VENV_ACTIVATE="$PROJECT_ROOT/backend/venv/bin/activate"
 if [ -f "$PROJECT_ROOT/backend/venv/Scripts/activate" ]; then
     VENV_ACTIVATE="$PROJECT_ROOT/backend/venv/Scripts/activate"
 fi
 
+echo "Activating virtual environment..."
 . "$VENV_ACTIVATE"
-pip install -q -r requirements.txt 2>/dev/null || pip3 install -q -r requirements.txt 2>/dev/null
+
+echo "Installing dependencies..."
+pip install -r "$PROJECT_ROOT/backend/requirements.txt" 2>&1 || {
+    echo -e "${RED}ERROR: Failed to install Python dependencies${NC}"
+    exit 1
+}
 echo -e "${GREEN}Backend Python packages installed!${NC}"
 echo ""
 
-# Frontend setup
-echo -e "${GREEN}[5/6] Setting up frontend...${NC}"
-cd "$PROJECT_ROOT/frontend"
-npm install
-echo -e "${GREEN}Frontend dependencies installed!${NC}"
+echo -e "${GREEN}[6/6] Setting up frontend...${NC}"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+ensure_node_deps "$PROJECT_ROOT" || exit 1
 echo ""
 
-# Run migrations
-echo -e "${GREEN}[6/6] Running database migrations...${NC}"
-cd "$PROJECT_ROOT"
+echo -e "${GREEN}[7/7] Running database migrations...${NC}"
+cd "$PROJECT_ROOT/backend"
 export PYTHONPATH="$PROJECT_ROOT"
-alembic upgrade head
+"$PROJECT_ROOT/backend/venv/bin/alembic" upgrade head
 echo -e "${GREEN}Migrations applied!${NC}"
 echo ""
 
