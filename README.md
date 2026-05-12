@@ -35,12 +35,26 @@ FashionVision AI es una solución tecnológica diseñada para pequeñas y median
 
 | Software | Versión | Notas |
 |----------|---------|-------|
-| Python | 3.12+ | Para entorno virtual |
-| Node.js | 20+ | Para frontend |
-| Docker Desktop | 4.0+ | Para base de datos |
+| Docker Desktop | 4.0+ | Para base de datos PostgreSQL + pgAdmin |
 | Git | Any | Para clonar repositorio |
+| Sudo/Admin | - | Para instalar dependencias del sistema |
 
-**En Windows:** Se recomienda usar WSL2 con Ubuntu para mejor compatibilidad.
+### Dependencias del Sistema Operativo
+
+**Antes de ejecutar el proyecto**, necesitas instalar las dependencias del sistema. Consulta [docs/SYSTEM_REQUIREMENTS.md](./docs/SYSTEM_REQUIREMENTS.md) para instrucciones completas.
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get update && sudo apt-get install -y \
+    build-essential libffi-dev python3-dev libjpeg-dev libpq-dev git curl docker.io docker-compose
+```
+
+**Verificación crítica** (después de instalar dependencias):
+```bash
+python3 -c "import _ctypes" && echo "OK: _ctypes funciona"
+```
+
+**Importante:** Python 3.12 y Node.js 18+ se instalan automáticamente por los scripts de setup. No necesitas instalarlos manualmente.
 
 ---
 
@@ -53,22 +67,27 @@ git clone <repo-url> FashionVision-AI
 cd FashionVision-AI
 ```
 
-### Paso 2: Configurar variables de entorno
+### Paso 2: Instalar dependencias del sistema
 
 ```bash
-cp .env.template .env
+sudo apt-get update && sudo apt-get install -y build-essential libffi-dev python3-dev libjpeg-dev libpq-dev git curl docker.io docker-compose
 ```
 
-**Importante:** Revisar el archivo `.env` y ajustar las credenciales según sea necesario.
-
-### Paso 3: Iniciar entorno de desarrollo (recomendado)
+### Paso 3: Ejecutar setup (primera vez)
 
 ```bash
-# Ejecutar script de inicio (levanta DB + pgAdmin + dependencias)
+./scripts/setup.sh
+```
+
+> **Nota:** La primera ejecución puede tardar **10-20 minutos** porque instala pyenv, Python 3.12, nvm, Node.js 18, y compila paquetes como torch.
+
+### Paso 4: Iniciar servicios (sesiones siguientes)
+
+```bash
 ./scripts/dev-start.sh
 ```
 
-### Paso 4: Iniciar servicios manualmente
+### Paso 5: Iniciar backend y frontend
 
 **Terminal 1 - Backend:**
 ```bash
@@ -177,6 +196,7 @@ docker compose up -d
 |-----------|-------------|
 | [QUICKSTART.md](./QUICKSTART.md) | Guía rápida para nuevos desarrolladores |
 | [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Guía completa de desarrollo |
+| [docs/SYSTEM_REQUIREMENTS.md](./docs/SYSTEM_REQUIREMENTS.md) | Dependencias del sistema y solución de problemas |
 | [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) | Entorno Docker con migraciones |
 | [docs/INSTALACION_LINUX.md](./docs/INSTALACION_LINUX.md) | Instalación para Linux |
 | [docs/INSTALACION_WINDOWS.md](./docs/INSTALACION_WINDOWS.md) | Instalación para Windows |
@@ -350,11 +370,35 @@ alembic current
 
 ## Troubleshooting
 
+### Error: `ModuleNotFoundError: No module named '_ctypes'`
+
+**Causa:** Python fue compilado sin `libffi-dev`.
+
+```bash
+# Solución:
+sudo apt-get install -y libffi-dev python3-dev
+rm -rf ~/.pyenv/versions/3.12.0
+~/.pyenv/bin/pyenv install 3.12.0
+rm -rf backend/venv
+./scripts/setup.sh
+```
+
+Para más detalles, ver [docs/SYSTEM_REQUIREMENTS.md](./docs/SYSTEM_REQUIREMENTS.md).
+
 ### Error: `ModuleNotFoundError: No module named 'backend'`
 
 ```bash
 export PYTHONPATH=$PWD
 # Ejecutar desde la raíz del proyecto
+```
+
+### Error: `alembic: command not found`
+
+```bash
+cd backend
+source venv/bin/activate
+export PYTHONPATH=$PWD
+alembic upgrade head
 ```
 
 ### Error: `connection refused` en PostgreSQL
