@@ -76,7 +76,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, native_enum=False), default=UserRole.client)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.client)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     avatar_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_logout_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
