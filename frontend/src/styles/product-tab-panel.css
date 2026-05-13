@@ -1,0 +1,29 @@
+.product-tab-panel {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 16px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.panel-remove-btn {
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  color: #ff6666;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.panel-remove-btn:hover {
+  background: rgba(255, 68, 68, 0.3);
+  color: #ff4444;
+}

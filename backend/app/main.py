@@ -2629,7 +2629,10 @@ async def pos_complete_payment(
     cart_result = await db.execute(
         select(Cart)
         .options(selectinload(Cart.items).selectinload(CartItem.product))
-        .options(selectinload(Cart.items).selectinload(CartItem.product_variant))
+        .options(
+            selectinload(Cart.items).selectinload(CartItem.product_variant).selectinload(ProductVariant.size_attribute),
+            selectinload(Cart.items).selectinload(CartItem.product_variant).selectinload(ProductVariant.color_attribute)
+        )
         .where(Cart.id == cart_id)
     )
     cart = cart_result.scalar_one_or_none()
