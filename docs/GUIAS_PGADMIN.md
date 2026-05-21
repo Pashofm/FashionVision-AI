@@ -489,5 +489,5 @@ docker network inspect bridge | findstr Gateway
 
 ## Próximos Pasos
 
-- [Guía de Instalación](./GUIA_INSTALACION.md) - Si aún no has configurado el entorno
+- [Guía de Instalación](./INSTALLATION.md) - Si aún no has configurado el entorno
 - [Comandos Importantes](./COMANDOS.md) - Referencia rápida del proyecto
