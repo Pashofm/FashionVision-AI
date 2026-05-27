@@ -28,7 +28,10 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
 
     class Config:
-        env_file = str(ROOT_DIR / ".env")
+        env_file = (
+            str(ROOT_DIR / ".env.local"),
+            str(ROOT_DIR / ".env"),
+        )
         case_sensitive = True
         extra = "ignore"
 
