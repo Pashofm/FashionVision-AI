@@ -56,8 +56,7 @@ class TestClientCartWorkflow:
         session = await SessionFactory.create(db_session)
         cart = await CartFactory.create(db_session, session=session)
         product = await ProductFactory.create(
-            db_session,
-            yolo_class_name="top"
+            db_session
         )
         variant = await ProductVariantFactory.create(db_session, product=product)
 

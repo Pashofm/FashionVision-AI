@@ -247,7 +247,6 @@ async def test_product(db_session, test_category) -> "Product":
         description="Test product description",
         sku=f"SKU-{uuid.uuid4().hex[:8]}",
         base_price=Decimal("99.99"),
-        yolo_class_name=f"test_class_{uuid.uuid4().hex[:6]}",
         is_active=True
     )
     db_session.add(product)
