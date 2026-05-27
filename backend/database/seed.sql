@@ -41,7 +41,7 @@ INSERT INTO attribute_options (id, type, value, hex_code, sort_order, is_active)
 ON CONFLICT DO NOTHING;
 
 -- ─── Productos ───────────────────────────────────────────────────────────────
-INSERT INTO products (id, category_id, name, description, sku, base_price, cost_price, tax_rate, profit_margin, brand, supplier, barcode, weight, width, height, depth, min_stock_level, max_stock_level, is_featured, tags, yolo_class_id, yolo_class_name, images, is_active) VALUES
+INSERT INTO products (id, category_id, name, description, sku, base_price, cost_price, tax_rate, profit_margin, brand, supplier, barcode, weight, width, height, depth, is_featured, tags, images, is_active) VALUES
     ('b0000001-0000-0000-0000-000000000001',
      'c0000001-0000-0000-0000-000000000005',
      'Gorra Roja Lacoste',
@@ -58,12 +58,8 @@ INSERT INTO products (id, category_id, name, description, sku, base_price, cost_
      28,
      12,
      28,
-     5,
-     50,
      FALSE,
      '["gorra", "lacoste", "rojo", "accesorios"]',
-     0,
-     'gorra-roja-lacoste',
      '["gorra_roja_lacoste.jpg"]',
      TRUE)
 ON CONFLICT DO NOTHING;

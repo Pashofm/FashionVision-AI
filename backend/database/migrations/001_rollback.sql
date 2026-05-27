@@ -28,7 +28,6 @@ ALTER TABLE order_items DROP COLUMN IF EXISTS discount_applied;
 ALTER TABLE order_items DROP COLUMN IF EXISTS subtotal;
 
 -- Remove indexes
-DROP INDEX IF EXISTS idx_products_yolo_class_name;
 DROP INDEX IF EXISTS idx_products_cost_price;
 DROP INDEX IF EXISTS idx_products_brand;
 DROP INDEX IF EXISTS idx_products_supplier;
