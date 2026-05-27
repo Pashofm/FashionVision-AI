@@ -122,6 +122,7 @@ const Dashboard = () => {
           <nav>
             <button className="nav-active">Dashboard</button>
             <button onClick={() => navigate('/inventory')}>Inventario</button>
+            <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
           </nav>
           <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
         </header>
@@ -140,6 +141,7 @@ const Dashboard = () => {
           <nav>
             <button className="nav-active">Dashboard</button>
             <button onClick={() => navigate('/inventory')}>Inventario</button>
+            <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
           </nav>
           <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
         </header>
@@ -166,6 +168,7 @@ const Dashboard = () => {
         <nav>
           <button className="nav-active">Dashboard</button>
           <button onClick={() => navigate('/inventory')}>Inventario</button>
+          <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
         </nav>
         <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
       </header>

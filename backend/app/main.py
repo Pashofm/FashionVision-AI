@@ -3,18 +3,21 @@ from __future__ import annotations
 import io
 import uuid
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import AsyncGenerator, List
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request, status
+import httpx
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request, status, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from backend.app.config import settings, update_session_timeout
 from backend.app.database import AsyncSessionLocal, Base, engine, get_db
@@ -23,6 +26,7 @@ from backend.app.models import (Cart, CartItem, CartStatus, Category,
                                 Session, Inventory, InventoryMovement,
                                 MovementType, Order, OrderItem, OrderStatus,
                                 PaymentMethod, PaymentQueue, Product,
+                                ProductEmbedding,
                                 ProductVariant, QueuePriority, QueueStatus,
                                 Receipt, SessionStatus, StockStatus, Supplier,
                                 AttributeOption, PriceHistory,
@@ -62,6 +66,9 @@ AttributeOptionCreate, AttributeOptionResponse,
                                    AttributeOptionUpdate, AttributeOptionBase,
                                    AttributeWithStockStatus, AttributeListWithStockResponse,
                                    DetectionProductResponse, DetectionAttributeItem,
+                                   ProductEmbeddingResponse,
+                                   CatalogMatchResult,
+                                   EmbeddingStatusResponse,
                                   UserCreate, UserResponse, UserUpdate,
                                   VariantWithInventory, VariantSearchResponse,
                                   PriceType, StockStatus)
@@ -74,6 +81,11 @@ from backend.app.services.timezone_service import (
     get_timezone_from_request, format_datetime_for_response
 )
 from backend.app.services.detection import detect_in_image, get_model, get_model_classes
+from backend.app.services.cloudinary_service import upload_image, delete_image
+from backend.app.services.clip_matcher import (
+    get_clip_model, generate_image_embedding,
+    generate_product_embedding, find_best_match,
+)
 from backend.app.services.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -103,6 +115,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     SessionManager.set_timeout_minutes(settings.SESSION_TIMEOUT_MINUTES)
+    
+    logger.info("Preloading CLIP model...")
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, get_clip_model)
+        logger.info("CLIP model loaded successfully")
+    except Exception as e:
+        logger.warning(f"CLIP model warmup failed (catalog matching will load on first use): {e}")
     
     global _cleanup_task_handle
     _cleanup_task_handle = asyncio.create_task(periodic_session_cleanup(app))
@@ -161,11 +181,60 @@ async def get_detection_classes():
 
 
 @app.post("/api/detect")
-async def detect_clothes(file: UploadFile = File(...)):
+async def detect_clothes(file: UploadFile = File(...), db: AsyncSession = db_dependency):
     try:
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
-        result = detect_in_image(image)
+        result = detect_in_image(image, conf_threshold=0.50)
+
+        detections = result.get("detections", [])
+        if not detections:
+            return JSONResponse(result)
+
+        catalog_entries = []
+        clip_available = False
+        try:
+            _clip_model, *_ = get_clip_model()
+            db_result = await db.execute(
+                select(ProductEmbedding, Product.id)
+                .join(Product, Product.id == ProductEmbedding.product_id)
+                .where(Product.is_active == True)
+            )
+            for emb, pid in db_result.all():
+                catalog_entries.append({
+                    "product_id": str(pid),
+                    "embedding": emb.embedding,
+                })
+            clip_available = True
+        except Exception as e:
+            logger.warning(f"CLIP matching not available: {e}")
+
+        enriched_detections = []
+        for detection in detections:
+            detection_copy = dict(detection)
+
+            if clip_available and catalog_entries:
+                try:
+                    bbox = detection["bbox"]
+                    cropped = image.crop((bbox[0], bbox[1], bbox[2], bbox[3]))
+                    query_embedding = generate_image_embedding(cropped)
+                    match = find_best_match(query_embedding, catalog_entries, threshold=0.25)
+                    if match:
+                        detection_copy["catalog_match"] = {
+                            "product_id": match["product_id"],
+                            "similarity": round(match["similarity"], 4),
+                        }
+                    else:
+                        detection_copy["catalog_match"] = None
+                except Exception as e:
+                    logger.warning(f"CLIP matching failed for detection: {e}")
+                    detection_copy["catalog_match"] = None
+            else:
+                detection_copy["catalog_match"] = None
+
+            enriched_detections.append(detection_copy)
+
+        result["detections"] = enriched_detections
         return JSONResponse(result)
     except Exception as e:
         import logging
@@ -183,6 +252,326 @@ async def detection_health_check():
         "model_loaded": yolo_model is not None,
         "model_path": str(model_path)
     }
+
+
+# ==================== CLIP CATALOG MATCHING ====================
+
+@app.get("/api/clip/warmup")
+async def clip_warmup():
+    try:
+        get_clip_model()
+        return {"status": "ready", "message": "CLIP model loaded successfully"}
+    except Exception as e:
+        logger.error(f"Error loading CLIP model: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.post("/api/products/{product_id}/generate-embedding", response_model=ProductEmbeddingResponse)
+async def generate_product_embedding_endpoint(
+    product_id: uuid.UUID,
+    files: List[UploadFile] = File(default=None),
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency,
+):
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    images = []
+
+    if files:
+        if len(files) > 5:
+            raise HTTPException(status_code=400, detail="Maximum 5 images allowed")
+        for f in files:
+            contents = await f.read()
+            img = Image.open(io.BytesIO(contents))
+            images.append(img)
+    elif product.images and len(product.images) > 0:
+        async with httpx.AsyncClient() as client:
+            for url in product.images:
+                if not url or not isinstance(url, str) or not (url.startswith("http://") or url.startswith("https://")):
+                    logger.warning(f"Skipping non-URL image entry: {url}")
+                    continue
+                try:
+                    resp = await client.get(url, timeout=30)
+                    resp.raise_for_status()
+                    img = Image.open(io.BytesIO(resp.content))
+                    images.append(img)
+                except Exception as e:
+                    logger.warning(f"Could not download image {url}: {e}")
+        if not images:
+            raise HTTPException(status_code=400, detail="Could not download any valid image from product URLs")
+    else:
+        raise HTTPException(status_code=400, detail="No images provided and no Cloudinary images available")
+
+    embedding = generate_product_embedding(images)
+
+    existing = await db.execute(
+        select(ProductEmbedding).where(ProductEmbedding.product_id == product_id)
+    )
+    existing = existing.scalar_one_or_none()
+
+    if existing:
+        existing.embedding = embedding
+        existing.images_used = len(images)
+        existing.generated_at = datetime.now(dt_timezone.utc)
+    else:
+        db_embedding = ProductEmbedding(
+            product_id=product_id,
+            embedding=embedding,
+            images_used=len(images),
+        )
+        db.add(db_embedding)
+        existing = db_embedding
+
+    await db.flush()
+    await db.refresh(existing)
+
+    return ProductEmbeddingResponse(
+        product_id=existing.product_id,
+        images_used=existing.images_used,
+        generated_at=existing.generated_at,
+    )
+
+
+@app.get("/api/catalog/embedding-status", response_model=List[EmbeddingStatusResponse])
+async def get_embedding_status(db: AsyncSession = db_dependency):
+    result = await db.execute(
+        select(Product, ProductEmbedding)
+        .outerjoin(ProductEmbedding, Product.id == ProductEmbedding.product_id)
+        .where(Product.is_active == True)
+        .order_by(ProductEmbedding.product_id.is_(None), Product.name)
+    )
+    rows = result.all()
+
+    status_list = []
+    for product, embedding in rows:
+        status_list.append(EmbeddingStatusResponse(
+            product_id=product.id,
+            product_name=product.name,
+            has_embedding=embedding is not None,
+            images_used=embedding.images_used if embedding else None,
+            generated_at=embedding.generated_at if embedding else None,
+        ))
+
+    return status_list
+
+
+@app.post("/api/detect/match-catalog", response_model=CatalogMatchResult)
+async def match_catalog(
+    file: UploadFile = File(...),
+    bbox: str = Form(...),
+    db: AsyncSession = db_dependency,
+):
+    try:
+        bbox_parsed = json.loads(bbox)
+        x1, y1, x2, y2 = [float(v) for v in bbox_parsed]
+    except (json.JSONDecodeError, ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid bbox format. Use [x1,y1,x2,y2]")
+
+    contents = await file.read()
+    image = Image.open(io.BytesIO(contents))
+
+    try:
+        cropped = image.crop((x1, y1, x2, y2))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid crop region: {e}")
+
+    if cropped.width < 5 or cropped.height < 5:
+        raise HTTPException(status_code=400, detail="Cropped region too small")
+
+    query_embedding = generate_image_embedding(cropped)
+
+    result = await db.execute(
+        select(ProductEmbedding, Product.name)
+        .join(Product, Product.id == ProductEmbedding.product_id)
+        .where(Product.is_active == True)
+    )
+    catalog = []
+    for emb, product_name in result.all():
+        catalog.append({
+            "product_id": str(emb.product_id),
+            "embedding": emb.embedding,
+            "product_name": product_name,
+        })
+
+    if not catalog:
+        return CatalogMatchResult(
+            matched=False,
+            product_id=None,
+            similarity=None,
+        )
+
+    match = find_best_match(query_embedding, catalog, threshold=0.25)
+
+    if not match:
+        return CatalogMatchResult(matched=False)
+
+    product_id = uuid.UUID(match["product_id"])
+
+    product_result = await db.execute(
+        select(Product)
+        .where(Product.id == product_id)
+        .options(
+            selectinload(Product.variants).selectinload(ProductVariant.inventory),
+            selectinload(Product.variants).selectinload(ProductVariant.size_attribute),
+            selectinload(Product.variants).selectinload(ProductVariant.color_attribute),
+            selectinload(Product.category),
+        )
+    )
+    product = product_result.scalar_one_or_none()
+
+    if not product:
+        return CatalogMatchResult(matched=False)
+
+    size_stock_map = {}
+    color_stock_map = {}
+
+    for variant in product.variants:
+        if variant.size_attribute:
+            size_val = variant.size_attribute.value
+            if size_val not in size_stock_map:
+                size_stock_map[size_val] = 0
+            if variant.inventory:
+                size_stock_map[size_val] += variant.inventory.quantity_available or 0
+        if variant.color_attribute:
+            color_val = variant.color_attribute.value
+            hex_code = variant.color_attribute.hex_code or variant.color_hex
+            if color_val not in color_stock_map:
+                color_stock_map[color_val] = {"stock": 0, "hex": hex_code}
+            if variant.inventory:
+                color_stock_map[color_val]["stock"] += variant.inventory.quantity_available or 0
+
+    assigned_sizes = set()
+    assigned_colors = set()
+    for variant in product.variants:
+        if variant.size_attribute and variant.size_attribute.type == "size":
+            assigned_sizes.add(variant.size_attribute.value)
+        if variant.color_attribute and variant.color_attribute.type == "color":
+            assigned_colors.add(variant.color_attribute.value)
+
+    sizes = []
+    for size_val in assigned_sizes:
+        size_attr = next(v.size_attribute for v in product.variants if v.size_attribute and v.size_attribute.value == size_val)
+        sizes.append(DetectionAttributeItem(
+            attribute_id=size_attr.id,
+            value=size_val,
+            stock=size_stock_map.get(size_val, 0)
+        ))
+
+    colors = []
+    for color_val in assigned_colors:
+        color_attr = next(v.color_attribute for v in product.variants if v.color_attribute and v.color_attribute.value == color_val)
+        color_info = color_stock_map.get(color_val, {"stock": 0, "hex": None})
+        colors.append(DetectionAttributeItem(
+            attribute_id=color_attr.id,
+            value=color_val,
+            hex_code=color_info.get("hex"),
+            stock=color_info.get("stock", 0)
+        ))
+
+    detection_data = DetectionProductResponse(
+        id=product.id,
+        name=product.name,
+        sku=product.sku,
+        base_price=product.base_price,
+        category_name=product.category.name if product.category else None,
+        sizes=sizes,
+        colors=colors,
+    )
+
+
+@app.delete("/api/products/{product_id}/embedding")
+async def delete_product_embedding(
+    product_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency,
+):
+    result = await db.execute(
+        select(ProductEmbedding).where(ProductEmbedding.product_id == product_id)
+    )
+    embedding = result.scalar_one_or_none()
+    if not embedding:
+        raise HTTPException(status_code=404, detail="Embedding not found for this product")
+
+    await db.delete(embedding)
+    await db.flush()
+
+    return {"message": "Embedding deleted"}
+
+
+@app.get("/api/detect/product-by-id/{product_id}", response_model=DetectionProductResponse)
+async def get_detection_product_by_id(product_id: uuid.UUID, db: AsyncSession = db_dependency):
+    result = await db.execute(
+        select(Product)
+        .where(Product.id == product_id)
+        .options(
+            selectinload(Product.variants).selectinload(ProductVariant.inventory),
+            selectinload(Product.variants).selectinload(ProductVariant.size_attribute),
+            selectinload(Product.variants).selectinload(ProductVariant.color_attribute),
+            selectinload(Product.category)
+        )
+    )
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail=f"Product not found: {product_id}")
+
+    size_stock_map = {}
+    color_stock_map = {}
+
+    for variant in product.variants:
+        if variant.size_attribute:
+            size_val = variant.size_attribute.value
+            if size_val not in size_stock_map:
+                size_stock_map[size_val] = 0
+            if variant.inventory:
+                size_stock_map[size_val] += variant.inventory.quantity_available or 0
+        if variant.color_attribute:
+            color_val = variant.color_attribute.value
+            hex_code = variant.color_attribute.hex_code or variant.color_hex
+            if color_val not in color_stock_map:
+                color_stock_map[color_val] = {"stock": 0, "hex": hex_code}
+            if variant.inventory:
+                color_stock_map[color_val]["stock"] += variant.inventory.quantity_available or 0
+
+    assigned_sizes = set()
+    assigned_colors = set()
+    for variant in product.variants:
+        if variant.size_attribute and variant.size_attribute.type == "size":
+            assigned_sizes.add(variant.size_attribute.value)
+        if variant.color_attribute and variant.color_attribute.type == "color":
+            assigned_colors.add(variant.color_attribute.value)
+
+    sizes = []
+    for size_val in assigned_sizes:
+        size_attr = next(v.size_attribute for v in product.variants if v.size_attribute and v.size_attribute.value == size_val)
+        sizes.append(DetectionAttributeItem(
+            attribute_id=size_attr.id,
+            value=size_val,
+            stock=size_stock_map.get(size_val, 0)
+        ))
+
+    colors = []
+    for color_val in assigned_colors:
+        color_attr = next(v.color_attribute for v in product.variants if v.color_attribute and v.color_attribute.value == color_val)
+        color_info = color_stock_map.get(color_val, {"stock": 0, "hex": None})
+        colors.append(DetectionAttributeItem(
+            attribute_id=color_attr.id,
+            value=color_val,
+            hex_code=color_info.get("hex"),
+            stock=color_info.get("stock", 0)
+        ))
+
+    return DetectionProductResponse(
+        id=product.id,
+        name=product.name,
+        sku=product.sku,
+        base_price=product.base_price,
+        category_name=product.category.name if product.category else None,
+        sizes=sizes,
+        colors=colors
+    )
 
 
 # ==================== UPLOAD (Cloudinary) ====================
@@ -481,8 +870,8 @@ async def create_product(
     response_data = {
         **{k: getattr(db_product, k) for k in ['id', 'category_id', 'name', 'description', 'sku',
           'base_price', 'cost_price', 'tax_rate', 'profit_margin', 'brand', 'supplier',
-          'barcode', 'weight', 'width', 'height', 'depth', 'min_stock_level', 'max_stock_level',
-          'is_featured', 'tags', 'yolo_class_id', 'yolo_class_name', 'images', 'is_active',
+          'barcode', 'weight', 'width', 'height', 'depth',
+          'is_featured', 'tags', 'images', 'is_active',
           'created_at', 'updated_at']},
         **price_fields
     }
@@ -495,7 +884,6 @@ async def get_products(
     limit: int = 100,
     category_id: uuid.UUID = None,
     search: str = None,
-    yolo_class_name: str = None,
     attribute_id: uuid.UUID = None,
     db: AsyncSession = db_dependency
 ):
@@ -505,8 +893,6 @@ async def get_products(
         query = query.where(Product.category_id == category_id)
     if search:
         query = query.where(Product.name.ilike(f"%{search}%"))
-    if yolo_class_name:
-        query = query.where(Product.yolo_class_name == yolo_class_name)
     if attribute_id:
         query = query.join(Product.variants).where(
             or_(ProductVariant.size_attribute_id == attribute_id, ProductVariant.color_attribute_id == attribute_id)
@@ -534,8 +920,8 @@ async def get_product(product_id: uuid.UUID, db: AsyncSession = db_dependency):
     response_data = {
         **{k: getattr(product, k) for k in ['id', 'category_id', 'name', 'description', 'sku',
           'base_price', 'cost_price', 'tax_rate', 'profit_margin', 'brand', 'supplier',
-          'barcode', 'weight', 'width', 'height', 'depth', 'min_stock_level', 'max_stock_level',
-          'is_featured', 'tags', 'yolo_class_id', 'yolo_class_name', 'images', 'is_active',
+          'barcode', 'weight', 'width', 'height', 'depth',
+          'is_featured', 'tags', 'images', 'is_active',
           'created_at', 'updated_at']},
         **price_fields
     }
@@ -667,8 +1053,8 @@ async def update_product(
     response_data = {
         **{k: getattr(product, k) for k in ['id', 'category_id', 'name', 'description', 'sku',
           'base_price', 'cost_price', 'tax_rate', 'profit_margin', 'brand', 'supplier',
-          'barcode', 'weight', 'width', 'height', 'depth', 'min_stock_level', 'max_stock_level',
-          'is_featured', 'tags', 'yolo_class_id', 'yolo_class_name', 'images', 'is_active',
+          'barcode', 'weight', 'width', 'height', 'depth',
+          'is_featured', 'tags', 'images', 'is_active',
           'created_at', 'updated_at']},
         **price_fields
     }
@@ -735,93 +1121,6 @@ async def delete_product(
     # Delete the product (variants cascade delete automatically)
     await db.delete(product)
     return {"message": "Producto eliminado"}
-
-
-@app.get("/api/products/by-yolo/{yolo_class_name}", response_model=ProductWithVariantsResponse)
-async def get_product_by_yolo(yolo_class_name: str, db: AsyncSession = db_dependency):
-    result = await db.execute(
-        select(Product)
-        .where(func.lower(Product.yolo_class_name) == func.lower(yolo_class_name))
-        .options(selectinload(Product.variants).selectinload(ProductVariant.inventory))
-    )
-    product = result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(status_code=404, detail=f"No product found for YOLO class: {yolo_class_name}")
-    return product
-
-
-@app.get("/api/detect/product/{yolo_class_name}", response_model=DetectionProductResponse)
-async def get_detection_product(yolo_class_name: str, db: AsyncSession = db_dependency):
-    result = await db.execute(
-        select(Product)
-        .where(func.lower(Product.yolo_class_name) == func.lower(yolo_class_name))
-        .options(
-            selectinload(Product.variants).selectinload(ProductVariant.inventory),
-            selectinload(Product.variants).selectinload(ProductVariant.size_attribute),
-            selectinload(Product.variants).selectinload(ProductVariant.color_attribute),
-            selectinload(Product.category)
-        )
-    )
-    product = result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(status_code=404, detail=f"No product found for YOLO class: {yolo_class_name}")
-
-    size_stock_map = {}
-    color_stock_map = {}
-
-    for variant in product.variants:
-        if variant.size_attribute:
-            size_val = variant.size_attribute.value
-            if size_val not in size_stock_map:
-                size_stock_map[size_val] = 0
-            if variant.inventory:
-                size_stock_map[size_val] += variant.inventory.quantity_available or 0
-        if variant.color_attribute:
-            color_val = variant.color_attribute.value
-            hex_code = variant.color_attribute.hex_code or variant.color_hex
-            if color_val not in color_stock_map:
-                color_stock_map[color_val] = {"stock": 0, "hex": hex_code}
-            if variant.inventory:
-                color_stock_map[color_val]["stock"] += variant.inventory.quantity_available or 0
-
-    assigned_sizes = set()
-    assigned_colors = set()
-    for variant in product.variants:
-        if variant.size_attribute and variant.size_attribute.type == "size":
-            assigned_sizes.add(variant.size_attribute.value)
-        if variant.color_attribute and variant.color_attribute.type == "color":
-            assigned_colors.add(variant.color_attribute.value)
-
-    sizes = []
-    for size_val in assigned_sizes:
-        size_attr = next(v.size_attribute for v in product.variants if v.size_attribute and v.size_attribute.value == size_val)
-        sizes.append(DetectionAttributeItem(
-            attribute_id=size_attr.id,
-            value=size_val,
-            stock=size_stock_map.get(size_val, 0)
-        ))
-
-    colors = []
-    for color_val in assigned_colors:
-        color_attr = next(v.color_attribute for v in product.variants if v.color_attribute and v.color_attribute.value == color_val)
-        color_info = color_stock_map.get(color_val, {"stock": 0, "hex": None})
-        colors.append(DetectionAttributeItem(
-            attribute_id=color_attr.id,
-            value=color_val,
-            hex_code=color_info.get("hex"),
-            stock=color_info.get("stock", 0)
-        ))
-
-    return DetectionProductResponse(
-        id=product.id,
-        name=product.name,
-        sku=product.sku,
-        base_price=product.base_price,
-        yolo_class_name=product.yolo_class_name,
-        category_name=product.category.name if product.category else None,
-        sizes=sizes,
-        colors=colors
-    )
 
 
 # ==================== PRODUCT VARIANTS ====================
@@ -1034,8 +1333,6 @@ async def get_product_stock(product_id: uuid.UUID, db: AsyncSession = db_depende
         base_price=float(product.base_price),
         description=product.description,
         category_id=product.category_id,
-        yolo_class_id=product.yolo_class_id,
-        yolo_class_name=product.yolo_class_name,
         images=product.images or [],
         is_active=product.is_active,
         created_at=product.created_at,
@@ -1132,7 +1429,9 @@ async def add_product_image(
         current_images = product.images or []
         current_images.append(upload_result.get("secure_url", ""))
         product.images = current_images
+        flag_modified(product, 'images')
         await db.flush()
+        await db.commit()
 
         return ImageUploadResponse(
             success=True,
@@ -1140,6 +1439,7 @@ async def add_product_image(
             url=upload_result.get("secure_url", "")
         )
     except Exception as e:
+        logger.error(f"Image upload failed for product {product_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
 
 
@@ -1158,6 +1458,7 @@ async def remove_product_image(
     if image_url in current_images:
         current_images.remove(image_url)
         product.images = current_images
+        flag_modified(product, 'images')
         await db.flush()
 
     try:

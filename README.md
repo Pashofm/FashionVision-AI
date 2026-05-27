@@ -198,8 +198,7 @@ docker compose up -d
 | [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Guía completa de desarrollo |
 | [docs/SYSTEM_REQUIREMENTS.md](./docs/SYSTEM_REQUIREMENTS.md) | Dependencias del sistema y solución de problemas |
 | [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) | Entorno Docker con migraciones |
-| [docs/INSTALACION_LINUX.md](./docs/INSTALACION_LINUX.md) | Instalación para Linux |
-| [docs/INSTALACION_WINDOWS.md](./docs/INSTALACION_WINDOWS.md) | Instalación para Windows |
+| [docs/INSTALLATION.md](./docs/INSTALLATION.md) | Guia de instalacion para todos los SO |
 | [docs/COMANDOS.md](./docs/COMANDOS.md) | Comandos importantes del proyecto |
 | [docs/GUIAS_PGADMIN.md](./docs/GUIAS_PGADMIN.md) | Guía de pgAdmin |
 

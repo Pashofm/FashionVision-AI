@@ -1,6 +1,8 @@
 import uuid
 import enum
 from datetime import datetime
+from typing import Optional
+
 from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Enum, Text, Numeric, Boolean, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, Mapped, mapped_column
@@ -118,13 +120,9 @@ class Product(Base):
     width: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     height: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     depth: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
-    min_stock_level: Mapped[int] = mapped_column(Integer, default=0)
-    max_stock_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
     tags: Mapped[list] = mapped_column(JSONB, default=list)
 
-    yolo_class_id: Mapped[int | None] = mapped_column(Integer, unique=True, nullable=True)
-    yolo_class_name: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True, index=True)
     images: Mapped[list] = mapped_column(JSONB, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
@@ -135,6 +133,21 @@ class Product(Base):
     cart_items = relationship("CartItem", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
     price_history = relationship("PriceHistory", back_populates="product", cascade="all, delete-orphan")
+    embedding: Mapped[Optional["ProductEmbedding"]] = relationship(
+        "ProductEmbedding", back_populates="product", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class ProductEmbedding(Base):
+    __tablename__ = "product_embeddings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), unique=True, nullable=False)
+    embedding: Mapped[list] = mapped_column(JSONB, nullable=False)
+    images_used: Mapped[int] = mapped_column(Integer, default=0)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
+
+    product: Mapped["Product"] = relationship("Product", back_populates="embedding")
 
 
 class ProductVariant(Base):

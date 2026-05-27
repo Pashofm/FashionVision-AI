@@ -25,8 +25,6 @@ class ProductFactory(BaseFactory):
             "description": kwargs.get("description", f"Description for product {unique_suffix}"),
             "sku": kwargs.get("sku", f"SKU-{unique_suffix}"),
             "base_price": kwargs.get("base_price", Decimal("99.99")),
-            "yolo_class_id": kwargs.get("yolo_class_id", None),
-            "yolo_class_name": kwargs.get("yolo_class_name", None),
             "images": kwargs.get("images", []),
             "is_active": kwargs.get("is_active", True),
         }

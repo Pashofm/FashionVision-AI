@@ -6,6 +6,7 @@ import Inventory from './pages/Inventory';
 import Cashier from './pages/Cashier';
 import ClientDetection from './pages/ClientDetection';
 import Reportes from './pages/Reportes';
+import CatalogManager from './pages/CatalogManager';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/caja" element={<Cashier />} />
         <Route path="/cliente" element={<ClientDetection />} />
         <Route path="/reportes" element={<Reportes />} />
+        <Route path="/admin/catalog" element={<CatalogManager />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>

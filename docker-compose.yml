@@ -41,7 +41,7 @@ services:
       SESSION_TIMEOUT_MINUTES: 30
       ENVIRONMENT: production
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:80}
-      MODEL_PATH: /app/models/best.pt
+      MODEL_PATH: ${MODEL_PATH:-/app/models/best.pt}
       MEDIA_DIR: /app/media
       MAX_IMAGE_SIZE_MB: 5
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}

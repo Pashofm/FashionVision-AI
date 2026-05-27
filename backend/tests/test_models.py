@@ -174,25 +174,6 @@ class TestProductModel:
             await db_session.commit()
 
     @pytest.mark.asyncio
-    async def test_product_with_yolo_class(self, db_session, test_category):
-        from backend.app.models.models import Product
-
-        product = Product(
-            id=uuid.uuid4(),
-            category_id=test_category.id,
-            name="Detectable Product",
-            sku="DETECT-001",
-            base_price=Decimal("79.99"),
-            yolo_class_id=1,
-            yolo_class_name="gorra-roja-lacoste"
-        )
-        db_session.add(product)
-        await db_session.commit()
-        await db_session.refresh(product)
-
-        assert product.yolo_class_name == "gorra-roja-lacoste"
-
-    @pytest.mark.asyncio
     async def test_product_images_jsonb(self, db_session, test_category):
         from backend.app.models.models import Product
 

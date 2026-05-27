@@ -203,11 +203,6 @@ class TestProductEndpoints:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_get_product_by_yolo_class(self, client, test_product):
-        response = await client.get(f"/api/products/by-yolo/{test_product.yolo_class_name}")
-        assert response.status_code == 200
-
-    @pytest.mark.asyncio
     async def test_get_products_with_variants(self, authenticated_client, test_product):
         response = await authenticated_client.get("/api/products/with-variants")
         assert response.status_code == 200

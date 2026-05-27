@@ -42,6 +42,24 @@ const ProductTabPanel = ({
             {((product.confidence || 0) * 100).toFixed(0)}%
           </span>
         </div>
+        {product.matchSource && product.matchSource !== 'none' && (
+          <div className="detail-row">
+            <span className="detail-label">Origen</span>
+            <span className={`detail-value match-badge match-${product.matchSource}`}>
+              {product.matchSource === 'clip' ? (
+                <>IA ✓ {product.matchSimilarity != null ? `${(product.matchSimilarity * 100).toFixed(0)}%` : ''}</>
+              ) : (
+                'Clase YOLO'
+              )}
+            </span>
+          </div>
+        )}
+        {product.matchSource === 'none' && (
+          <div className="detail-row">
+            <span className="detail-label">Origen</span>
+            <span className="detail-value match-badge match-none">Prenda no identificada</span>
+          </div>
+        )}
       </div>
 
       {product.sizes && product.sizes.length > 0 && (

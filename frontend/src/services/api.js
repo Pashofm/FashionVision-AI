@@ -145,24 +145,13 @@ export async function getProducts() {
   return response.json();
 }
 
-export async function getProductByYoloClass(yoloClassName) {
-  const response = await fetch(`${API_URL}/api/products/by-yolo/${yoloClassName}`);
+export async function getDetectionProductById(productId) {
+  const response = await fetch(`${API_URL}/api/detect/product-by-id/${productId}`);
   if (!response.ok) {
     if (response.status === 404) {
       return null;
     }
-    throw new Error(`Failed to fetch product: ${response.statusText}`);
-  }
-  return response.json();
-}
-
-export async function getDetectionProduct(yoloClassName) {
-  const response = await fetch(`${API_URL}/api/detect/product/${yoloClassName}`);
-  if (!response.ok) {
-    if (response.status === 404) {
-      return null;
-    }
-    throw new Error(`Failed to fetch detection product: ${response.statusText}`);
+    throw new Error(`Failed to fetch detection product by id: ${response.statusText}`);
   }
   return response.json();
 }

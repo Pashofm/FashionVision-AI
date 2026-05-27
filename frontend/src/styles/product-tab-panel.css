@@ -3,6 +3,130 @@
   border-radius: 12px;
   padding: 20px;
   margin-top: 16px;
+  color: #e2e8f0;
+}
+
+.product-name {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 8px 0 4px 0;
+}
+
+.product-brand {
+  font-size: 14px;
+  color: #94a3b8;
+  margin: 0 0 16px 0;
+}
+
+.price-tag {
+  margin-bottom: 16px;
+}
+
+.price-tag .price {
+  font-size: 24px;
+  font-weight: 700;
+  color: #4da6ff;
+}
+
+.product-details {
+  margin-bottom: 16px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.detail-label {
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.detail-value {
+  color: #e2e8f0;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.detail-value.confidence {
+  color: #11998e;
+}
+
+.tags-section {
+  margin-bottom: 16px;
+}
+
+.tags-label {
+  font-size: 12px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  background: #334155;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tag:hover:not(:disabled) {
+  background: #475569;
+}
+
+.tag.selected {
+  background: #4da6ff;
+  border-color: #4da6ff;
+  color: white;
+}
+
+.tag.out-of-stock {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.selection-error {
+  color: #f87171;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-add-cart {
+  flex: 1;
+  background: #4da6ff;
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-add-cart:hover:not(:disabled) {
+  background: #3b8fef;
+}
+
+.btn-add-cart:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .panel-header {
@@ -26,4 +150,27 @@
 .panel-remove-btn:hover {
   background: rgba(255, 68, 68, 0.3);
   color: #ff4444;
+}
+
+.match-badge {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 12px;
+  display: inline-block;
+}
+
+.match-badge.match-clip {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.match-badge.match-yolo {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.match-badge.match-none {
+  background: #fef3c7;
+  color: #92400e;
 }

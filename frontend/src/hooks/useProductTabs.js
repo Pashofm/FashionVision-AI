@@ -4,30 +4,22 @@ const MAX_PRODUCTS = 5;
 
 const generateId = () => `prod_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-const traducirCategoria = (className) => {
-  if (!className) return 'Prenda';
-  const productoMap = {
-    'gorra-roja-lacoste': 'Gorra',
-    'top': 'Camiseta',
-    'pants': 'Pantalón'
-  };
-  return productoMap[className.toLowerCase()] || className;
-};
-
 const getDefaultSizes = (yoloClassName) => {
   const sizeMap = {
-    'gorra-roja-lacoste': ['One Size'],
-    'top': ['S', 'M', 'L', 'XL'],
-    'pants': ['28', '30', '32', '34', '36']
+    'accessories': ['One Size'],
+    'clothing': ['S', 'M', 'L', 'XL'],
+    'shoes': ['25', '26', '27', '28', '29'],
+    'bags': ['One Size']
   };
   return sizeMap[yoloClassName?.toLowerCase()] || ['S', 'M', 'L', 'XL'];
 };
 
 const getDefaultColors = (yoloClassName) => {
   const colorMap = {
-    'gorra-roja-lacoste': ['Rojo'],
-    'top': ['Blanco', 'Negro', 'Azul'],
-    'pants': ['Azul Marino', 'Negro', 'Gris']
+    'accessories': ['Unico'],
+    'clothing': ['Blanco', 'Negro', 'Azul'],
+    'shoes': ['Negro', 'Blanco', 'Marrón'],
+    'bags': ['Unico']
   };
   return colorMap[yoloClassName?.toLowerCase()] || ['Unico'];
 };
@@ -49,7 +41,7 @@ const useProductTabs = () => {
     }
 
     const existingIndex = products.findIndex(
-      p => p.yolo_class_name === productData.yolo_class_name &&
+      p => p.product_id === productData.product_id && productData.product_id &&
            Math.abs(p.bbox[0] - productData.bbox[0]) < 50 &&
            Math.abs(p.bbox[1] - productData.bbox[1]) < 50
     );
@@ -66,13 +58,12 @@ const useProductTabs = () => {
     const newProduct = {
       id: generateId(),
       name: productData.name || productData.class || 'Producto',
-      tipoProducto: traducirCategoria(productData.yolo_class_name),
+      tipoProducto: productData.tipoProducto || productData.name || 'Prenda',
       marca: productData.brand || 'FashionCo',
       precio: productData.price || 0,
       sku: productData.sku || 'N/A',
-      colors: productData.colors || getDefaultColors(productData.yolo_class_name).map(c => ({ name: c, hex: null, stock: 0 })),
-      sizes: productData.sizes || getDefaultSizes(productData.yolo_class_name).map(s => ({ name: s, stock: 0 })),
-      yolo_class_name: productData.yolo_class_name || '',
+      colors: productData.colors || getDefaultColors(productData.name).map(c => ({ name: c, hex: null, stock: 0 })),
+      sizes: productData.sizes || getDefaultSizes(productData.name).map(s => ({ name: s, stock: 0 })),
       confidence: productData.confidence || 0,
       bbox: productData.bbox || [0, 0, 0, 0],
       selectedSize: null,
@@ -80,7 +71,10 @@ const useProductTabs = () => {
       matchingVariant: null,
       selectionError: '',
       product_id: productData.product_id || null,
-      imageData: productData.imageData || null
+      imageData: productData.imageData || null,
+      matchSource: productData.matchSource || 'none',
+      matchSimilarity: productData.matchSimilarity || null,
+      catalog_match: productData.catalog_match || null
     };
 
     const newIndex = products.length;

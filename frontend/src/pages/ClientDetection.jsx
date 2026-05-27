@@ -10,7 +10,7 @@ import CountdownOverlay from '../components/CountdownOverlay';
 import LiveBboxOverlay from '../components/LiveBboxOverlay';
 import ProductTabs from '../components/ProductTabs';
 import ProductTabPanel from '../components/ProductTabPanel';
-import { detectClothes, getDetectionProduct, searchProductVariant, createSession, getOrCreateCartBySession, getCart, addCartItem, removeCartItem, submitCart, performLogout, extendSession } from '../services/api';
+import { detectClothes, getDetectionProductById, searchProductVariant, createSession, getOrCreateCartBySession, getCart, addCartItem, removeCartItem, submitCart, performLogout, extendSession } from '../services/api';
 import '../styles/client-detection.css';
 
 const STORAGE_KEY_SESSION = 'client_session_id';
@@ -62,11 +62,10 @@ const ClientDetection = () => {
                 price: parseFloat(item.unit_price),
                 brand: item.product?.category?.name || 'FashionCo',
                 sku: item.product?.sku || 'N/A',
-                tipoPrenda: item.product?.yolo_class_name ? traducirCategoria(item.product.yolo_class_name) : 'Prenda',
+                tipoPrenda: item.product?.category?.name || 'Prenda',
                 confidence: item.detection_confidence || 0,
                 colors: [],
                 sizes: [],
-                yolo_class_name: item.product?.yolo_class_name || '',
                 product_id: item.product_id,
                 cartItemId: item.id
               })));
@@ -148,6 +147,7 @@ const ClientDetection = () => {
   const lastDetectionRef = useRef([]);
 
   async function handleCaptureTriggered() {
+    setIsCaptureComplete(true);
     const canvas = canvasRef.current;
     const capturedImage = captureFrame(canvas);
 
@@ -184,7 +184,17 @@ const ClientDetection = () => {
 
           if (result.detections && result.detections.length > 0) {
             for (const detection of result.detections) {
-              const productData = await getDetectionProduct(detection.class);
+              let productData = null;
+              let matchSource = 'none';
+              let matchSimilarity = null;
+
+              if (detection.catalog_match && detection.catalog_match.product_id) {
+                productData = await getDetectionProductById(detection.catalog_match.product_id);
+                if (productData) {
+                  matchSource = 'clip';
+                  matchSimilarity = detection.catalog_match.similarity;
+                }
+              }
 
               if (productData) {
                 const productoData = {
@@ -196,10 +206,12 @@ const ClientDetection = () => {
                   confidence: detection.confidence,
                   colors: productData.colors.map(c => ({ id: c.attribute_id, name: c.value, hex: c.hex_code, stock: c.stock })),
                   sizes: productData.sizes.map(s => ({ id: s.attribute_id, name: s.value, stock: s.stock })),
-                  yolo_class_name: productData.yolo_class_name,
                   product_id: productData.id,
                   bbox: detection.bbox,
-                  imageData: imgData
+                  imageData: imgData,
+                  matchSource: matchSource,
+                  matchSimilarity: matchSimilarity,
+                  catalog_match: detection.catalog_match || null,
                 };
 
                 const addResult = addProduct(productoData);
@@ -217,9 +229,11 @@ const ClientDetection = () => {
                   confidence: detection.confidence,
                   colors: getDefaultColors(detection.class).map(c => ({ name: c, hex: null, stock: 0 })),
                   sizes: getDefaultSizes(detection.class).map(s => ({ name: s, stock: 0 })),
-                  yolo_class_name: detection.class,
                   bbox: detection.bbox,
-                  imageData: imgData
+                  imageData: imgData,
+                  matchSource: 'none',
+                  matchSimilarity: null,
+                  catalog_match: null,
                 };
 
                 addProduct(productoData);
@@ -265,13 +279,13 @@ const ClientDetection = () => {
   }, [lastDetections, detectionStatus, onFirstDetection, lastDetectionRef]);
 
   useEffect(() => {
-    if (isActive && (detectionStatus === 'idle' || detectionStatus === 'paused')) {
+    if (isActive && !isCaptureComplete && (detectionStatus === 'idle' || detectionStatus === 'paused')) {
       startDetection(videoRef);
       if (detectionStatus === 'idle') {
         startAutoDetection();
       }
     }
-  }, [isActive, detectionStatus, startDetection, startAutoDetection, videoRef]);
+  }, [isActive, detectionStatus, isCaptureComplete, startDetection, startAutoDetection, videoRef]);
 
   const handleOpenCamera = async () => {
     try {
@@ -433,18 +447,20 @@ const ClientDetection = () => {
 
   const getDefaultSizes = (yoloClassName) => {
     const sizeMap = {
-      'gorra-roja-lacoste': ['One Size'],
-      'top': ['S', 'M', 'L', 'XL'],
-      'pants': ['28', '30', '32', '34', '36']
+      'accessories': ['One Size'],
+      'clothing': ['S', 'M', 'L', 'XL'],
+      'shoes': ['25', '26', '27', '28', '29'],
+      'bags': ['One Size']
     };
     return sizeMap[yoloClassName?.toLowerCase()] || ['S', 'M', 'L', 'XL'];
   };
 
   const getDefaultColors = (yoloClassName) => {
     const colorMap = {
-      'gorra-roja-lacoste': ['Rojo'],
-      'top': ['Blanco', 'Negro', 'Azul'],
-      'pants': ['Azul Marino', 'Negro', 'Gris']
+      'accessories': ['Unico'],
+      'clothing': ['Blanco', 'Negro', 'Azul'],
+      'shoes': ['Negro', 'Blanco', 'Marrón'],
+      'bags': ['Unico']
     };
     return colorMap[yoloClassName?.toLowerCase()] || ['Unico'];
   };
@@ -484,7 +500,9 @@ const ClientDetection = () => {
         ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
 
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        const label = `${product.tipoProducto?.toUpperCase() || 'ITEM'} ${Math.round((product.confidence || 0) * 100)}%`;
+
+        const matchIndicator = product.matchSource === 'clip' ? ' ✓' : '';
+        const label = `${product.tipoProducto?.toUpperCase() || 'ITEM'} ${Math.round((product.confidence || 0) * 100)}%${matchIndicator}`;
         ctx.font = 'bold 14px sans-serif';
         const textMetrics = ctx.measureText(label);
         ctx.fillRect(sx1, sy1 - 24, textMetrics.width + 12, 22);

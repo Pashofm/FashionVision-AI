@@ -152,8 +152,6 @@ END $$;
 
 -- ============================================
 -- Create indexes for better performance
--- ============================================
-CREATE INDEX IF NOT EXISTS idx_products_yolo_class_name ON products(yolo_class_name);
 CREATE INDEX IF NOT EXISTS idx_products_cost_price ON products(cost_price);
 CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand);
 CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier);

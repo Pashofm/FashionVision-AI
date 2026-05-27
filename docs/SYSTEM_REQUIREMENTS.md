@@ -50,7 +50,7 @@ brew install \
 
 ### Windows (WSL2)
 
-Se recomienda usar WSL2 con Ubuntu. Ver [docs/INSTALACION_WINDOWS.md](./INSTALACION_WINDOWS.md) para instrucciones detalladas.
+Se recomienda usar WSL2 con Ubuntu. Ver [docs/INSTALLATION.md](./INSTALLATION.md) para instrucciones detalladas.
 
 ---
 
@@ -272,7 +272,6 @@ curl http://localhost:5050
 
 ## Recursos Adicionales
 
-- [Guía de Instalación Linux](./INSTALACION_LINUX.md)
-- [Guía de Instalación Windows](./INSTALACION_WINDOWS.md)
+- [Guía de Instalación](./INSTALLATION.md)
 - [Guía de Docker](./DOCKER_ENVIRONMENT.md)
 - [Comandos Importantes](./COMANDOS.md)

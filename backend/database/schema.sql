@@ -167,12 +167,8 @@ CREATE TABLE products (
     width           NUMERIC(8,2),
     height          NUMERIC(8,2),
     depth           NUMERIC(8,2),
-    min_stock_level INTEGER         NOT NULL DEFAULT 0,
-    max_stock_level INTEGER,
     is_featured     BOOLEAN         NOT NULL DEFAULT FALSE,
     tags            JSONB           NOT NULL DEFAULT '[]',
-    yolo_class_id   INTEGER         UNIQUE,
-    yolo_class_name VARCHAR(100)    UNIQUE,
     images          JSONB           NOT NULL DEFAULT '[]',
     is_active       BOOLEAN         NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
@@ -181,11 +177,9 @@ CREATE TABLE products (
 
 COMMENT ON TABLE products IS 'Catálogo maestro de prendas';
 COMMENT ON COLUMN products.sku IS 'Stock Keeping Unit - código único interno';
-COMMENT ON COLUMN products.yolo_class_name IS 'Nombre de clase YOLO para detección automática';
 
 CREATE INDEX idx_products_name_trgm ON products USING GIN (name gin_trgm_ops);
 CREATE INDEX idx_products_category ON products(category_id);
-CREATE INDEX idx_products_yolo ON products(yolo_class_name) WHERE yolo_class_name IS NOT NULL;
 CREATE INDEX idx_products_active ON products(is_active) WHERE is_active = TRUE;
 
 -- ─────────────────────────────────────────────────────────────────────────────
