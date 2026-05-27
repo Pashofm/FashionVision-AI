@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { detectClothes } from '../services/api';
 
 const DETECTION_INTERVAL = 300;
-const MIN_CONFIDENCE = 0.05;
+const MIN_CONFIDENCE = 0.50;
 
 const useRealTimeDetection = () => {
   const [isDetecting, setIsDetecting] = useState(false);

@@ -1518,6 +1518,42 @@
   gap: 3px;
 }
 
+.product-images-upload-section {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.product-images-upload-section h4 {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+  color: #334155;
+}
+
+.field-hint {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.file-chip {
+  background: #e0ecff;
+  color: #2563eb;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .dimensions-value span {
   color: #64748b;
 }

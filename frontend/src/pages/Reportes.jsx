@@ -127,6 +127,7 @@ const Reportes = () => {
           <nav>
             <button onClick={() => navigate('/dashboard')}>Dashboard</button>
             <button onClick={() => navigate('/inventory')}>Inventario</button>
+            <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
             <button className="nav-active">Reportes</button>
           </nav>
           <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
@@ -146,6 +147,7 @@ const Reportes = () => {
           <nav>
             <button onClick={() => navigate('/dashboard')}>Dashboard</button>
             <button onClick={() => navigate('/inventory')}>Inventario</button>
+            <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
             <button className="nav-active">Reportes</button>
           </nav>
           <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
@@ -176,6 +178,7 @@ const Reportes = () => {
         <nav>
           <button onClick={() => navigate('/dashboard')}>Dashboard</button>
           <button onClick={() => navigate('/inventory')}>Inventario</button>
+          <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
           <button className="nav-active">Reportes</button>
         </nav>
         <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>

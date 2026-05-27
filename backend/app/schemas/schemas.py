@@ -176,18 +176,13 @@ class ProductBase(BaseModel):
     width: Optional[float] = None
     height: Optional[float] = None
     depth: Optional[float] = None
-    min_stock_level: int = 0
-    max_stock_level: Optional[int] = None
     is_featured: bool = False
     tags: List[str] = []
-    yolo_class_id: Optional[int] = None
-    yolo_class_name: Optional[str] = None
     images: List[str] = []
 
 
 class ProductCreate(ProductBase):
-    yolo_class_id: Optional[int] = None
-    yolo_class_name: Optional[str] = None
+    pass
 
 
 class ProductUpdate(BaseModel):
@@ -205,13 +200,9 @@ class ProductUpdate(BaseModel):
     width: Optional[float] = None
     height: Optional[float] = None
     depth: Optional[float] = None
-    min_stock_level: Optional[int] = None
-    max_stock_level: Optional[int] = None
     is_featured: Optional[bool] = None
     tags: Optional[List[str]] = None
     category_id: Optional[uuid.UUID] = None
-    yolo_class_id: Optional[int] = None
-    yolo_class_name: Optional[str] = None
     images: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
@@ -825,10 +816,34 @@ class DetectionProductResponse(BaseModel):
     name: str
     sku: str
     base_price: float
-    yolo_class_name: Optional[str] = None
     category_name: Optional[str] = None
     sizes: List[DetectionAttributeItem] = []
     colors: List[DetectionAttributeItem] = []
+
+
+class ProductEmbeddingResponse(BaseModel):
+    product_id: uuid.UUID
+    images_used: int
+    generated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CatalogMatchResult(BaseModel):
+    matched: bool
+    product_id: Optional[uuid.UUID] = None
+    product_name: Optional[str] = None
+    similarity: Optional[float] = None
+    detection_data: Optional[DetectionProductResponse] = None
+
+
+class EmbeddingStatusResponse(BaseModel):
+    product_id: uuid.UUID
+    product_name: str
+    has_embedding: bool
+    images_used: Optional[int] = None
+    generated_at: Optional[datetime] = None
 
 
 class PriceHistoryBase(BaseModel):

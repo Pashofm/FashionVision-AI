@@ -43,7 +43,7 @@ def get_model_classes() -> dict:
     return model.names if model else {}
 
 
-def detect_in_image(image: Image.Image, conf_threshold: float = 0.05) -> dict:
+def detect_in_image(image: Image.Image, conf_threshold: float = 0.50) -> dict:
     if image.mode != "RGB":
         image = image.convert("RGB")
 

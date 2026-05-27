@@ -4,6 +4,7 @@ import { getHeaders, getCategories, getLowStockProducts, getInventoryMovements,
          getSuppliers, updateInventoryStatus, getPriceBreakdown,
          getProductPriceHistory, performLogout, reactivateAttribute,
          getAttributesWithStock } from '../services/api';
+import { generateEmbedding } from '../services/catalogService';
 import { formatLocalDateTime } from '../utils/dateUtils';
 import '../styles/Inventory.css';
 
@@ -67,13 +68,10 @@ const Inventory = () => {
     width: '',
     height: '',
     depth: '',
-    min_stock_level: '0',
-    max_stock_level: '',
     is_featured: false,
     tags: [],
     description: '',
     category_id: '',
-    yolo_class_name: '',
     images: []
   });
 
@@ -105,6 +103,10 @@ const Inventory = () => {
     phone: '',
     address: ''
   });
+
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState('');
 
   const isAdmin = userData?.role === 'admin';
 
@@ -235,6 +237,9 @@ const Inventory = () => {
         };
 
         setEditingProduct(productWithVariants);
+        setSelectedFiles([]);
+        setSubmitting(false);
+        setSubmitStatus('');
         setProductForm({
           name: fullProduct.name || '',
           sku: fullProduct.sku || '',
@@ -249,13 +254,10 @@ const Inventory = () => {
           width: fullProduct.width || '',
           height: fullProduct.height || '',
           depth: fullProduct.depth || '',
-          min_stock_level: fullProduct.min_stock_level?.toString() || '0',
-          max_stock_level: fullProduct.max_stock_level?.toString() || '',
           is_featured: fullProduct.is_featured || false,
           tags: fullProduct.tags || [],
           description: fullProduct.description || '',
           category_id: fullProduct.category_id || '',
-          yolo_class_name: fullProduct.yolo_class_name || '',
           images: fullProduct.images || []
         });
       } catch (err) {
@@ -265,6 +267,10 @@ const Inventory = () => {
       }
     } else {
       setEditingProduct(null);
+      setSelectedProduct(null);
+      setSelectedFiles([]);
+      setSubmitting(false);
+      setSubmitStatus('');
       setProductForm({
         name: '',
         sku: '',
@@ -279,13 +285,10 @@ const Inventory = () => {
         width: '',
         height: '',
         depth: '',
-        min_stock_level: '0',
-        max_stock_level: '',
         is_featured: false,
         tags: [],
         description: '',
         category_id: '',
-        yolo_class_name: '',
         images: []
       });
     }
@@ -295,6 +298,10 @@ const Inventory = () => {
   const closeProductModal = () => {
     setShowProductModal(false);
     setEditingProduct(null);
+    setSelectedProduct(null);
+    setSelectedFiles([]);
+    setSubmitting(false);
+    setSubmitStatus('');
     setError('');
   };
 
@@ -490,6 +497,7 @@ const Inventory = () => {
   const handleProductSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSubmitting(true);
 
     try {
       const headers = getHeaders();
@@ -512,16 +520,14 @@ const Inventory = () => {
         width: parseFloat(productForm.width) || null,
         height: parseFloat(productForm.height) || null,
         depth: parseFloat(productForm.depth) || null,
-        min_stock_level: parseInt(productForm.min_stock_level) || 0,
-        max_stock_level: parseInt(productForm.max_stock_level) || null,
         is_featured: productForm.is_featured,
         tags: productForm.tags || [],
         description: productForm.description || null,
         category_id: productForm.category_id,
-        yolo_class_name: productForm.yolo_class_name || null,
         images: productForm.images || []
       };
 
+      setSubmitStatus('Creando producto...');
       const response = await fetch(url, {
         method,
         headers: { ...headers, 'Content-Type': 'application/json' },
@@ -533,10 +539,38 @@ const Inventory = () => {
         throw new Error(data.detail || 'Error al guardar producto');
       }
 
+      const created = await response.json();
+      const productId = editingProduct?.id || created.id;
+
+      if (selectedFiles.length > 0 && !editingProduct) {
+        setSubmitStatus('Subiendo imágenes...');
+        for (const file of selectedFiles) {
+          const imgFormData = new FormData();
+          imgFormData.append('file', file);
+          const imgHeaders = getHeaders();
+          delete imgHeaders['Content-Type'];
+          await fetch(`${API_URL}/api/products/${productId}/images`, {
+            method: 'POST',
+            headers: imgHeaders,
+            body: imgFormData
+          });
+        }
+
+        setSubmitStatus('Generando embedding...');
+        try {
+          await generateEmbedding(productId, null);
+        } catch (embErr) {
+          console.warn('Auto-vectorization failed:', embErr);
+        }
+      }
+
       closeProductModal();
       loadProducts();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSubmitting(false);
+      setSubmitStatus('');
     }
   };
 
@@ -756,6 +790,7 @@ const Inventory = () => {
         <nav>
           <button onClick={() => navigate('/dashboard')}>Dashboard</button>
           <button className="nav-active" onClick={() => {}}>Inventario</button>
+          <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
         </nav>
         <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
       </header>
@@ -1123,6 +1158,10 @@ const Inventory = () => {
           onDeleteVariant={deleteVariant}
           error={error}
           formatCurrency={formatCurrency}
+          selectedFiles={selectedFiles}
+          onFilesSelected={setSelectedFiles}
+          submitting={submitting}
+          submitStatus={submitStatus}
         />
       )}
 
@@ -1225,9 +1264,8 @@ const Inventory = () => {
 function ProductModalForm({
   product, productData, setProductData, selectedProduct, categories, isAdmin,
   onSubmit, onClose, onOpenVariant, onOpenStock,
-  // TODO: Re-enable when price features are needed
-  // onOpenPriceBreakdown, onLoadPriceHistory,
-  onImageUpload, onImageDelete, onDeleteVariant, error, formatCurrency
+  onImageUpload, onImageDelete, onDeleteVariant, error, formatCurrency,
+  selectedFiles, onFilesSelected, submitting, submitStatus
 }) {
   const isEditMode = !!product;
   const isViewMode = !!selectedProduct && !isEditMode;
@@ -1297,16 +1335,6 @@ function ProductModalForm({
                 <textarea
                   value={productData.description}
                   onChange={e => setProductData({ ...productData, description: e.target.value })}
-                  disabled={!isAdmin}
-                />
-              </div>
-              <div className="form-group full-width">
-                <label>Clase YOLO</label>
-                <input
-                  type="text"
-                  value={productData.yolo_class_name}
-                  onChange={e => setProductData({ ...productData, yolo_class_name: e.target.value })}
-                  placeholder="Ej: gorra-roja-lacoste"
                   disabled={!isAdmin}
                 />
               </div>
@@ -1418,26 +1446,6 @@ function ProductModalForm({
                 />
               </div>
               <div className="form-group">
-                <label>Stock Mínimo</label>
-                <input
-                  type="number"
-                  value={productData.min_stock_level}
-                  onChange={e => setProductData({ ...productData, min_stock_level: e.target.value })}
-                  placeholder="5"
-                  disabled={!isAdmin}
-                />
-              </div>
-              <div className="form-group">
-                <label>Stock Máximo</label>
-                <input
-                  type="number"
-                  value={productData.max_stock_level}
-                  onChange={e => setProductData({ ...productData, max_stock_level: e.target.value })}
-                  placeholder="100"
-                  disabled={!isAdmin}
-                />
-              </div>
-              <div className="form-group">
                 <label>Destacado</label>
                 <input
                   type="checkbox"
@@ -1457,9 +1465,39 @@ function ProductModalForm({
                 />
               </div>
             </div>
+            {isAdmin && !isEditMode && (
+              <div className="product-images-upload-section">
+                <h4>Imágenes del producto (1-5)</h4>
+                <p className="field-hint">Formatos: JPEG, PNG, WebP. Las imágenes se subirán a Cloudinary y se usaran para vectorizar automáticamente el producto.</p>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  onChange={e => onFilesSelected(Array.from(e.target.files))}
+                  disabled={submitting}
+                />
+                {selectedFiles && selectedFiles.length > 0 && (
+                  <div className="file-chips">
+                    {selectedFiles.map((f, i) => (
+                      <span key={i} className="file-chip">{f.name}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="modal-actions">
               <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
-              {isAdmin && <button type="submit" className="btn-primary">{isEditMode ? 'Actualizar' : 'Crear'}</button>}
+              {isAdmin && (
+                submitting ? (
+                  <button type="button" className="btn-primary" disabled>
+                    {submitStatus || 'Procesando...'}
+                  </button>
+                ) : (
+                  <button type="submit" className="btn-primary">
+                    {isEditMode ? 'Actualizar' : 'Crear y Vectorizar'}
+                  </button>
+                )
+              )}
             </div>
           </form>
         </div>
@@ -1502,9 +1540,6 @@ function ProductModalForm({
               <div className="info-row"><span className="label">Barcode:</span><span className="value">{displayProduct.barcode}</span></div>
             )}
             <div className="info-row"><span className="label">Categoría:</span><span className="value">{categories.find(c => c.id === displayProduct.category_id)?.name || '-'}</span></div>
-            {displayProduct.yolo_class_name && (
-              <div className="info-row"><span className="label">YOLO Class:</span><span className="value">{displayProduct.yolo_class_name}</span></div>
-            )}
             {displayProduct.description && (
               <div className="info-row"><span className="label">Descripción:</span><span className="value">{displayProduct.description}</span></div>
             )}
