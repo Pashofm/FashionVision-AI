@@ -152,14 +152,13 @@ const CatalogManager = () => {
   return (
     <div className="catalog-page">
       <header>
-        <div className="logo">FashionVision AI</div>
+        <div className="logo">⚙️ Admin - FashionVision</div>
         <nav>
           <button onClick={() => navigate('/dashboard')}>Dashboard</button>
           <button onClick={() => navigate('/inventory')}>Inventario</button>
-          <button disabled>Catálogo</button>
-          <button onClick={() => navigate('/reportes')}>Reportes</button>
-          <button className="logout-btn" onClick={handleLogout}>Cerrar sesión</button>
+          <button className="nav-active" onClick={() => {}}>Catálogo</button>
         </nav>
+        <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
       </header>
 
       <main className="catalog-container">

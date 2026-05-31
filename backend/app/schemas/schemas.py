@@ -328,6 +328,8 @@ class InventoryLowStockResponse(BaseModel):
     sku_variant: str
     size_attribute_id: Optional[uuid.UUID] = None
     color_attribute_id: Optional[uuid.UUID] = None
+    size_value: Optional[str] = None
+    color_value: Optional[str] = None
     quantity_available: int
     quantity_reserved: int
     low_stock_threshold: int
@@ -798,10 +800,30 @@ class AttributeWithStockStatus(AttributeOptionResponse):
     has_products_linked: bool = False
     total_stock: int = 0
     variants_count: int = 0
+    products_count: int = 0
 
 
 class AttributeListWithStockResponse(BaseModel):
     attributes: List[AttributeWithStockStatus]
+
+
+class AttributeProductInfo(BaseModel):
+    product_id: uuid.UUID
+    product_name: str
+    product_sku: str
+    brand: Optional[str] = None
+    category_name: str
+    image_url: Optional[str] = None
+    variants_using_attr: int
+    total_stock: int
+    has_low_stock: bool
+
+    class Config:
+        from_attributes = True
+
+
+class AttributeProductsResponse(BaseModel):
+    products: List[AttributeProductInfo]
 
 
 class DetectionAttributeItem(BaseModel):
