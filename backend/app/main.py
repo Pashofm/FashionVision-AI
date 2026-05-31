@@ -2694,14 +2694,29 @@ async def get_dashboard_today(db: AsyncSession = db_dependency):
 
 
 @app.get("/api/analytics/top-products", response_model=List[DashboardTopProduct])
-async def get_top_products(days: int = 30, db: AsyncSession = db_dependency):
+async def get_top_products(
+    days: int = 30,
+    start_date: str = None,
+    end_date: str = None,
+    db: AsyncSession = db_dependency,
+):
+    if start_date and end_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(400, "Formato de fecha inválido. Use YYYY-MM-DD")
+        date_filter = and_(Order.completed_at >= sd, Order.completed_at < ed)
+    else:
+        date_filter = Order.completed_at >= datetime.now() - timedelta(days=days)
+
     result = await db.execute(
         select(Product.id, Product.name, Category.name, func.sum(OrderItem.quantity), func.sum(OrderItem.subtotal), func.count(func.distinct(Order.id)))
         .select_from(OrderItem)
         .join(Order)
         .join(Product)
         .join(Category)
-        .where(and_(Order.status == OrderStatus.completed, Order.completed_at >= datetime.now() - timedelta(days=days)))
+        .where(and_(Order.status == OrderStatus.completed, date_filter))
         .group_by(Product.id, Product.name, Category.name)
         .order_by(func.sum(OrderItem.quantity).desc())
         .limit(10)
@@ -2734,11 +2749,32 @@ async def get_sales_analytics(db: AsyncSession = db_dependency):
     )
     total = await db.execute(select(func.count(Order.id)).where(Order.status == OrderStatus.completed))
 
+    pm_result = await db.execute(
+        select(
+            Order.payment_method,
+            func.count(Order.id),
+            func.coalesce(func.sum(Order.total_amount), 0),
+        )
+        .where(and_(
+            Order.status == OrderStatus.completed,
+            func.date(Order.completed_at) == func.current_date(),
+        ))
+        .group_by(Order.payment_method)
+    )
+    payment_methods = {}
+    for row in pm_result:
+        pm_value = row[0].value if row[0] else "unknown"
+        payment_methods[pm_value] = {
+            "orders": row[1],
+            "revenue": float(row[2]),
+        }
+
     return {
         "monthly_sales": float(monthly.scalar()),
         "weekly_sales": float(weekly.scalar()),
         "daily_sales": float(daily.scalar()),
-        "total_transactions": total.scalar()
+        "total_transactions": total.scalar(),
+        "payment_methods": payment_methods,
     }
 
 
@@ -2774,16 +2810,28 @@ async def get_sales_by_hour(date: str = None, db: AsyncSession = db_dependency):
 
 
 @app.get("/api/analytics/sales-by-category", response_model=List[SalesByCategory])
-async def get_sales_by_category(period: str = 'weekly', db: AsyncSession = db_dependency):
+async def get_sales_by_category(
+    period: str = 'weekly',
+    start_date: str = None,
+    end_date: str = None,
+    db: AsyncSession = db_dependency,
+):
     now = datetime.now()
-    if period == 'daily':
-        start_date = func.current_date()
+    if start_date and end_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(400, "Formato de fecha inválido. Use YYYY-MM-DD")
+        date_filter = and_(Order.completed_at >= sd, Order.completed_at < ed)
+    elif period == 'daily':
+        date_filter = Order.completed_at >= func.current_date()
     elif period == 'weekly':
-        start_date = now - timedelta(days=7)
+        date_filter = Order.completed_at >= now - timedelta(days=7)
     elif period == 'monthly':
-        start_date = now - timedelta(days=30)
+        date_filter = Order.completed_at >= now - timedelta(days=30)
     else:
-        start_date = now - timedelta(days=7)
+        date_filter = Order.completed_at >= now - timedelta(days=7)
 
     result = await db.execute(
         select(
@@ -2799,7 +2847,7 @@ async def get_sales_by_category(period: str = 'weekly', db: AsyncSession = db_de
         .join(Category)
         .where(and_(
             Order.status == OrderStatus.completed,
-            Order.completed_at >= start_date
+            date_filter
         ))
         .group_by(Category.id, Category.name)
         .order_by(func.sum(OrderItem.quantity).desc())
@@ -2914,83 +2962,164 @@ async def get_period_comparison(period: str = 'weekly', db: AsyncSession = db_de
 @app.get("/api/analytics/sales-trend", response_model=List[SalesByHour])
 async def get_sales_trend(days: int = 28, db: AsyncSession = db_dependency):
     now = datetime.now()
-    daily_data = []
+    start = now - timedelta(days=days)
 
-    for i in range(days - 1, -1, -1):
-        target_date = (now - timedelta(days=i)).date()
-        day_start = datetime.combine(target_date, datetime.min.time())
-        day_end = datetime.combine(target_date, datetime.max.time())
-
-        result = await db.execute(
-            select(
-                func.count(Order.id).label('total_orders'),
-                func.coalesce(func.sum(Order.total_amount), 0).label('total_revenue')
-            )
-            .where(and_(
-                Order.status == OrderStatus.completed,
-                Order.completed_at >= day_start,
-                Order.completed_at <= day_end
-            ))
+    result = await db.execute(
+        select(
+            func.date(Order.completed_at).label('day'),
+            func.count(Order.id).label('total_orders'),
+            func.coalesce(func.sum(Order.total_amount), 0).label('total_revenue')
         )
-        row = result.first()
+        .where(and_(
+            Order.status == OrderStatus.completed,
+            Order.completed_at >= start
+        ))
+        .group_by(func.date(Order.completed_at))
+        .order_by(func.date(Order.completed_at).asc())
+    )
+
+    day_map = {}
+    for row in result:
+        day_map[row[0]] = (row[1] or 0, float(row[2] or 0))
+
+    daily_data = []
+    for i in range(days):
+        target_date = (start + timedelta(days=i)).date()
+        orders, revenue = day_map.get(target_date, (0, 0.0))
         daily_data.append(SalesByHour(
             hour=i,
-            total_orders=row[0] or 0,
-            total_revenue=float(row[1] or 0)
+            total_orders=orders,
+            total_revenue=revenue
         ))
 
     return daily_data
 
 
 @app.get("/api/analytics/dashboard/summary", response_model=DashboardSummary)
-async def get_dashboard_summary(db: AsyncSession = db_dependency):
+async def get_dashboard_summary(
+    period: str = "weekly",
+    start_date: str = None,
+    end_date: str = None,
+    db: AsyncSession = db_dependency,
+):
     now = datetime.now()
     today_start = func.current_date()
 
-    today_result = await db.execute(
-        select(
-            func.count(Order.id),
-            func.coalesce(func.sum(Order.total_amount), 0),
-            func.coalesce(func.sum(OrderItem.quantity), 0)
+    if start_date and end_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(400, "Formato de fecha inválido. Use YYYY-MM-DD")
+
+        today_result = await db.execute(
+            select(
+                func.count(Order.id),
+                func.coalesce(func.sum(Order.total_amount), 0),
+                func.coalesce(func.sum(OrderItem.quantity), 0)
+            )
+            .where(and_(
+                Order.status == OrderStatus.completed,
+                Order.completed_at >= sd,
+                Order.completed_at < ed,
+            ))
+            .join(OrderItem, Order.id == OrderItem.order_id, isouter=True)
         )
-        .where(and_(
-            Order.status == OrderStatus.completed,
-            func.date(Order.completed_at) == today_start
-        ))
-        .join(OrderItem, Order.id == OrderItem.order_id, isouter=True)
-    )
-    today_row = today_result.first()
-    today_data = DashboardToday(
-        total_orders=today_row[0] or 0,
-        total_revenue=float(today_row[1] or 0),
-        total_items_sold=today_row[2] or 0
-    )
+        today_row = today_result.first()
+        today_data = DashboardToday(
+            total_orders=today_row[0] or 0,
+            total_revenue=float(today_row[1] or 0),
+            total_items_sold=today_row[2] or 0
+        )
 
-    weekly_result = await db.execute(
-        select(func.coalesce(func.sum(Order.total_amount), 0))
-        .where(and_(
-            Order.status == OrderStatus.completed,
-            Order.completed_at >= now - timedelta(days=7)
-        ))
-    )
-    weekly_sales = float(weekly_result.scalar() or 0)
+        weekly_sales = float(today_row[1] or 0)
+        monthly_sales = float(today_row[1] or 0)
 
-    monthly_result = await db.execute(
-        select(func.coalesce(func.sum(Order.total_amount), 0))
-        .where(and_(
-            Order.status == OrderStatus.completed,
-            Order.completed_at >= now - timedelta(days=30)
-        ))
-    )
-    monthly_sales = float(monthly_result.scalar() or 0)
+        range_days = (ed - sd).days
+        prev_sd = sd - timedelta(days=range_days)
+        prev_ed = sd
+        current_result = await db.execute(
+            select(func.coalesce(func.sum(Order.total_amount), 0))
+            .where(and_(
+                Order.status == OrderStatus.completed,
+                Order.completed_at >= sd,
+                Order.completed_at < ed,
+            ))
+        )
+        current_period = float(current_result.scalar() or 0)
+        previous_result = await db.execute(
+            select(func.coalesce(func.sum(Order.total_amount), 0))
+            .where(and_(
+                Order.status == OrderStatus.completed,
+                Order.completed_at >= prev_sd,
+                Order.completed_at < prev_ed,
+            ))
+        )
+        previous_period = float(previous_result.scalar() or 0)
+        abs_change = current_period - previous_period
+        if previous_period > 0:
+            pct_change = ((current_period - previous_period) / previous_period) * 100
+        else:
+            pct_change = 100.0 if current_period > 0 else 0.0
+        trend = 'up' if abs_change > 0 else 'down' if abs_change < 0 else 'stable'
+        comparison = PeriodComparison(
+            current_period=current_period,
+            previous_period=previous_period,
+            absolute_change=abs_change,
+            percentage_change=round(pct_change, 2),
+            trend=trend,
+        )
 
-    comparison = await get_period_comparison('weekly', db)
+        sales_by_hour = await get_sales_by_hour(db=db)
+        sales_by_category = await get_sales_by_category(start_date=start_date, end_date=end_date, db=db)
+        top_products = await get_top_products(start_date=start_date, end_date=end_date, db=db)
+        inventory_alerts = await get_inventory_alerts(db)
+        sales_trend = await get_sales_trend(28, db)
+    else:
+        today_result = await db.execute(
+            select(
+                func.count(Order.id),
+                func.coalesce(func.sum(Order.total_amount), 0),
+                func.coalesce(func.sum(OrderItem.quantity), 0)
+            )
+            .where(and_(
+                Order.status == OrderStatus.completed,
+                func.date(Order.completed_at) == today_start
+            ))
+            .join(OrderItem, Order.id == OrderItem.order_id, isouter=True)
+        )
+        today_row = today_result.first()
+        today_data = DashboardToday(
+            total_orders=today_row[0] or 0,
+            total_revenue=float(today_row[1] or 0),
+            total_items_sold=today_row[2] or 0
+        )
 
-    sales_by_hour = await get_sales_by_hour(db=db)
-    sales_by_category = await get_sales_by_category('weekly', db)
-    top_products = await get_top_products(30, db)
-    inventory_alerts = await get_inventory_alerts(db)
-    sales_trend = await get_sales_trend(28, db)
+        weekly_result = await db.execute(
+            select(func.coalesce(func.sum(Order.total_amount), 0))
+            .where(and_(
+                Order.status == OrderStatus.completed,
+                Order.completed_at >= now - timedelta(days=7)
+            ))
+        )
+        weekly_sales = float(weekly_result.scalar() or 0)
+
+        monthly_result = await db.execute(
+            select(func.coalesce(func.sum(Order.total_amount), 0))
+            .where(and_(
+                Order.status == OrderStatus.completed,
+                Order.completed_at >= now - timedelta(days=30)
+            ))
+        )
+        monthly_sales = float(monthly_result.scalar() or 0)
+
+        comparison = await get_period_comparison(period, db)
+
+        sales_by_hour = await get_sales_by_hour(db=db)
+        sales_by_category = await get_sales_by_category(period, db=db)
+        top_products = await get_top_products(30, db=db)
+        inventory_alerts = await get_inventory_alerts(db)
+        sales_trend = await get_sales_trend(28, db)
 
     return DashboardSummary(
         today=today_data,
