@@ -720,6 +720,14 @@ export async function getAttributesWithStock(type = null, includeInactive = fals
   return response.json();
 }
 
+export async function getAttributeProducts(attributeId) {
+  const response = await fetch(`${API_URL}/api/attributes/${attributeId}/products`, { headers: getHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch attribute products: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 // ==================== PRODUCT ATTRIBUTES ====================
 
 export async function getProductAttributes(productId) {

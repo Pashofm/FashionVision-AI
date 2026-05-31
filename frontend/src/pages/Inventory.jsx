@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getHeaders, getCategories, getLowStockProducts, getInventoryMovements,
          getSuppliers, updateInventoryStatus, getPriceBreakdown,
          getProductPriceHistory, performLogout, reactivateAttribute,
-         getAttributesWithStock } from '../services/api';
+         getAttributesWithStock, getAttributeProducts } from '../services/api';
 import { generateEmbedding } from '../services/catalogService';
 import { formatLocalDateTime } from '../utils/dateUtils';
 import '../styles/Inventory.css';
@@ -38,6 +38,7 @@ const Inventory = () => {
   const [showAttributeModal, setShowAttributeModal] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showPriceBreakdownModal, setShowPriceBreakdownModal] = useState(false);
+  const [showAttributeProductsModal, setShowAttributeProductsModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [editingVariant, setEditingVariant] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -47,6 +48,8 @@ const Inventory = () => {
   const [attributesWithStock, setAttributesWithStock] = useState([]);
   const [showInactiveAttributes, setShowInactiveAttributes] = useState(false);
   const [activeAttributeTab, setActiveAttributeTab] = useState('sizes');
+  const [selectedAttribute, setSelectedAttribute] = useState(null);
+  const [attributeProducts, setAttributeProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [priceBreakdown, setPriceBreakdown] = useState(null);
   const [priceHistory, setPriceHistory] = useState([]);
@@ -107,6 +110,8 @@ const Inventory = () => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState('');
+  const [stockSuccess, setStockSuccess] = useState('');
+  const [variantSuccess, setVariantSuccess] = useState('');
 
   const isAdmin = userData?.role === 'admin';
 
@@ -303,6 +308,8 @@ const Inventory = () => {
     setSubmitting(false);
     setSubmitStatus('');
     setError('');
+    loadProducts();
+    loadLowStock();
   };
 
   const openVariantModal = (product, variant = null) => {
@@ -331,6 +338,7 @@ const Inventory = () => {
     setShowVariantModal(false);
     setEditingVariant(null);
     setError('');
+    setVariantSuccess('');
   };
 
   const openStockModal = async (product, variant) => {
@@ -380,6 +388,12 @@ const Inventory = () => {
     setSelectedVariant(null);
     setMovements([]);
     setError('');
+    setStockSuccess('');
+    if (selectedProduct?.id) {
+      loadProductDetails(selectedProduct.id);
+    }
+    loadProducts();
+    loadLowStock();
   };
 
   const openAttributeModal = () => {
@@ -390,6 +404,26 @@ const Inventory = () => {
   const closeAttributeModal = () => {
     setShowAttributeModal(false);
     setAttributeForm({ type: 'size', value: '', hex_code: '#000000' });
+    setError('');
+  };
+
+  const openAttributeProductsModal = async (attribute) => {
+    setSelectedAttribute(attribute);
+    setError('');
+    try {
+      const data = await getAttributeProducts(attribute.id);
+      setAttributeProducts(data.products || []);
+      setShowAttributeProductsModal(true);
+    } catch (err) {
+      console.error('Error loading attribute products:', err);
+      setError('Error al cargar productos del atributo');
+    }
+  };
+
+  const closeAttributeProductsModal = () => {
+    setShowAttributeProductsModal(false);
+    setSelectedAttribute(null);
+    setAttributeProducts([]);
     setError('');
   };
 
@@ -577,6 +611,7 @@ const Inventory = () => {
   const handleVariantSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setVariantSuccess('');
 
     try {
       const headers = getHeaders();
@@ -601,8 +636,9 @@ const Inventory = () => {
         throw new Error(data.detail || 'Error al guardar variante');
       }
 
-      closeVariantModal();
+      setVariantSuccess(editingVariant ? 'Variante actualizada correctamente' : 'Variante creada correctamente');
       loadProducts();
+      loadLowStock();
       if (selectedProduct?.id) {
         loadProductDetails(selectedProduct.id);
       }
@@ -614,15 +650,16 @@ const Inventory = () => {
   const handleStockSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setStockSuccess('');
 
     try {
       const headers = getHeaders();
-      const payload = {
-        quantity: parseInt(stockForm.quantity),
-        reason: stockForm.reason
-      };
+      const isRestock = stockForm.type === 'restock';
+      const payload = isRestock
+        ? { quantity: parseInt(stockForm.quantity), notes: stockForm.reason }
+        : { quantity_change: parseInt(stockForm.quantity), reason: stockForm.reason };
 
-      const endpoint = stockForm.type === 'restock'
+      const endpoint = isRestock
         ? `${API_URL}/api/inventory/restock?variant_id=${selectedVariant.id}`
         : `${API_URL}/api/inventory/adjust?variant_id=${selectedVariant.id}`;
 
@@ -637,7 +674,13 @@ const Inventory = () => {
         throw new Error(data.detail || 'Error al ajustar inventario');
       }
 
+      const updatedInventory = await response.json();
+      setSelectedVariant(prev => ({
+        ...prev,
+        inventory: { ...prev.inventory, quantity_available: updatedInventory.quantity_after }
+      }));
       setStockForm({ quantity: '', reason: '', type: 'restock' });
+      setStockSuccess('Stock actualizado correctamente');
       loadMovements(selectedVariant.id);
       loadProducts();
       loadLowStock();
@@ -659,7 +702,7 @@ const Inventory = () => {
     }
   };
 
-  const handleImageUpload = async (productId, file) => {
+  const _handleImageUpload = async (productId, file) => {
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -680,7 +723,7 @@ const Inventory = () => {
     }
   };
 
-  const handleImageDelete = async (productId, imageUrl) => {
+  const _handleImageDelete = async (productId, imageUrl) => {
     try {
       const headers = getHeaders();
       const encodedUrl = encodeURIComponent(imageUrl);
@@ -733,9 +776,14 @@ const Inventory = () => {
       if (response.ok) {
         await loadProductDetails(productId);
         loadProducts();
+        loadLowStock();
+      } else {
+        const data = await response.json();
+        alert(data.detail || 'Error al eliminar la variante');
       }
     } catch (err) {
       console.error('Error deleting variant:', err);
+      alert('Error al eliminar la variante');
     }
   };
 
@@ -851,6 +899,9 @@ const Inventory = () => {
                 />
                 Solo destacados
               </label>
+              <span className="featured-info-tip" title="Los productos destacados se calculan automáticamente cada hora según las ventas del mes (top 3 por categoría, mínimo 5 ventas)">
+                ⓘ Auto
+              </span>
               {isAdmin && (
                 <button className="btn-primary" onClick={() => openProductModal()}>
                   + Nuevo Producto
@@ -921,7 +972,7 @@ const Inventory = () => {
               <div key={item.variant_id} className={`alert-item ${item.status}`}>
                 <div className="alert-info">
                   <strong>{item.product_name}</strong>
-                  <span>{item.size_attribute_id || 'Talla única'} - {item.color_attribute_id || 'Color único'}</span>
+                  <span>{item.size_value || 'Talla única'} - {item.color_value || 'Color único'}</span>
                   <span className="sku">SKU: {item.sku_variant}</span>
                 </div>
                 <div className="alert-stock">
@@ -940,7 +991,13 @@ const Inventory = () => {
                     onClick={() => {
                       const product = products.find(p => p.id === item.product_id);
                       if (product) {
-                        openStockModal(product, item);
+                        const mappedVariant = {
+                          ...item,
+                          id: item.variant_id,
+                          size_attribute: { value: item.size_value || null },
+                          color_attribute: { value: item.color_value || null }
+                        };
+                        openStockModal(product, mappedVariant);
                       }
                     }}
                   >
@@ -1030,6 +1087,14 @@ const Inventory = () => {
                         <td>
                           {isAdmin && (
                             <div className="action-buttons">
+                              <button
+                                className="btn-text btn-info"
+                                onClick={() => openAttributeProductsModal(attr)}
+                                disabled={!attr.products_count}
+                                title={!attr.products_count ? 'Sin productos asignados' : ''}
+                              >
+                                Ver Productos
+                              </button>
                               {attr.is_active ? (
                                 <button className="btn-text btn-warning" onClick={() => deleteAttribute(attr.id)}>Desactivar</button>
                               ) : (
@@ -1086,6 +1151,14 @@ const Inventory = () => {
                         <td>
                           {isAdmin && (
                             <div className="action-buttons">
+                              <button
+                                className="btn-text btn-info"
+                                onClick={() => openAttributeProductsModal(attr)}
+                                disabled={!attr.products_count}
+                                title={!attr.products_count ? 'Sin productos asignados' : ''}
+                              >
+                                Ver Productos
+                              </button>
                               {attr.is_active ? (
                                 <button className="btn-text btn-warning" onClick={() => deleteAttribute(attr.id)}>Desactivar</button>
                               ) : (
@@ -1121,6 +1194,7 @@ const Inventory = () => {
                   <th>Contacto</th>
                   <th>Email</th>
                   <th>Teléfono</th>
+                  <th>Dirección</th>
                 </tr>
               </thead>
               <tbody>
@@ -1130,10 +1204,11 @@ const Inventory = () => {
                     <td>{supplier.contact_name || '-'}</td>
                     <td>{supplier.email || '-'}</td>
                     <td>{supplier.phone || '-'}</td>
+                    <td>{supplier.address || '-'}</td>
                   </tr>
                 ))}
                 {suppliers.length === 0 && (
-                  <tr><td colSpan="4" className="no-data-cell">No hay proveedores registrados</td></tr>
+                  <tr><td colSpan="5" className="no-data-cell">No hay proveedores registrados</td></tr>
                 )}
               </tbody>
             </table>
@@ -1153,8 +1228,6 @@ const Inventory = () => {
           onClose={closeProductModal}
           onOpenVariant={openVariantModal}
           onOpenStock={openStockModal}
-          onImageUpload={handleImageUpload}
-          onImageDelete={handleImageDelete}
           onDeleteVariant={deleteVariant}
           error={error}
           formatCurrency={formatCurrency}
@@ -1162,6 +1235,7 @@ const Inventory = () => {
           onFilesSelected={setSelectedFiles}
           submitting={submitting}
           submitStatus={submitStatus}
+          suppliers={suppliers}
         />
       )}
 
@@ -1175,6 +1249,8 @@ const Inventory = () => {
           error={error}
           sizes={availableSizes}
           colors={availableColors}
+          productSku={selectedProduct?.sku || ''}
+          success={variantSuccess}
         />
       )}
 
@@ -1189,6 +1265,7 @@ const Inventory = () => {
           onClose={closeStockModal}
           onStatusUpdate={handleStockStatusUpdate}
           error={error}
+          success={stockSuccess}
         />
       )}
 
@@ -1199,6 +1276,14 @@ const Inventory = () => {
           onSubmit={handleAttributeSubmit}
           onClose={closeAttributeModal}
           error={error}
+        />
+      )}
+
+      {showAttributeProductsModal && selectedAttribute && (
+        <AttributeProductsModal
+          attribute={selectedAttribute}
+          products={attributeProducts}
+          onClose={closeAttributeProductsModal}
         />
       )}
 
@@ -1264,19 +1349,12 @@ const Inventory = () => {
 function ProductModalForm({
   product, productData, setProductData, selectedProduct, categories, isAdmin,
   onSubmit, onClose, onOpenVariant, onOpenStock,
-  onImageUpload, onImageDelete, onDeleteVariant, error, formatCurrency,
-  selectedFiles, onFilesSelected, submitting, submitStatus
+  onDeleteVariant, error, formatCurrency,
+  selectedFiles, onFilesSelected, submitting, submitStatus, suppliers = []
 }) {
   const isEditMode = !!product;
   const isViewMode = !!selectedProduct && !isEditMode;
   const displayProduct = selectedProduct || product;
-
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (file && displayProduct?.id) {
-      await onImageUpload(displayProduct.id, file);
-    }
-  };
 
   if (!isViewMode) {
     return (
@@ -1312,7 +1390,13 @@ function ProductModalForm({
                   type="number"
                   step="0.01"
                   value={productData.base_price}
-                  onChange={e => setProductData({ ...productData, base_price: e.target.value })}
+                  onChange={e => {
+                    const newBase = e.target.value;
+                    const cost = parseFloat(productData.cost_price) || 0;
+                    const base = parseFloat(newBase) || 0;
+                    const autoMargin = cost > 0 ? ((base - cost) / cost).toFixed(4) : productData.profit_margin;
+                    setProductData({ ...productData, base_price: newBase, profit_margin: autoMargin });
+                  }}
                   required
                   disabled={!isAdmin}
                 />
@@ -1344,7 +1428,13 @@ function ProductModalForm({
                   type="number"
                   step="0.01"
                   value={productData.cost_price}
-                  onChange={e => setProductData({ ...productData, cost_price: e.target.value })}
+                  onChange={e => {
+                    const newCost = e.target.value;
+                    const cost = parseFloat(newCost) || 0;
+                    const margin = parseFloat(productData.profit_margin) || 0;
+                    const autoPrice = (cost * (1 + margin)).toFixed(2);
+                    setProductData({ ...productData, cost_price: newCost, base_price: autoPrice });
+                  }}
                   placeholder="0.00"
                   disabled={!isAdmin}
                 />
@@ -1355,7 +1445,13 @@ function ProductModalForm({
                   type="number"
                   step="0.01"
                   value={productData.profit_margin}
-                  onChange={e => setProductData({ ...productData, profit_margin: e.target.value })}
+                  onChange={e => {
+                    const newMargin = e.target.value;
+                    const cost = parseFloat(productData.cost_price) || 0;
+                    const margin = parseFloat(newMargin) || 0;
+                    const autoPrice = (cost * (1 + margin)).toFixed(2);
+                    setProductData({ ...productData, profit_margin: newMargin, base_price: autoPrice });
+                  }}
                   placeholder="0.30 = 30%"
                   disabled={!isAdmin}
                 />
@@ -1383,13 +1479,16 @@ function ProductModalForm({
               </div>
               <div className="form-group">
                 <label>Proveedor</label>
-                <input
-                  type="text"
+                <select
                   value={productData.supplier}
                   onChange={e => setProductData({ ...productData, supplier: e.target.value })}
-                  placeholder="Nombre del proveedor"
                   disabled={!isAdmin}
-                />
+                >
+                  <option value="">Seleccionar proveedor...</option>
+                  {suppliers.map(sup => (
+                    <option key={sup.id} value={sup.name}>{sup.name}</option>
+                  ))}
+                </select>
               </div>
               <div className="form-group">
                 <label>Barcode</label>
@@ -1446,15 +1545,6 @@ function ProductModalForm({
                 />
               </div>
               <div className="form-group">
-                <label>Destacado</label>
-                <input
-                  type="checkbox"
-                  checked={productData.is_featured}
-                  onChange={e => setProductData({ ...productData, is_featured: e.target.checked })}
-                  disabled={!isAdmin}
-                />
-              </div>
-              <div className="form-group">
                 <label>Tags (separados por coma)</label>
                 <input
                   type="text"
@@ -1465,6 +1555,62 @@ function ProductModalForm({
                 />
               </div>
             </div>
+            {isEditMode && (
+              <div className="variants-section">
+                <div className="variants-header">
+                  <h4>Variantes</h4>
+                  {isAdmin && displayProduct.id && (
+                    <button type="button" className="btn-small" onClick={() => onOpenVariant(displayProduct)}>
+                      + Nueva Variante
+                    </button>
+                  )}
+                </div>
+
+                {displayProduct.variants?.length > 0 ? (
+                  <table className="variants-table">
+                    <thead>
+                      <tr>
+                        <th>Talla</th><th>Color</th><th>SKU Variante</th><th>Stock</th><th>Estado</th>
+                        {isAdmin && <th>Acciones</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayProduct.variants.map(v => (
+                        <tr key={v.id}>
+                          <td>{v.size_attribute?.value || '-'}</td>
+                          <td>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {v.color_hex && <span style={{ width: '16px', height: '16px', backgroundColor: v.color_hex, borderRadius: '3px', border: '1px solid #ddd' }} />}
+                              {v.color_attribute?.value || '-'}
+                            </span>
+                          </td>
+                          <td>{v.sku_variant}</td>
+                          <td className={v.inventory?.quantity_available === 0 ? 'out-of-stock' : v.inventory?.quantity_available <= v.inventory?.low_stock_threshold ? 'low-stock' : ''}>
+                            {v.inventory?.quantity_available || 0}
+                          </td>
+                          <td>
+                            <span className={`status-badge ${v.inventory?.quantity_available === 0 ? 'out-of-stock' : v.inventory?.quantity_available <= v.inventory?.low_stock_threshold ? 'low-stock' : 'in-stock'}`}>
+                              {v.inventory?.quantity_available === 0 ? 'Agotado' : v.inventory?.quantity_available <= v.inventory?.low_stock_threshold ? 'Bajo' : 'OK'}
+                            </span>
+                          </td>
+                          {isAdmin && (
+                            <td>
+                              <div className="variant-actions">
+                                <button className="btn-text" onClick={() => onOpenVariant(displayProduct, v)}>Editar</button>
+                                <button className="btn-text" onClick={() => onOpenStock(displayProduct, v)}>Stock</button>
+                                <button className="btn-text btn-danger" onClick={() => onDeleteVariant(displayProduct.id, v.id)}>Eliminar</button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="no-variants">No hay variantes definidas</p>
+                )}
+              </div>
+            )}
             {isAdmin && !isEditMode && (
               <div className="product-images-upload-section">
                 <h4>Imágenes del producto (1-5)</h4>
@@ -1559,18 +1705,17 @@ function ProductModalForm({
           {isAdmin && (
             <div className="product-images-section">
               <h4>Imágenes</h4>
-              <div className="images-grid">
-                {(displayProduct.images || []).map((img, idx) => (
-                  <div key={idx} className="image-item">
-                    <img src={img} alt="" />
-                    <button type="button" className="btn-delete-image" onClick={() => onImageDelete(displayProduct.id, img)}>×</button>
-                  </div>
-                ))}
-              </div>
-              <label className="upload-image-btn">
-                <input type="file" accept="image/*" onChange={handleFileChange} />
-                + Agregar Imagen
-              </label>
+              {displayProduct.images && displayProduct.images.length > 0 ? (
+                <div className="images-grid">
+                  {(displayProduct.images || []).map((img, idx) => (
+                    <div key={idx} className="image-item">
+                      <img src={img} alt="" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="no-images">Sin imágenes. Use el Catálogo para gestionar imágenes.</p>
+              )}
             </div>
           )}
         </div>
@@ -1578,11 +1723,6 @@ function ProductModalForm({
         <div className="variants-section">
           <div className="variants-header">
             <h4>Variantes</h4>
-            {isAdmin && displayProduct.id && (
-              <button type="button" className="btn-small" onClick={() => onOpenVariant(displayProduct)}>
-                + Nueva Variante
-              </button>
-            )}
           </div>
 
           {displayProduct.variants?.length > 0 ? (
@@ -1590,7 +1730,6 @@ function ProductModalForm({
               <thead>
                 <tr>
                   <th>Talla</th><th>Color</th><th>SKU Variante</th><th>Stock</th><th>Estado</th>
-                  {isAdmin && <th>Acciones</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1612,17 +1751,6 @@ function ProductModalForm({
                         {v.inventory?.quantity_available === 0 ? 'Agotado' : v.inventory?.quantity_available <= v.inventory?.low_stock_threshold ? 'Bajo' : 'OK'}
                       </span>
                     </td>
-                    {isAdmin && (
-                      <td>
-                        <div className="variant-actions">
-                          <button className="btn-text" onClick={() => onOpenVariant(displayProduct, v)}>Editar</button>
-                          <button className="btn-text" onClick={() => onOpenStock(displayProduct, v)}>Stock</button>
-                          {/* TODO: Enable price breakdown when needed */}
-                          {/* <button className="btn-text" onClick={() => onOpenPriceBreakdown(displayProduct, v)}>Precio</button> */}
-                          <button className="btn-text btn-danger" onClick={() => onDeleteVariant(displayProduct.id, v.id)}>Eliminar</button>
-                        </div>
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1640,8 +1768,36 @@ function ProductModalForm({
   );
 }
 
-function VariantModalForm({ variant, variantData, setVariantData, onSubmit, onClose, error, sizes = [], colors = [] }) {
+function VariantModalForm({ variant, variantData, setVariantData, onSubmit, onClose, error, sizes = [], colors = [], productSku = '', success }) {
   const isEditMode = !!variant;
+
+  const handleSizeChange = (e) => {
+    const sizeId = e.target.value || null;
+    const sizeObj = sizeId ? sizes.find(s => s.id === sizeId) : null;
+    const sizeValue = sizeObj?.value || '';
+    const isNumericSize = /^\d+$/.test(sizeValue);
+    const sizePart = isNumericSize ? '' : sizeValue;
+    const selectedColorId = variantData.color_attribute_id;
+    const colorObj = selectedColorId ? colors.find(c => c.id === selectedColorId) : null;
+    const colorValue = colorObj?.value || '';
+    const colorPart = colorValue ? colorValue.substring(0, 3).toUpperCase() : '';
+    const autoSku = [productSku, sizePart, colorPart].filter(Boolean).join('-');
+    setVariantData({ ...variantData, size_attribute_id: sizeId, sku_variant: autoSku });
+  };
+
+  const handleColorChange = (e) => {
+    const colorId = e.target.value || null;
+    const colorObj = colorId ? colors.find(c => c.id === colorId) : null;
+    const colorValue = colorObj?.value || '';
+    const colorPart = colorValue ? colorValue.substring(0, 3).toUpperCase() : '';
+    const selectedSizeId = variantData.size_attribute_id;
+    const sizeObj = selectedSizeId ? sizes.find(s => s.id === selectedSizeId) : null;
+    const sizeValue = sizeObj?.value || '';
+    const isNumericSize = /^\d+$/.test(sizeValue);
+    const sizePart = isNumericSize ? '' : sizeValue;
+    const autoSku = [productSku, sizePart, colorPart].filter(Boolean).join('-');
+    setVariantData({ ...variantData, color_attribute_id: colorId, sku_variant: autoSku });
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1649,12 +1805,13 @@ function VariantModalForm({ variant, variantData, setVariantData, onSubmit, onCl
         <h2>{isEditMode ? 'Editar Variante' : 'Nueva Variante'}</h2>
         <form onSubmit={onSubmit}>
           {error && <div className="error-message">{error}</div>}
+          {success && <div className="success-message">{success}</div>}
           <div className="form-grid">
             <div className="form-group">
               <label>Talla</label>
               <select
                 value={variantData.size_attribute_id || ''}
-                onChange={e => setVariantData({ ...variantData, size_attribute_id: e.target.value || null })}
+                onChange={handleSizeChange}
               >
                 <option value="">Seleccionar talla...</option>
                 {sizes.map(size => (
@@ -1666,7 +1823,7 @@ function VariantModalForm({ variant, variantData, setVariantData, onSubmit, onCl
               <label>Color</label>
               <select
                 value={variantData.color_attribute_id || ''}
-                onChange={e => setVariantData({ ...variantData, color_attribute_id: e.target.value || null })}
+                onChange={handleColorChange}
               >
                 <option value="">Seleccionar color...</option>
                 {colors.map(color => (
@@ -1679,8 +1836,8 @@ function VariantModalForm({ variant, variantData, setVariantData, onSubmit, onCl
               <input type="color" value={variantData.color_hex} onChange={e => setVariantData({ ...variantData, color_hex: e.target.value })} />
             </div>
             <div className="form-group full-width">
-              <label>SKU Variante</label>
-              <input type="text" value={variantData.sku_variant} onChange={e => setVariantData({ ...variantData, sku_variant: e.target.value })} required />
+              <label>SKU Variante {!isEditMode && '(auto-generado)'}</label>
+              <input type="text" value={variantData.sku_variant} onChange={e => setVariantData({ ...variantData, sku_variant: e.target.value })} required readOnly={!isEditMode} />
             </div>
           </div>
           <div className="modal-actions">
@@ -1693,7 +1850,7 @@ function VariantModalForm({ variant, variantData, setVariantData, onSubmit, onCl
   );
 }
 
-function StockModalForm({ product, variant, stockData, setStockData, movements, onSubmit, onClose, onStatusUpdate, error }) {
+function StockModalForm({ product, variant, stockData, setStockData, movements, onSubmit, onClose, onStatusUpdate, error, success }) {
   const [showMovements, setShowMovements] = useState(false);
 
   return (
@@ -1708,6 +1865,7 @@ function StockModalForm({ product, variant, stockData, setStockData, movements, 
         </div>
 
         {error && <div className="error-message">{error}</div>}
+        {success && <div className="success-message">{success}</div>}
 
         <div className="stock-status-section">
           <h4>Estado y Ubicación</h4>
@@ -1849,23 +2007,23 @@ function SupplierModalForm({ supplierData, setSupplierData, onSubmit, onClose, e
           <div className="form-grid">
             <div className="form-group full-width">
               <label>Nombre</label>
-              <input type="text" value={supplierData.name} onChange={e => setSupplierData({ ...supplierData, name: e.target.value })} required />
+              <input type="text" value={supplierData.name} onChange={e => setSupplierData({ ...supplierData, name: e.target.value })} placeholder="Ej: Nike" required />
             </div>
             <div className="form-group">
               <label>Nombre de contacto</label>
-              <input type="text" value={supplierData.contact_name} onChange={e => setSupplierData({ ...supplierData, contact_name: e.target.value })} />
+              <input type="text" value={supplierData.contact_name} onChange={e => setSupplierData({ ...supplierData, contact_name: e.target.value })} placeholder="Ej: Juan Pérez" />
             </div>
             <div className="form-group">
               <label>Email</label>
-              <input type="email" value={supplierData.email} onChange={e => setSupplierData({ ...supplierData, email: e.target.value })} />
+              <input type="email" value={supplierData.email} onChange={e => setSupplierData({ ...supplierData, email: e.target.value })} placeholder="Ej: contacto@proveedor.com" />
             </div>
             <div className="form-group">
               <label>Teléfono</label>
-              <input type="text" value={supplierData.phone} onChange={e => setSupplierData({ ...supplierData, phone: e.target.value })} />
+              <input type="text" value={supplierData.phone} onChange={e => setSupplierData({ ...supplierData, phone: e.target.value })} placeholder="Ej: +52 55 1234 5678" />
             </div>
             <div className="form-group full-width">
               <label>Dirección</label>
-              <textarea value={supplierData.address} onChange={e => setSupplierData({ ...supplierData, address: e.target.value })} />
+              <textarea value={supplierData.address} onChange={e => setSupplierData({ ...supplierData, address: e.target.value })} placeholder="Ej: Av. Reforma 123, CDMX" />
             </div>
           </div>
           <div className="modal-actions">
@@ -1873,6 +2031,58 @@ function SupplierModalForm({ supplierData, setSupplierData, onSubmit, onClose, e
             <button type="submit" className="btn-primary">Crear</button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function AttributeProductsModal({ attribute, products, onClose }) {
+  if (!attribute) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content attribute-products-modal" onClick={e => e.stopPropagation()}>
+        <h2>Productos que usan "{attribute.value}"</h2>
+        <p className="modal-subtitle">
+          {attribute.type === 'size' ? 'Talla' : 'Color'}: {attribute.value} — {products.length} producto{products.length !== 1 ? 's' : ''}
+        </p>
+
+        {products.length > 0 ? (
+          <div className="attr-products-list">
+            {products.map(p => (
+              <div key={p.product_id} className="attr-product-card">
+                <div className="attr-product-img">
+                  {p.image_url ? (
+                    <img src={p.image_url} alt={p.product_name} />
+                  ) : (
+                    <div className="no-img-placeholder">Sin imagen</div>
+                  )}
+                </div>
+                <div className="attr-product-info">
+                  <strong className="attr-product-name">{p.product_name}</strong>
+                  <div className="attr-product-meta">
+                    <span>SKU: {p.product_sku}</span>
+                    {p.brand && <span>Marca: {p.brand}</span>}
+                    <span>Categoría: {p.category_name}</span>
+                    <span>Variantes con este atributo: {p.variants_using_attr}</span>
+                  </div>
+                  <div className="attr-product-stock">
+                    <span className={`status-badge ${p.total_stock === 0 ? 'out-of-stock' : p.has_low_stock ? 'low-stock' : 'in-stock'}`}>
+                      {p.total_stock === 0 ? 'Agotado' : p.has_low_stock ? 'Stock Bajo' : 'En Stock'}
+                    </span>
+                    <span className="stock-qty">{p.total_stock} unidades</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="no-data">No hay productos que usen este atributo</p>
+        )}
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cerrar</button>
+        </div>
       </div>
     </div>
   );
