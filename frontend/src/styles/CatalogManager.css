@@ -7,58 +7,6 @@
   background: #f5f7fa;
 }
 
-.catalog-page header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 20px 60px;
-  background: #4da6ff;
-  color: white;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-.catalog-page .logo {
-  font-size: 24px;
-  font-weight: bold;
-}
-
-.catalog-page nav {
-  display: flex;
-  gap: 10px;
-}
-
-.catalog-page nav button {
-  background: white;
-  color: #4da6ff;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: 0.3s;
-}
-
-.catalog-page nav button:hover:not(:disabled) {
-  background: #e6f2ff;
-}
-
-.catalog-page nav button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.catalog-page nav .logout-btn {
-  background: transparent;
-  color: white;
-  border: 1px solid white;
-}
-
-.catalog-page nav .logout-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
 .catalog-container {
   margin-top: 40px;
   width: 90%;
