@@ -257,7 +257,7 @@
   color: #e0e0e0;
 }
 
-.action-btn {
+.reportes-container .action-btn {
   padding: 10px 20px;
   border-radius: 8px;
   border: none;
@@ -266,22 +266,104 @@
   transition: all 0.3s;
 }
 
-.action-btn.btn-export {
+.reportes-container .action-btn.btn-export {
   background: #11998e;
   color: #fff;
 }
 
-.action-btn.btn-export:hover {
+.reportes-container .action-btn.btn-export:hover {
   background: #0d7a6e;
 }
 
-.action-btn.btn-inventario {
+.reportes-container .action-btn.btn-inventario {
   background: #4da6ff;
   color: #fff;
 }
 
-.action-btn.btn-inventario:hover {
+.reportes-container .action-btn.btn-inventario:hover {
   background: #3d8fd4;
+}
+
+.reportes-container .action-btn.btn-inventario:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-btn.btn-inventario:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.comparison-section {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 30px;
+}
+
+.comparison-section .section-title {
+  font-size: 1rem;
+  color: #fff;
+  margin: 0 0 15px;
+}
+
+.comparison-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 15px;
+}
+
+.comparison-card {
+  text-align: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+}
+
+.comp-label {
+  display: block;
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.comp-value {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.comp-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.comp-badge.up {
+  background: rgba(17, 153, 142, 0.2);
+  color: #11998e;
+}
+
+.comp-badge.down {
+  background: rgba(245, 87, 108, 0.2);
+  color: #f5576c;
+}
+
+.comp-badge.stable {
+  background: rgba(160, 160, 160, 0.2);
+  color: #a0a0a0;
+}
+
+.export-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .reportes-container .alerts-section {
