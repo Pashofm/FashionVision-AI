@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { performLogout } from '../services/api';
+import { analyticsService } from '../services/analyticsService';
 import {
   BarChart,
   Bar,
@@ -17,9 +18,6 @@ import {
 } from 'recharts';
 import '../styles/Dashboard.css';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const API_URL = BASE_URL === '/' ? '' : BASE_URL;
-
 const COLORS = ['#4da6ff', '#764ba2', '#f5576c', '#11998e', '#fc8181', '#68d391'];
 
 const Dashboard = () => {
@@ -27,35 +25,25 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [salesGeneral, setSalesGeneral] = useState(null);
   const [salesData, setSalesData] = useState([]);
   const [trendData, setTrendData] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(null);
   const userData = JSON.parse(localStorage.getItem('user') || '{}');
-
-  useEffect(() => {
-    if (userData.role !== 'admin') {
-      navigate('/');
-      return;
-    }
-    fetchDashboardData();
-  }, [navigate, userData.role]);
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
       setError(null);
 
-      const token = localStorage.getItem('access_token');
-      const headers = { 'Authorization': `Bearer ${token}` };
+      const [summaryData, salesGenData] = await Promise.all([
+        analyticsService.getSummary(),
+        analyticsService.getSalesGeneral(),
+      ]);
 
-      const response = await fetch(`${API_URL}/api/analytics/dashboard/summary`, { headers });
-      if (!response.ok) {
-        throw new Error('Error al cargar datos del dashboard');
-      }
+      setSummary(summaryData);
+      setSalesGeneral(salesGenData);
 
-      const data = await response.json();
-      setSummary(data);
-
-      const hourData = data.sales_by_hour || [];
+      const hourData = summaryData.sales_by_hour || [];
       const formattedHourData = Array.from({ length: 24 }, (_, i) => {
         const found = hourData.find(h => h.hour === i);
         return {
@@ -66,7 +54,7 @@ const Dashboard = () => {
       });
       setSalesData(formattedHourData);
 
-      const trendData = (data.sales_trend || []).map((item, index) => {
+      const trendDataMapped = (summaryData.sales_trend || []).map((item, index) => {
         const date = new Date();
         date.setDate(date.getDate() - (27 - index));
         return {
@@ -75,7 +63,9 @@ const Dashboard = () => {
           revenue: item.total_revenue,
         };
       });
-      setTrendData(trendData);
+      setTrendData(trendDataMapped);
+
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Error fetching dashboard:', err);
       setError(err.message);
@@ -83,6 +73,16 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (userData.role !== 'admin') {
+      navigate('/');
+      return;
+    }
+    fetchDashboardData();
+    const interval = setInterval(fetchDashboardData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [navigate, userData.role]);
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-MX', {
@@ -93,9 +93,9 @@ const Dashboard = () => {
 
   const getTrendIcon = (trend) => {
     switch (trend) {
-      case 'up': return '↑';
-      case 'down': return '↓';
-      default: return '→';
+      case 'up': return '\u2191';
+      case 'down': return '\u2193';
+      default: return '\u2192';
     }
   };
 
@@ -161,6 +161,16 @@ const Dashboard = () => {
     color: COLORS[index % COLORS.length],
   })) || [];
 
+  const ticketPromedio = summary?.today?.total_orders > 0
+    ? summary.today.total_revenue / summary.today.total_orders
+    : 0;
+
+  const paymentMethods = salesGeneral?.payment_methods || {};
+  const cashRevenue = paymentMethods.cash?.revenue || 0;
+  const cardRevenue = paymentMethods.card?.revenue || 0;
+  const mixedRevenue = paymentMethods.mixed?.revenue || 0;
+  const totalTransactions = salesGeneral?.total_transactions || 0;
+
   return (
     <div className="dashboard-page">
       <header>
@@ -174,6 +184,15 @@ const Dashboard = () => {
       </header>
 
       <main className="dashboard-container">
+        <div className="dashboard-header-row">
+          <h2 className="section-title">Panel de Control</h2>
+          {lastUpdated && (
+            <span className="last-updated">
+              Actualizado a las {lastUpdated.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+
         <section className="stats-cards">
           <div className="stat-card">
             <h3>Ventas de Hoy</h3>
@@ -199,6 +218,33 @@ const Dashboard = () => {
             <h3>Productos Vendidos (Hoy)</h3>
             <p className="stat-value">{summary?.today?.total_items_sold || 0}</p>
             <p className="stat-detail">Artículos</p>
+          </div>
+          <div className="stat-card">
+            <h3>Ticket Promedio</h3>
+            <p className="stat-value">{formatCurrency(ticketPromedio)}</p>
+            <p className="stat-detail">Por orden</p>
+          </div>
+        </section>
+
+        <section className="payment-methods-section">
+          <h2 className="section-title">Métodos de Pago (Hoy)</h2>
+          <div className="payment-methods-row">
+            <div className="payment-method-card">
+              <span className="pm-label">Efectivo</span>
+              <span className="pm-value">{formatCurrency(cashRevenue)}</span>
+            </div>
+            <div className="payment-method-card">
+              <span className="pm-label">Tarjeta</span>
+              <span className="pm-value">{formatCurrency(cardRevenue)}</span>
+            </div>
+            <div className="payment-method-card">
+              <span className="pm-label">Mixto</span>
+              <span className="pm-value">{formatCurrency(mixedRevenue)}</span>
+            </div>
+            <div className="payment-method-card">
+              <span className="pm-label">Total Transacciones</span>
+              <span className="pm-value">{totalTransactions}</span>
+            </div>
           </div>
         </section>
 
