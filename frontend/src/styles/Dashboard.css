@@ -162,7 +162,7 @@ nav button:disabled {
 
 .stats-cards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px;
 }
 
@@ -378,17 +378,6 @@ nav button:disabled {
   color: #64748b;
 }
 
-.btn-analytics {
-  background: transparent;
-  border-color: #764ba2;
-  color: #764ba2;
-}
-
-.btn-analytics:hover {
-  background: #764ba2;
-  color: white;
-}
-
 .btn-logout {
   background: rgba(255, 255, 255, 0.2);
   color: white;
@@ -406,11 +395,71 @@ nav button:disabled {
 }
 
 @media (max-width: 900px) {
-  .stats-cards {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
   .charts-row {
     grid-template-columns: 1fr;
   }
+
+  .dashboard-trend-section {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-methods-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.dashboard-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.dashboard-header-row .section-title {
+  margin: 0;
+}
+
+.last-updated {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.payment-methods-section {
+  background: white;
+  padding: 24px;
+  border-radius: 15px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+}
+
+.payment-methods-section .section-title {
+  margin: 0 0 16px;
+  font-size: 18px;
+  color: #1e293b;
+}
+
+.payment-methods-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.payment-method-card {
+  text-align: center;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 10px;
+}
+
+.pm-label {
+  display: block;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.pm-value {
+  display: block;
+  font-size: 20px;
+  font-weight: bold;
+  color: #1e293b;
 }

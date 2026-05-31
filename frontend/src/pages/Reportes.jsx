@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { performLogout } from '../services/api';
+import { analyticsService } from '../services/analyticsService';
+import { jsPDF } from 'jspdf';
+import * as XLSX from 'xlsx';
 import {
   LineChart,
   Line,
@@ -10,12 +13,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   BarChart,
-  Bar
+  Bar,
 } from 'recharts';
 import '../styles/Reportes.css';
-
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const API_URL = BASE_URL === '/' ? '' : BASE_URL;
 
 const Reportes = () => {
   const navigate = useNavigate();
@@ -26,53 +26,130 @@ const Reportes = () => {
   const [endDate, setEndDate] = useState('');
   const [salesData, setSalesData] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [comparison, setComparison] = useState(null);
   const [topProducts, setTopProducts] = useState([]);
   const [salesByCategory, setSalesByCategory] = useState([]);
   const userData = JSON.parse(localStorage.getItem('user') || '{}');
+
+  const fetchReportData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (dateRange === 'today') {
+        const today = new Date().toISOString().split('T')[0];
+        const [salesByHourData, categoryData, topProductsData] = await Promise.all([
+          analyticsService.getSalesByHour(today),
+          analyticsService.getSalesByCategory({ period: 'daily' }),
+          analyticsService.getTopProducts({ days: 1 }),
+        ]);
+
+        const hourlyData = Array.from({ length: 24 }, (_, i) => {
+          const found = salesByHourData.find(h => h.hour === i);
+          return {
+            hora: `${i.toString().padStart(2, '0')}:00`,
+            ventas: found ? found.total_orders : 0,
+            revenue: found ? found.total_revenue : 0,
+          };
+        });
+        setSalesData(hourlyData);
+        setSalesByCategory(categoryData);
+        setTopProducts(topProductsData);
+        setSummary({
+          today: {
+            total_revenue: topProductsData.reduce((acc, p) => acc + p.total_revenue, 0),
+            total_orders: topProductsData.reduce((acc, p) => acc + p.order_count, 0),
+            total_items_sold: topProductsData.reduce((acc, p) => acc + p.total_quantity_sold, 0),
+          },
+          monthly_sales: topProductsData.reduce((acc, p) => acc + p.total_revenue, 0),
+        });
+        setComparison(null);
+      } else if (dateRange === 'week') {
+        const [summaryData, comparisonData] = await Promise.all([
+          analyticsService.getSummary({ period: 'weekly' }),
+          analyticsService.getComparison('weekly'),
+        ]);
+
+        setSummary(summaryData);
+        setComparison(comparisonData);
+        setSalesByCategory(summaryData.sales_by_category || []);
+        setTopProducts(summaryData.top_products || []);
+
+        const hourlyData = Array.from({ length: 24 }, (_, i) => {
+          const found = (summaryData.sales_by_hour || []).find(h => h.hour === i);
+          return {
+            hora: `${i.toString().padStart(2, '0')}:00`,
+            ventas: found ? found.total_orders : 0,
+            revenue: found ? found.total_revenue : 0,
+          };
+        });
+        setSalesData(hourlyData);
+      } else if (dateRange === 'month') {
+        const [summaryData, comparisonData] = await Promise.all([
+          analyticsService.getSummary({ period: 'monthly' }),
+          analyticsService.getComparison('monthly'),
+        ]);
+
+        setSummary(summaryData);
+        setComparison(comparisonData);
+        setSalesByCategory(summaryData.sales_by_category || []);
+        setTopProducts(summaryData.top_products || []);
+
+        const hourlyData = Array.from({ length: 24 }, (_, i) => {
+          const found = (summaryData.sales_by_hour || []).find(h => h.hour === i);
+          return {
+            hora: `${i.toString().padStart(2, '0')}:00`,
+            ventas: found ? found.total_orders : 0,
+            revenue: found ? found.total_revenue : 0,
+          };
+        });
+        setSalesData(hourlyData);
+      } else if (dateRange === 'custom' && startDate && endDate) {
+        const [summaryData, topProductsData, categoryData] = await Promise.all([
+          analyticsService.getSummary({ startDate, endDate }),
+          analyticsService.getTopProducts({ startDate, endDate }),
+          analyticsService.getSalesByCategory({ startDate, endDate }),
+        ]);
+
+        setSummary(summaryData);
+        setComparison(summaryData.comparison || null);
+        setSalesByCategory(categoryData);
+        setTopProducts(topProductsData);
+
+        const hourlyData = Array.from({ length: 24 }, (_, i) => {
+          const found = (summaryData.sales_by_hour || []).find(h => h.hour === i);
+          return {
+            hora: `${i.toString().padStart(2, '0')}:00`,
+            ventas: found ? found.total_orders : 0,
+            revenue: found ? found.total_revenue : 0,
+          };
+        });
+        setSalesData(hourlyData);
+      }
+    } catch (err) {
+      console.error('Error fetching reports:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [dateRange, startDate, endDate]);
 
   useEffect(() => {
     if (userData.role !== 'admin') {
       navigate('/');
       return;
     }
-    fetchReportData();
-  }, [navigate, userData.role, dateRange, startDate, endDate]);
+  }, [navigate, userData.role]);
 
-  const fetchReportData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  useEffect(() => {
+    if (userData.role === 'admin' && dateRange !== 'custom') {
+      fetchReportData();
+    }
+  }, [dateRange, fetchReportData, userData.role]);
 
-      const token = localStorage.getItem('access_token');
-      const headers = { 'Authorization': `Bearer ${token}` };
-
-      let url = `${API_URL}/api/analytics/dashboard/summary`;
-      const response = await fetch(url, { headers });
-      if (!response.ok) {
-        throw new Error('Error al cargar datos de reportes');
-      }
-
-      const data = await response.json();
-      setSummary(data);
-      setSalesByCategory(data.sales_by_category || []);
-
-      const salesByHour = data.sales_by_hour || [];
-      const hourlyData = Array.from({ length: 24 }, (_, i) => {
-        const found = salesByHour.find(h => h.hour === i);
-        return {
-          hora: `${i.toString().padStart(2, '0')}:00`,
-          ventas: found ? found.total_orders : 0,
-          revenue: found ? found.total_revenue : 0
-        };
-      });
-      setSalesData(hourlyData);
-
-      setTopProducts(data.top_products || []);
-    } catch (err) {
-      console.error('Error fetching reports:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
+  const handleApplyCustom = () => {
+    if (dateRange === 'custom' && startDate && endDate) {
+      fetchReportData();
     }
   };
 
@@ -95,7 +172,7 @@ const Reportes = () => {
       p.category_name,
       p.total_quantity_sold,
       p.total_revenue,
-      p.order_count
+      p.order_count,
     ]);
 
     const csvContent = [headers, ...rows]
@@ -107,6 +184,135 @@ const Reportes = () => {
     link.href = URL.createObjectURL(blob);
     link.download = `reporte_ventas_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
+  };
+
+  const exportPDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 22;
+
+    doc.setFontSize(18);
+    doc.text('Reporte de Ventas - FashionVision AI', 14, y);
+    y += 10;
+
+    doc.setFontSize(11);
+    doc.text(`Generado: ${new Date().toLocaleString('es-MX')}`, 14, y);
+    y += 7;
+    doc.text(`Periodo: ${dateRange}`, 14, y);
+    y += 12;
+
+    const ticketProm = summary?.today?.total_orders > 0
+      ? summary.today.total_revenue / summary.today.total_orders
+      : 0;
+
+    const metrics = [
+      ['Ventas del Periodo', formatCurrency(summary?.today?.total_revenue || 0)],
+      ['Ventas Mensuales', formatCurrency(summary?.monthly_sales || 0)],
+      ['Productos Vendidos', String(summary?.today?.total_items_sold || 0)],
+      ['Ticket Promedio', formatCurrency(ticketProm)],
+    ];
+
+    doc.setFontSize(13);
+    doc.text('Metricas Principales', 14, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    metrics.forEach(([label, value]) => {
+      doc.text(`${label}: ${value}`, 18, y);
+      y += 7;
+    });
+
+    y += 5;
+    doc.setFontSize(13);
+    doc.text('Productos Mas Vendidos', 14, y);
+    y += 8;
+
+    const headers = ['Producto', 'Categoria', 'Cant.', 'Revenue', 'Ordenes'];
+    const colWidths = [50, 35, 20, 35, 20];
+    let x = 14;
+
+    doc.setFontSize(9);
+    headers.forEach((h, i) => {
+      doc.text(h, x, y);
+      x += colWidths[i];
+    });
+    y += 2;
+    doc.line(14, y, pageWidth - 14, y);
+    y += 6;
+
+    doc.setFontSize(8);
+    topProducts.forEach(p => {
+      if (y > 275) {
+        doc.addPage();
+        y = 20;
+      }
+      x = 14;
+      const row = [
+        p.product_name.length > 22 ? p.product_name.substring(0, 20) + '..' : p.product_name,
+        p.category_name.length > 14 ? p.category_name.substring(0, 12) + '..' : p.category_name,
+        String(p.total_quantity_sold),
+        formatCurrency(p.total_revenue),
+        String(p.order_count),
+      ];
+      row.forEach((val, i) => {
+        doc.text(val, x, y);
+        x += colWidths[i];
+      });
+      y += 7;
+    });
+
+    const pageCount = doc.internal.pages.length;
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(
+        `FashionVision AI - Pagina ${i} de ${pageCount}`,
+        pageWidth / 2,
+        290,
+        { align: 'center' }
+      );
+    }
+
+    doc.save(`reporte_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const exportExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    const ticketProm = summary?.today?.total_orders > 0
+      ? summary.today.total_revenue / summary.today.total_orders
+      : 0;
+
+    const resumen = [
+      ['Metrica', 'Valor'],
+      ['Ventas del Periodo', formatCurrency(summary?.today?.total_revenue || 0)],
+      ['Ventas Mensuales', formatCurrency(summary?.monthly_sales || 0)],
+      ['Productos Vendidos', summary?.today?.total_items_sold || 0],
+      ['Ticket Promedio', formatCurrency(ticketProm)],
+      ['Total Transacciones', summary?.comparison?.current_period || 0],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen');
+
+    const topHeaders = ['Producto', 'Categoria', 'Cantidad Vendida', 'Revenue', 'Ordenes'];
+    const topRows = topProducts.map(p => [
+      p.product_name,
+      p.category_name,
+      p.total_quantity_sold,
+      p.total_revenue,
+      p.order_count,
+    ]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([topHeaders, ...topRows]), 'Top Productos');
+
+    const catHeaders = ['Categoria', 'Cantidad Vendida', 'Revenue', 'Ordenes'];
+    const catRows = salesByCategory.map(c => [
+      c.category_name,
+      c.total_quantity_sold,
+      c.total_revenue,
+      c.order_count,
+    ]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([catHeaders, ...catRows]), 'Ventas por Categoria');
+
+    XLSX.writeFile(wb, `reporte_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleDateRangeChange = (range) => {
@@ -168,8 +374,24 @@ const Reportes = () => {
     name: cat.category_name,
     cantidad: cat.total_quantity_sold,
     revenue: cat.total_revenue,
-    color: COLORS[index % COLORS.length]
+    color: COLORS[index % COLORS.length],
   }));
+
+  const getTrendIcon = (trend) => {
+    switch (trend) {
+      case 'up': return '\u2191';
+      case 'down': return '\u2193';
+      default: return '\u2192';
+    }
+  };
+
+  const getTrendColor = (trend) => {
+    switch (trend) {
+      case 'up': return '#11998e';
+      case 'down': return '#f5576c';
+      default: return '#a0a0a0';
+    }
+  };
 
   return (
     <div className="reportes-page">
@@ -218,21 +440,30 @@ const Reportes = () => {
               </button>
             </div>
             {dateRange === 'custom' && (
-              <div className="custom-dates">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  placeholder="Fecha inicio"
-                />
-                <span>hasta</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  placeholder="Fecha fin"
-                />
-              </div>
+              <>
+                <div className="custom-dates">
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    placeholder="Fecha inicio"
+                  />
+                  <span>hasta</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    placeholder="Fecha fin"
+                  />
+                </div>
+                <button
+                  className="action-btn btn-inventario"
+                  onClick={handleApplyCustom}
+                  disabled={!startDate || !endDate}
+                >
+                  Aplicar
+                </button>
+              </>
             )}
           </div>
         </section>
@@ -256,12 +487,40 @@ const Reportes = () => {
           <div className="stat-card">
             <h3>Tendencia Semanal</h3>
             <p className="stat-value">
-              {summary?.comparison?.trend === 'up' ? '↑' : summary?.comparison?.trend === 'down' ? '↓' : '→'}
-              {' '}{Math.abs(summary?.comparison?.percentage_change || 0)}%
+              {getTrendIcon(comparison?.trend)}
+              {' '}{Math.abs(comparison?.percentage_change || 0)}%
             </p>
-            <p className="stat-detail">vs semana anterior</p>
+            <p className="stat-detail">vs período anterior</p>
           </div>
         </section>
+
+        {comparison && (
+          <section className="comparison-section">
+            <h2 className="section-title">Comparativa de Períodos</h2>
+            <div className="comparison-row">
+              <div className="comparison-card">
+                <span className="comp-label">Período Actual</span>
+                <span className="comp-value">{formatCurrency(comparison.current_period)}</span>
+              </div>
+              <div className="comparison-card">
+                <span className="comp-label">Período Anterior</span>
+                <span className="comp-value">{formatCurrency(comparison.previous_period)}</span>
+              </div>
+              <div className="comparison-card">
+                <span className="comp-label">Cambio</span>
+                <span className="comp-value" style={{ color: getTrendColor(comparison.trend) }}>
+                  {getTrendIcon(comparison.trend)} {comparison.percentage_change}%
+                </span>
+              </div>
+              <div className="comparison-card">
+                <span className="comp-label">Tendencia</span>
+                <span className={`comp-badge ${comparison.trend}`}>
+                  {comparison.trend === 'up' ? 'AL ALZA' : comparison.trend === 'down' ? 'A LA BAJA' : 'ESTABLE'}
+                </span>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="charts-row">
           <div className="chart-card">
@@ -291,7 +550,9 @@ const Reportes = () => {
                     <Tooltip formatter={(value) => formatCurrency(value)} />
                     <Bar dataKey="revenue" name="Revenue" radius={[0, 4, 4, 0]}>
                       {categoryData.map((entry, index) => (
-                        <div key={`bar-${index}`} style={{ backgroundColor: entry.color }} />
+                        <React.Fragment key={`bar-${index}`}>
+                          <rect fill={entry.color} />
+                        </React.Fragment>
                       ))}
                     </Bar>
                   </BarChart>
@@ -311,9 +572,17 @@ const Reportes = () => {
               <h2 className="section-title">Productos Más Vendidos</h2>
               <p className="section-subtitle">Rendimiento por producto</p>
             </div>
-            <button className="action-btn btn-export" onClick={exportToCSV}>
-              📥 Exportar CSV
-            </button>
+            <div className="export-buttons">
+              <button className="action-btn btn-export" onClick={exportToCSV}>
+                📥 CSV
+              </button>
+              <button className="action-btn btn-export" onClick={exportPDF}>
+                📄 PDF
+              </button>
+              <button className="action-btn btn-export" onClick={exportExcel}>
+                📊 Excel
+              </button>
+            </div>
           </div>
           <div className="products-table-wrapper">
             <table className="products-table">
