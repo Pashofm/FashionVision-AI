@@ -15,8 +15,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
 from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from backend.app.config import settings, update_session_timeout
@@ -64,8 +65,9 @@ from backend.app.schemas import (ActivePaymentQueueItem, CartCreate,
                                   SupplierUpdate,
 AttributeOptionCreate, AttributeOptionResponse,
                                    AttributeOptionUpdate, AttributeOptionBase,
-                                   AttributeWithStockStatus, AttributeListWithStockResponse,
-                                   DetectionProductResponse, DetectionAttributeItem,
+                                    AttributeWithStockStatus, AttributeListWithStockResponse,
+                                    AttributeProductInfo, AttributeProductsResponse,
+                                    DetectionProductResponse, DetectionAttributeItem,
                                    ProductEmbeddingResponse,
                                    CatalogMatchResult,
                                    EmbeddingStatusResponse,
@@ -91,6 +93,8 @@ from backend.app.services.session_manager import SessionManager
 logger = logging.getLogger(__name__)
 _cleanup_lock = asyncio.Lock()
 _cleanup_task_handle = None
+_featured_lock = asyncio.Lock()
+_featured_task_handle = None
 
 
 async def periodic_session_cleanup(app: FastAPI):
@@ -110,6 +114,81 @@ async def periodic_session_cleanup(app: FastAPI):
             logger.error(f"Error in periodic session cleanup: {e}")
 
 
+async def recalculate_featured_products(db: AsyncSession) -> list:
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if now.month == 12:
+        month_end = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        month_end = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    categories_result = await db.execute(select(Category.id).where(Category.is_active == True))
+    category_ids = [r[0] for r in categories_result]
+
+    featured_ids = set()
+
+    for cat_id in category_ids:
+        products_in_cat = await db.execute(
+            select(Product.id)
+            .where(Product.category_id == cat_id)
+        )
+        product_ids_in_cat = [r[0] for r in products_in_cat]
+
+        if not product_ids_in_cat:
+            continue
+
+        sales_result = await db.execute(
+            select(
+                OrderItem.product_id,
+                func.sum(OrderItem.quantity).label('total_sold')
+            )
+            .select_from(OrderItem)
+            .join(Order)
+            .where(
+                and_(
+                    Order.status == OrderStatus.completed,
+                    Order.completed_at >= month_start,
+                    Order.completed_at < month_end,
+                    OrderItem.product_id.in_(product_ids_in_cat)
+                )
+            )
+            .group_by(OrderItem.product_id)
+            .having(func.sum(OrderItem.quantity) >= 5)
+            .order_by(func.sum(OrderItem.quantity).desc())
+            .limit(3)
+        )
+
+        for row in sales_result:
+            featured_ids.add(row[0])
+
+    all_products = await db.execute(select(Product))
+    for product in all_products.scalars():
+        should_feature = product.id in featured_ids
+        if product.is_featured != should_feature:
+            product.is_featured = should_feature
+
+    await db.flush()
+    return list(featured_ids)
+
+
+async def auto_featured_calculation(app: FastAPI):
+    await asyncio.sleep(60)
+    while True:
+        try:
+            await asyncio.sleep(3600)
+            if _featured_lock.locked():
+                continue
+            async with _featured_lock:
+                async with AsyncSessionLocal() as db:
+                    featured = await recalculate_featured_products(db)
+                    await db.commit()
+                    logger.info(f"Featured products recalculated: {len(featured)} products marked")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in auto featured calculation: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     async with engine.begin() as conn:
@@ -124,8 +203,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     except Exception as e:
         logger.warning(f"CLIP model warmup failed (catalog matching will load on first use): {e}")
     
-    global _cleanup_task_handle
+    global _cleanup_task_handle, _featured_task_handle
     _cleanup_task_handle = asyncio.create_task(periodic_session_cleanup(app))
+    _featured_task_handle = asyncio.create_task(auto_featured_calculation(app))
     
     yield
     
@@ -133,6 +213,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         _cleanup_task_handle.cancel()
         try:
             await _cleanup_task_handle
+        except asyncio.CancelledError:
+            pass
+    if _featured_task_handle:
+        _featured_task_handle.cancel()
+        try:
+            await _featured_task_handle
         except asyncio.CancelledError:
             pass
 
@@ -496,6 +582,13 @@ async def delete_product_embedding(
         raise HTTPException(status_code=404, detail="Embedding not found for this product")
 
     await db.delete(embedding)
+
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product:
+        product.images = []
+        flag_modified(product, "images")
+
     await db.flush()
 
     return {"message": "Embedding deleted"}
@@ -1061,6 +1154,15 @@ async def update_product(
     return ProductResponse(**response_data)
 
 
+@app.post("/api/products/refresh-featured")
+async def refresh_featured_products(
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency
+):
+    featured_ids = await recalculate_featured_products(db)
+    return {"message": f"Featured products recalculated", "featured_count": len(featured_ids), "featured_ids": list(featured_ids)}
+
+
 @app.delete("/api/products/{product_id}")
 async def delete_product(
     product_id: uuid.UUID,
@@ -1267,10 +1369,28 @@ async def delete_product_variant(
     )
     variant = result.scalar_one_or_none()
     if not variant:
-        raise HTTPException(status_code=404, detail="Variant not found")
+        raise HTTPException(status_code=404, detail="Variante no encontrada")
 
-    await db.delete(variant)
-    return {"message": "Variant deleted"}
+    order_count = await db.execute(
+        select(func.count()).select_from(OrderItem).where(OrderItem.product_variant_id == variant_id)
+    )
+    if order_count.scalar() > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar la variante: tiene pedidos asociados"
+        )
+
+    try:
+        await db.delete(variant)
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar la variante: tiene datos relacionados"
+        )
+
+    return {"message": "Variante eliminada correctamente"}
 
 
 @app.get("/api/products/{product_id}/stock", response_model=ProductWithStockResponse)
@@ -1493,6 +1613,8 @@ async def get_inventory(db: AsyncSession = db_dependency):
 
 @app.get("/api/inventory/low-stock", response_model=List[InventoryLowStockResponse])
 async def get_low_stock_variants(db: AsyncSession = db_dependency):
+    size_attr = aliased(AttributeOption)
+    color_attr = aliased(AttributeOption)
     result = await db.execute(
         select(
             ProductVariant.id,
@@ -1503,6 +1625,8 @@ async def get_low_stock_variants(db: AsyncSession = db_dependency):
             ProductVariant.sku_variant,
             ProductVariant.size_attribute_id,
             ProductVariant.color_attribute_id,
+            size_attr.value.label("size_value"),
+            color_attr.value.label("color_value"),
             Inventory.quantity_available,
             Inventory.quantity_reserved,
             Inventory.low_stock_threshold
@@ -1511,14 +1635,16 @@ async def get_low_stock_variants(db: AsyncSession = db_dependency):
         .join(ProductVariant)
         .join(Product)
         .join(Category)
+        .outerjoin(size_attr, ProductVariant.size_attribute_id == size_attr.id)
+        .outerjoin(color_attr, ProductVariant.color_attribute_id == color_attr.id)
         .where(Inventory.quantity_available <= Inventory.low_stock_threshold)
         .order_by(Inventory.quantity_available.asc())
     )
 
     response = []
     for row in result:
-        qty = row[8] or 0
-        threshold = row[10] or 5
+        qty = row[10] or 0
+        threshold = row[12] or 5
         status = 'out_of_stock' if qty == 0 else 'low_stock'
 
         response.append(InventoryLowStockResponse(
@@ -1530,8 +1656,10 @@ async def get_low_stock_variants(db: AsyncSession = db_dependency):
             sku_variant=row[5],
             size_attribute_id=row[6],
             color_attribute_id=row[7],
+            size_value=row[8],
+            color_value=row[9],
             quantity_available=qty,
-            quantity_reserved=row[9] or 0,
+            quantity_reserved=row[11] or 0,
             low_stock_threshold=threshold,
             status=status
         ))
@@ -1880,10 +2008,68 @@ async def get_attributes_with_stock_status(
             is_effective=is_effective,
             has_products_linked=has_products_linked,
             total_stock=total_stock,
-            variants_count=len(linked_variants)
+            variants_count=len(linked_variants),
+            products_count=len(linked_product_ids)
         ))
 
     return AttributeListWithStockResponse(attributes=enriched_attributes)
+
+
+@app.get("/api/attributes/{attribute_id}/products", response_model=AttributeProductsResponse)
+async def get_attribute_products(
+    attribute_id: uuid.UUID,
+    db: AsyncSession = db_dependency
+):
+    result = await db.execute(
+        select(AttributeOption).where(AttributeOption.id == attribute_id)
+    )
+    attribute = result.scalar_one_or_none()
+    if not attribute:
+        raise HTTPException(status_code=404, detail="Attribute not found")
+
+    variants_result = await db.execute(
+        select(ProductVariant)
+        .join(Product)
+        .join(Category)
+        .where(
+            or_(
+                ProductVariant.size_attribute_id == attribute_id,
+                ProductVariant.color_attribute_id == attribute_id
+            )
+        )
+        .options(
+            selectinload(ProductVariant.inventory),
+            selectinload(ProductVariant.product).selectinload(Product.category)
+        )
+    )
+    variants = variants_result.scalars().all()
+
+    product_map = {}
+    for variant in variants:
+        product = variant.product
+        pid = product.id
+        if pid not in product_map:
+            product_map[pid] = {
+                "product_id": pid,
+                "product_name": product.name,
+                "product_sku": product.sku,
+                "brand": product.brand,
+                "category_name": product.category.name if product.category else "-",
+                "image_url": product.images[0] if product.images and len(product.images) > 0 else None,
+                "variants_using_attr": 0,
+                "total_stock": 0,
+            }
+        product_map[pid]["variants_using_attr"] += 1
+        if variant.inventory:
+            product_map[pid]["total_stock"] += variant.inventory.quantity_available or 0
+
+    products_list = []
+    for data in product_map.values():
+        low_stock_threshold = 5
+        data["has_low_stock"] = data["total_stock"] <= low_stock_threshold
+        products_list.append(AttributeProductInfo(**data))
+
+    return AttributeProductsResponse(products=products_list)
 
 
 @app.put("/api/attributes/{attribute_id}/reactivate", response_model=AttributeOptionResponse)
