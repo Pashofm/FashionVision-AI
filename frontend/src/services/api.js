@@ -83,7 +83,7 @@ const handleUnauthorized = async () => {
   }
 };
 
-const authenticatedFetch = async (url, options = {}) => {
+export const authenticatedFetch = async (url, options = {}) => {
   let token = getAccessToken();
 
   if (!token || isTokenExpiringSoon()) {
