@@ -184,6 +184,8 @@ const ClientDetection = () => {
 
           if (result.detections && result.detections.length > 0) {
             for (const detection of result.detections) {
+              if (!detection.catalog_match) continue;
+
               let productData = null;
               let matchSource = 'none';
               let matchSimilarity = null;

@@ -20,6 +20,17 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
+    YOLO_CLASS_THRESHOLDS: str = '{"accessories":0.30,"bags":0.35,"clothing":0.50,"shoes":0.45}'
+    YOLO_TTA_ENABLED: bool = True
+    CLIP_FUSION_WEIGHT: float = 0.60
+    CLIP_MATCH_THRESHOLD: float = 0.35
+    CLIP_WEAK_MATCH_THRESHOLD: float = 0.25
+    CLIP_GAP_THRESHOLD: float = 0.08
+    CLIP_CLASS_VERIFY_ENABLED: bool = True
+    REQUIRE_CATALOG_MATCH: bool = True
+    BBOX_MAX_AREA_RATIO: str = '{"accessories":0.25,"bags":0.40}'
+    BBOX_MAX_Y_RATIO: str = '{"accessories":0.40,"shoes":0.60}'
+
     CLIENT_TIMEZONE_HEADER: str = "X-Timezone"
     DEFAULT_TIMEZONE: str = "America/Mazatlan"
 
