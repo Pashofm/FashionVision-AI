@@ -578,21 +578,32 @@ const Inventory = () => {
 
       if (selectedFiles.length > 0 && !editingProduct) {
         setSubmitStatus('Subiendo imágenes...');
+        let cloudinaryOk = true;
         for (const file of selectedFiles) {
-          const imgFormData = new FormData();
-          imgFormData.append('file', file);
-          const imgHeaders = getHeaders();
-          delete imgHeaders['Content-Type'];
-          await fetch(`${API_URL}/api/products/${productId}/images`, {
-            method: 'POST',
-            headers: imgHeaders,
-            body: imgFormData
-          });
+          try {
+            const imgFormData = new FormData();
+            imgFormData.append('file', file);
+            const imgHeaders = getHeaders();
+            delete imgHeaders['Content-Type'];
+            await fetch(`${API_URL}/api/products/${productId}/images`, {
+              method: 'POST',
+              headers: imgHeaders,
+              body: imgFormData
+            });
+          } catch (uploadErr) {
+            cloudinaryOk = false;
+            console.warn('Cloudinary no disponible, las imágenes no se guardarán en la galería:', uploadErr.message);
+            break;
+          }
         }
 
         setSubmitStatus('Generando embedding...');
         try {
-          await generateEmbedding(productId, null);
+          if (cloudinaryOk) {
+            await generateEmbedding(productId, null);
+          } else {
+            await generateEmbedding(productId, selectedFiles);
+          }
         } catch (embErr) {
           console.warn('Auto-vectorization failed:', embErr);
         }

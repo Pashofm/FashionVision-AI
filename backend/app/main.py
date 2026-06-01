@@ -583,12 +583,6 @@ async def delete_product_embedding(
 
     await db.delete(embedding)
 
-    result = await db.execute(select(Product).where(Product.id == product_id))
-    product = result.scalar_one_or_none()
-    if product:
-        product.images = []
-        flag_modified(product, "images")
-
     await db.flush()
 
     return {"message": "Embedding deleted"}
