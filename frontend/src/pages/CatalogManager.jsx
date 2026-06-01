@@ -118,7 +118,7 @@ const CatalogManager = () => {
 
   const handleDeleteEmbedding = async () => {
     if (!selectedProduct) return;
-    if (!window.confirm('¿Eliminar el embedding de este producto? Dejará de ser detectable por cámara.')) return;
+    if (!window.confirm('¿Eliminar el embedding de este producto? Dejará de ser detectable por cámara. Las imágenes se conservan para poder re-vectorizarlo después.')) return;
 
     try {
       setVectorizing(true);
