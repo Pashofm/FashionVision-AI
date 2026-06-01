@@ -87,6 +87,7 @@ from backend.app.services.cloudinary_service import upload_image, delete_image
 from backend.app.services.clip_matcher import (
     get_clip_model, generate_image_embedding,
     generate_product_embedding, find_best_match,
+    verify_class_clip, refine_bbox_for_class,
 )
 from backend.app.services.session_manager import SessionManager
 
@@ -295,21 +296,62 @@ async def detect_clothes(file: UploadFile = File(...), db: AsyncSession = db_dep
         except Exception as e:
             logger.warning(f"CLIP matching not available: {e}")
 
+        fusion_weight = settings.CLIP_FUSION_WEIGHT
+        clip_match_threshold = settings.CLIP_MATCH_THRESHOLD
+        clip_weak_threshold = settings.CLIP_WEAK_MATCH_THRESHOLD
+        class_verify_enabled = settings.CLIP_CLASS_VERIFY_ENABLED
+
         enriched_detections = []
         for detection in detections:
             detection_copy = dict(detection)
+            raw_yolo_conf = detection["confidence"]
 
             if clip_available and catalog_entries:
                 try:
                     bbox = detection["bbox"]
+
+                    if class_verify_enabled:
+                        try:
+                            cropped = image.crop((bbox[0], bbox[1], bbox[2], bbox[3]))
+                            corrected_class, clip_class_conf = verify_class_clip(cropped)
+                            if corrected_class and corrected_class != detection["class"]:
+                                logger.info(
+                                    f"CLIP class override: YOLO='{detection['class']}' -> "
+                                    f"CLIP='{corrected_class}' (conf={clip_class_conf:.3f})"
+                                )
+                                detection_copy["class"] = corrected_class
+                                detection_copy["yolo_original_class"] = detection["class"]
+                                detection_copy["confidence"] = round(clip_class_conf, 4)
+
+                                if corrected_class == "accessories":
+                                    refined_bbox = refine_bbox_for_class(
+                                        image, bbox, corrected_class,
+                                        result["image_size"][0], result["image_size"][1],
+                                    )
+                                    bbox = refined_bbox
+                                    detection_copy["bbox"] = refined_bbox
+                        except Exception as e:
+                            logger.warning(f"CLIP class verification failed: {e}")
+
                     cropped = image.crop((bbox[0], bbox[1], bbox[2], bbox[3]))
                     query_embedding = generate_image_embedding(cropped)
-                    match = find_best_match(query_embedding, catalog_entries, threshold=0.25)
+                    match = find_best_match(query_embedding, catalog_entries, threshold=clip_weak_threshold)
                     if match:
+                        clip_sim = match["similarity"]
                         detection_copy["catalog_match"] = {
                             "product_id": match["product_id"],
-                            "similarity": round(match["similarity"], 4),
+                            "similarity": round(clip_sim, 4),
                         }
+                        class_was_overridden = "yolo_original_class" in detection_copy
+                        if clip_sim >= clip_match_threshold:
+                            detection_copy["catalog_match"]["match_quality"] = "confident"
+                            if not class_was_overridden and fusion_weight > 0:
+                                boost = (1.0 - raw_yolo_conf) * clip_sim * fusion_weight
+                                fused = min(1.0, raw_yolo_conf + boost)
+                                detection_copy["confidence"] = round(fused, 4)
+                                detection_copy["raw_yolo_confidence"] = round(raw_yolo_conf, 4)
+                        else:
+                            detection_copy["catalog_match"]["match_quality"] = "weak"
                     else:
                         detection_copy["catalog_match"] = None
                 except Exception as e:
@@ -319,6 +361,12 @@ async def detect_clothes(file: UploadFile = File(...), db: AsyncSession = db_dep
                 detection_copy["catalog_match"] = None
 
             enriched_detections.append(detection_copy)
+
+        if settings.REQUIRE_CATALOG_MATCH:
+            enriched_detections = [
+                d for d in enriched_detections
+                if d.get("catalog_match") is not None
+            ]
 
         result["detections"] = enriched_detections
         return JSONResponse(result)
@@ -565,6 +613,14 @@ async def match_catalog(
         category_name=product.category.name if product.category else None,
         sizes=sizes,
         colors=colors,
+    )
+
+    return CatalogMatchResult(
+        matched=True,
+        product_id=product.id,
+        product_name=product.name,
+        similarity=match["similarity"],
+        detection_data=detection_data,
     )
 
 
