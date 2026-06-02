@@ -4,7 +4,7 @@ import { isAuthenticated, extendSession } from '../services/api';
 const KIOSK_TIMEOUT_MS = 2 * 60 * 1000;
 const COUNTDOWN_SECONDS = 10;
 
-export function useKioskTimeout(onSessionEnd) {
+export function useKioskTimeout(onSessionEnd, enabled = true) {
   const timeoutRef = useRef(null);
   const countdownIntervalRef = useRef(null);
   const sessionEndingRef = useRef(false);
@@ -67,14 +67,14 @@ export function useKioskTimeout(onSessionEnd) {
   }, [countdown, onSessionEnd]);
 
   useEffect(() => {
-    if (!isAuthenticated()) {
+    if (!isAuthenticated() || !enabled) {
       return;
     }
     startKioskTimer();
     return () => {
       clearAllTimers();
     };
-  }, [startKioskTimer, clearAllTimers]);
+  }, [startKioskTimer, clearAllTimers, enabled]);
 
   return { countdown, resetTimer };
 }

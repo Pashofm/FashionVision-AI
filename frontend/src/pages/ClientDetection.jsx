@@ -1,5 +1,4 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import useCamera from '../hooks/useCamera';
 import useRealTimeDetection from '../hooks/useRealTimeDetection';
 import useAutoDetection from '../hooks/useAutoDetection';
@@ -10,7 +9,7 @@ import CountdownOverlay from '../components/CountdownOverlay';
 import LiveBboxOverlay from '../components/LiveBboxOverlay';
 import ProductTabs from '../components/ProductTabs';
 import ProductTabPanel from '../components/ProductTabPanel';
-import { detectClothes, getDetectionProductById, searchProductVariant, createSession, getOrCreateCartBySession, getCart, addCartItem, removeCartItem, submitCart, performLogout, extendSession } from '../services/api';
+import { detectClothes, getDetectionProductById, searchProductVariant, createSession, getOrCreateCartBySession, getCart, addCartItem, removeCartItem, submitCart, extendSession } from '../services/api';
 import '../styles/client-detection.css';
 
 const STORAGE_KEY_SESSION = 'client_session_id';
@@ -25,25 +24,20 @@ const ClientDetection = () => {
   const [_sessionId, setSessionId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [isCaptureComplete, setIsCaptureComplete] = useState(false);
-  const navigate = useNavigate();
+  const [kioskIdle, setKioskIdle] = useState(true);
 
-  const handleKioskLogout = useCallback(async () => {
+  const handleKioskLogout = useCallback(() => {
     localStorage.removeItem('client_session_id');
     localStorage.removeItem('client_cart_id');
-    await performLogout();
-    navigate('/');
-  }, [navigate]);
+    setKioskIdle(true);
+  }, []);
 
-  const { countdown: kioskCountdown, resetTimer } = useKioskTimeout(handleKioskLogout);
+  const { countdown: kioskCountdown, resetTimer } = useKioskTimeout(handleKioskLogout, !kioskIdle);
   const [showKioskCountdown, setShowKioskCountdown] = useState(false);
 
   useEffect(() => {
     setShowKioskCountdown(kioskCountdown !== null);
   }, [kioskCountdown]);
-
-  useEffect(() => {
-    initSession();
-  }, []);
 
   const initSession = async () => {
     try {
@@ -93,11 +87,9 @@ const ClientDetection = () => {
     }
   };
 
-  const clearSession = () => {
-    localStorage.removeItem(STORAGE_KEY_SESSION);
-    localStorage.removeItem(STORAGE_KEY_CART);
-    setSessionId(null);
-    setCartId(null);
+  const handleStartCapture = async () => {
+    setKioskIdle(false);
+    await initSession();
   };
 
   const {
@@ -420,13 +412,9 @@ const ClientDetection = () => {
       await submitCart(cartId);
       setCarrito([]);
       alert('¡Pedido enviado a caja! Un administrador lo procesará pronto.');
-      clearSession();
-      const session = await createSession('client-detection-kiosk');
-      localStorage.setItem(STORAGE_KEY_SESSION, session.id);
-      setSessionId(session.id);
-      const newCart = await getOrCreateCartBySession(session.id);
-      localStorage.setItem(STORAGE_KEY_CART, newCart.id);
-      setCartId(newCart.id);
+      localStorage.removeItem(STORAGE_KEY_SESSION);
+      localStorage.removeItem(STORAGE_KEY_CART);
+      setKioskIdle(true);
     } catch (err) {
       console.error('Error submitting cart:', err);
       setError('Error al enviar el pedido');
@@ -519,6 +507,29 @@ const ClientDetection = () => {
   }, [drawBoundingBoxes]);
 
   const finalError = cameraError || error;
+
+  if (kioskIdle) {
+    return (
+      <div className="kiosk-page">
+        <div className="kiosk-container">
+          <div className="kiosk-header">
+            <span className="kiosk-icon">👕</span>
+            <h1>FashionVision</h1>
+            <p>Sistema Kiosko de Detección de Prendas</p>
+          </div>
+
+          <button className="kiosk-start-btn" onClick={handleStartCapture}>
+            <span className="btn-icon">📷</span>
+            Iniciar Captura
+          </button>
+
+          <p className="kiosk-hint">
+            Toca el botón para comenzar a detectar prendas
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="client-page">

@@ -1057,3 +1057,85 @@ body, html, #root {
     height: 280px;
   }
 }
+
+.kiosk-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  width: 100%;
+  background: linear-gradient(135deg, #4da6ff 0%, #2d8cf0 100%);
+}
+
+.kiosk-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: white;
+  padding: 60px 50px;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  max-width: 480px;
+  width: 90%;
+  text-align: center;
+}
+
+.kiosk-header {
+  margin-bottom: 40px;
+}
+
+.kiosk-icon {
+  font-size: 64px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.kiosk-header h1 {
+  margin: 0;
+  font-size: 32px;
+  color: #4da6ff;
+  font-weight: bold;
+}
+
+.kiosk-header p {
+  margin: 10px 0 0;
+  color: #94a3b8;
+  font-size: 16px;
+}
+
+.kiosk-start-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  padding: 24px 60px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 24px;
+  font-weight: bold;
+  transition: 0.3s;
+  box-shadow: 0 8px 30px rgba(102, 126, 234, 0.35);
+  width: 100%;
+}
+
+.kiosk-start-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(102, 126, 234, 0.45);
+}
+
+.kiosk-start-btn:active {
+  transform: translateY(0);
+}
+
+.btn-icon {
+  font-size: 28px;
+}
+
+.kiosk-hint {
+  margin-top: 24px;
+  color: #94a3b8;
+  font-size: 14px;
+}
