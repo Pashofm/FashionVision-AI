@@ -19,16 +19,20 @@ const ClientDetection = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [carrito, setCarrito] = useState([]);
-  const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const [cartId, setCartId] = useState(null);
   const [_sessionId, setSessionId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [isCaptureComplete, setIsCaptureComplete] = useState(false);
   const [kioskIdle, setKioskIdle] = useState(true);
+  const [showCartReview, setShowCartReview] = useState(false);
 
   const handleKioskLogout = useCallback(() => {
     localStorage.removeItem('client_session_id');
     localStorage.removeItem('client_cart_id');
+    setCarrito([]);
+    setCartId(null);
+    setSessionId(null);
+    setShowCartReview(false);
     setKioskIdle(true);
   }, []);
 
@@ -89,6 +93,7 @@ const ClientDetection = () => {
 
   const handleStartCapture = async () => {
     setKioskIdle(false);
+    setCarrito([]);
     await initSession();
   };
 
@@ -170,11 +175,14 @@ const ClientDetection = () => {
 
       canvas.toBlob(async (blob) => {
         const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+        let hasDetections = false;
 
         try {
           const result = await detectClothes(file);
 
           if (result.detections && result.detections.length > 0) {
+            hasDetections = true;
+
             for (const detection of result.detections) {
               let productData = null;
               let matchSource = 'none';
@@ -232,16 +240,19 @@ const ClientDetection = () => {
               }
             }
           } else {
-            setError('No se detectó una prenda. Intenta con otra imagen.');
+            setError('No se detectó una prenda. Intenta de nuevo.');
             setIsCaptureComplete(false);
           }
         } catch (err) {
           console.error('Error en detección:', err);
           setError('Error al procesar la imagen en el servidor');
+          setIsCaptureComplete(false);
         } finally {
           setLoading(false);
-          setIsCaptureComplete(true);
-          closeCamera();
+          if (hasDetections) {
+            setIsCaptureComplete(true);
+            closeCamera();
+          }
           onProcessingComplete();
         }
       }, 'image/jpeg');
@@ -299,6 +310,7 @@ const ClientDetection = () => {
 
   const handleSizeSelect = useCallback(async (productId, size) => {
     selectSize(productId, size);
+    extendSession().catch(() => {});
     const product = products.find(p => p.id === productId);
     if (product?.selectedColor && product?.product_id) {
       try {
@@ -317,6 +329,7 @@ const ClientDetection = () => {
 
   const handleColorSelect = useCallback(async (productId, color) => {
     selectColor(productId, color);
+    extendSession().catch(() => {});
     const product = products.find(p => p.id === productId);
     if (product?.selectedSize && product?.product_id) {
       try {
@@ -371,8 +384,9 @@ const ClientDetection = () => {
     }
   };
 
-  const handleRemoveProduct = (productId) => {
+  const handleRemoveProduct = async (productId) => {
     removeProduct(productId);
+    extendSession().catch(() => {});
 
     if (products.length <= 1) {
       stopDetection();
@@ -411,9 +425,12 @@ const ClientDetection = () => {
       setSubmitting(true);
       await submitCart(cartId);
       setCarrito([]);
+      setCartId(null);
+      setSessionId(null);
       alert('¡Pedido enviado a caja! Un administrador lo procesará pronto.');
       localStorage.removeItem(STORAGE_KEY_SESSION);
       localStorage.removeItem(STORAGE_KEY_CART);
+      setShowCartReview(false);
       setKioskIdle(true);
     } catch (err) {
       console.error('Error submitting cart:', err);
@@ -421,6 +438,16 @@ const ClientDetection = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleGoToReview = async () => {
+    extendSession().catch(() => {});
+    setShowCartReview(true);
+  };
+
+  const handleBackFromReview = async () => {
+    extendSession().catch(() => {});
+    setShowCartReview(false);
   };
 
   const traducirCategoria = (className) => {
@@ -531,65 +558,137 @@ const ClientDetection = () => {
     );
   }
 
-  return (
-    <div className="client-page">
-      <header className="client-header">
-        <div className="logo">
-          <span className="logo-icon">👕</span>
-          FashionVision
-        </div>
-        <div className="header-actions">
-          <button
-            className="btn-carrito"
-            onClick={() => setMostrarCarrito(!mostrarCarrito)}
-          >
-            🛒 Carrito
-            {carrito.length > 0 && (
-              <span className="carrito-badge">{carrito.length}</span>
-            )}
-          </button>
-        </div>
-      </header>
-
-      {mostrarCarrito && (
-        <div className="carrito-panel">
-          <div className="carrito-header">
-            <h3>Mi Carrito ({totalesCarrito().items} prendas)</h3>
-            <button onClick={() => setMostrarCarrito(false)}>✕</button>
+  if (showCartReview) {
+    return (
+      <div className="client-page">
+        <aside className="client-sidebar client-sidebar--readonly">
+          <div className="sidebar-header">
+            <span className="sidebar-logo-icon">👕</span>
+            <span className="sidebar-logo-text">FashionVision</span>
           </div>
-          <div className="carrito-items">
+
+          <div className="sidebar-items">
             {carrito.length === 0 ? (
-              <p className="carrito-vacio">Tu carrito está vacío</p>
+              <p className="sidebar-empty">Aún no hay productos</p>
             ) : (
               carrito.map((item) => (
-                <div key={item.cartItemId} className="carrito-item">
-                  <div className="item-info">
-                    <span className="item-name">{item.name}</span>
-                    <span className="item-price">${item.price.toFixed(2)}</span>
+                <div key={item.cartItemId} className="sidebar-item">
+                  <div className="sidebar-item-info">
+                    <span className="sidebar-item-name">{item.name}</span>
+                    <span className="sidebar-item-price">${item.price.toFixed(2)}</span>
+                    <span className="sidebar-item-attrs">
+                      {item.selectedSize?.name && `T: ${item.selectedSize.name}`}
+                      {item.selectedColor?.name && `  C: ${item.selectedColor.name}`}
+                    </span>
                   </div>
-                  <button
-                    className="btn-eliminar"
-                    onClick={() => eliminarDelCarrito(item.cartItemId)}
-                  >
-                    🗑️
-                  </button>
                 </div>
               ))
             )}
           </div>
-          {carrito.length > 0 && (
-            <div className="carrito-footer">
-              <div className="carrito-total">
-                <span>Total:</span>
-                <span className="total-amount">${totalesCarrito().total.toFixed(2)}</span>
+
+          <div className="sidebar-footer">
+            <div className="sidebar-total">
+              <span>Total</span>
+              <span className="sidebar-total-amount">${totalesCarrito().total.toFixed(2)}</span>
+            </div>
+          </div>
+        </aside>
+
+        <main className="client-main">
+          <div className="review-container">
+            <h2 className="review-title">📋 Revisa tu Pedido</h2>
+
+            <div className="review-items">
+              {carrito.length === 0 ? (
+                <p className="review-empty">No hay productos en el carrito</p>
+              ) : (
+                carrito.map((item) => (
+                  <div key={item.cartItemId} className="review-item">
+                    <div className="review-item-main">
+                      <div className="review-item-left">
+                        <span className="review-item-name">{item.name}</span>
+                        <span className="review-item-attrs">
+                          {item.selectedSize?.name && `Talla: ${item.selectedSize.name}`}
+                          {item.selectedColor?.name && `  •  Color: ${item.selectedColor.name}`}
+                        </span>
+                      </div>
+                      <span className="review-item-price">${item.price.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="review-footer">
+              <div className="review-total">
+                <span>Total</span>
+                <span className="review-total-amount">${totalesCarrito().total.toFixed(2)}</span>
               </div>
-              <button className="btn-enviar" onClick={enviarAlAdmin} disabled={submitting}>
-                {submitting ? 'Enviando...' : 'Enviar a Caja'}
+              <button
+                className="review-send-btn"
+                onClick={enviarAlAdmin}
+                disabled={submitting || carrito.length === 0}
+              >
+                {submitting ? 'Enviando...' : 'Enviar Pedido'}
+              </button>
+              <button className="review-back-btn-bottom" onClick={handleBackFromReview}>
+                ← Regresar
               </button>
             </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="client-page">
+      <aside className="client-sidebar">
+        <div className="sidebar-header">
+          <span className="sidebar-logo-icon">👕</span>
+          <span className="sidebar-logo-text">FashionVision</span>
+        </div>
+
+        <div className="sidebar-items">
+          {carrito.length === 0 ? (
+            <p className="sidebar-empty">Aún no hay productos</p>
+          ) : (
+            carrito.map((item) => (
+              <div key={item.cartItemId} className="sidebar-item">
+                <div className="sidebar-item-info">
+                  <span className="sidebar-item-name">{item.name}</span>
+                  <span className="sidebar-item-price">${item.price.toFixed(2)}</span>
+                  <span className="sidebar-item-attrs">
+                    {item.selectedSize?.name && `T: ${item.selectedSize.name}`}
+                    {item.selectedColor?.name && `  C: ${item.selectedColor.name}`}
+                  </span>
+                </div>
+                <button
+                  className="sidebar-item-remove"
+                  onClick={() => eliminarDelCarrito(item.cartItemId)}
+                  title="Eliminar"
+                >
+                  🗑️
+                </button>
+              </div>
+            ))
           )}
         </div>
-      )}
+
+        <div className="sidebar-footer">
+          <div className="sidebar-total">
+            <span>Total</span>
+            <span className="sidebar-total-amount">${totalesCarrito().total.toFixed(2)}</span>
+          </div>
+          <button
+            className="sidebar-send-btn"
+            onClick={handleGoToReview}
+            disabled={carrito.length === 0}
+          >
+            Enviar Pedido
+          </button>
+        </div>
+      </aside>
 
       <main className="client-main">
         <div className="detection-container">
@@ -641,7 +740,7 @@ const ClientDetection = () => {
             </div>
           )}
 
-{isCaptureComplete && products.length > 0 && !loading && (
+          {isCaptureComplete && products.length > 0 && !loading && (
             <div className="products-panel">
               {activeProduct?.imageData && (
                 <div className="result-image-container">
@@ -764,10 +863,6 @@ const ClientDetection = () => {
           )}
         </div>
       </main>
-
-      <footer className="client-footer">
-        <p>FashionVision AI - Sistema de Detección de Prendas</p>
-      </footer>
 
       {!showKioskCountdown && (
         <CountdownOverlay
