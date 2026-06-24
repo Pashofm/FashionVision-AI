@@ -25,6 +25,9 @@ frontend/build/
 dist/
 build/
 
+# Agent guidelines (local only, not for repo)
+AGENTS.md
+
 # Environment files (contain credentials)
 .env
 .env.local
