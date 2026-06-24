@@ -44,11 +44,13 @@ services:
       MODEL_PATH: ${MODEL_PATH:-/app/models/best.pt}
       MEDIA_DIR: /app/media
       MAX_IMAGE_SIZE_MB: 5
-      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      TORCH_HOME: /app/.cache/torch
     volumes:
       - media_files:/app/media
+      - torch_cache:/app/.cache/torch
     ports:
       - "${BACKEND_HOST_PORT:-8000}:8000"
     depends_on:
@@ -99,6 +101,7 @@ services:
 volumes:
   postgres_data:
   media_files:
+  torch_cache:
   pgadmin_data:
 
 networks:

@@ -28,7 +28,8 @@ env/
 *~
 
 # Docker (don't include docker files themselves in build context)
-docker/
+docker/*
+!docker/entrypoint.sh
 docker-compose*.yml
 Dockerfile*
 .dockerignore
@@ -64,7 +65,4 @@ uploads/
 *.mp4
 *.avi
 
-# Model files (we'll copy explicitly in Dockerfile)
-*.pt
-*.onnx
-*.tflite
+# Model files — included explicitly via Dockerfile COPY
