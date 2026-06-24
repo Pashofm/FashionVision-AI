@@ -106,6 +106,14 @@ const ClientDetection = () => {
     captureFrame
   } = useCamera();
 
+  useEffect(() => {
+    if (!isActive || kioskIdle) return;
+    const interval = setInterval(() => {
+      extendSession().catch(() => {});
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isActive, kioskIdle]);
+
   const {
     lastDetections,
     startDetection,
@@ -291,6 +299,17 @@ const ClientDetection = () => {
       }
     }
   }, [isActive, detectionStatus, isCaptureComplete, startDetection, startAutoDetection, videoRef]);
+
+  useEffect(() => {
+    if (kioskIdle) {
+      stopDetection();
+      cancelAutoDetection();
+      closeCamera();
+      clearAllProducts();
+      lastDetectionRef.current = [];
+      setIsCaptureComplete(false);
+    }
+  }, [kioskIdle, stopDetection, cancelAutoDetection, closeCamera, clearAllProducts]);
 
   const handleOpenCamera = async () => {
     try {
