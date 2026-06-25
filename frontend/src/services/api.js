@@ -1,3 +1,23 @@
+/**
+ * Servicio de API central para FashionVision AI.
+ *
+ * @module services/api
+ * @description Cliente HTTP unificado con manejo automático de:
+ *   - Refresh de tokens JWT expirados
+ *   - Redirección a login en 401
+ *   - Queue de suscriptores durante refresh concurrente
+ *
+ * Secciones:
+ *   - Autenticación (login, logout, refresh, sesiones)
+ *   - Productos, categorías, atributos y variantes
+ *   - Carritos (CRUD, estados, pagos)
+ *   - Inventario (stock, ajustes, reabastecimiento)
+ *   - Terminal POS (pagos)
+ *   - Impresión de recibos
+ *   - Proveedores
+ *   - Detección de prendas
+ */
+
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_URL = BASE_URL === '/' ? '' : BASE_URL;
 
@@ -6,6 +26,10 @@ const TOKEN_REFRESH_BUFFER_SECONDS = 60;
 let isRefreshing = false;
 let refreshSubscribers = [];
 
+/**
+ * Obtiene headers HTTP con token de acceso.
+ * @returns {Object} Headers con Content-Type y Authorization si hay token
+ */
 export const getHeaders = () => {
   const headers = { 'Content-Type': 'application/json' };
   const token = localStorage.getItem('access_token');
@@ -24,6 +48,11 @@ const onTokenRefreshed = (token) => {
   refreshSubscribers = [];
 };
 
+/**
+ * Refresca el access token usando el refresh token almacenado.
+ * @returns {Promise<string>} Nuevo access token
+ * @throws {Error} Si no hay refresh token o falla el refresh
+ */
 export async function refreshAccessToken() {
   const refreshToken = localStorage.getItem('refresh_token');
   if (!refreshToken) {
@@ -83,6 +112,14 @@ const handleUnauthorized = async () => {
   }
 };
 
+/**
+ * Realiza una petición fetch autenticada con manejo automático de refresh.
+ * Si el token está por expirar, lo refresca antes de la petición.
+ * Si recibe 401, intenta refrescar y reintenta.
+ * @param {string} url - URL de la petición
+ * @param {Object} [options={}] - Opciones de fetch
+ * @returns {Promise<Response>} Respuesta de fetch
+ */
 export const authenticatedFetch = async (url, options = {}) => {
   let token = getAccessToken();
 
@@ -116,6 +153,11 @@ export const authenticatedFetch = async (url, options = {}) => {
   return response;
 };
 
+/**
+ * Envía una imagen al endpoint de detección YOLO.
+ * @param {File} imageFile - Archivo de imagen a analizar
+ * @returns {Promise<Object>} Resultados de detección (clases, bounding boxes, confianza)
+ */
 export async function detectClothes(imageFile) {
   const formData = new FormData();
   formData.append('file', imageFile);
@@ -132,11 +174,19 @@ export async function detectClothes(imageFile) {
   return response.json();
 }
 
+/**
+ * Verifica el estado de salud del backend.
+ * @returns {Promise<Object>} Estado del servidor
+ */
 export async function checkHealth() {
   const response = await fetch(`${API_URL}/health`);
   return response.json();
 }
 
+/**
+ * Obtiene todos los productos del catálogo.
+ * @returns {Promise<Array>} Lista de productos
+ */
 export async function getProducts() {
   const response = await fetch(`${API_URL}/api/products`);
   if (!response.ok) {
@@ -145,6 +195,11 @@ export async function getProducts() {
   return response.json();
 }
 
+/**
+ * Obtiene un producto por ID para el módulo de detección.
+ * @param {string} productId - UUID del producto
+ * @returns {Promise<Object|null>} Producto o null si 404
+ */
 export async function getDetectionProductById(productId) {
   const response = await fetch(`${API_URL}/api/detect/product-by-id/${productId}`);
   if (!response.ok) {
@@ -156,6 +211,13 @@ export async function getDetectionProductById(productId) {
   return response.json();
 }
 
+/**
+ * Busca una variante de producto por talla y color.
+ * @param {string} productId - UUID del producto
+ * @param {string} sizeAttributeId - ID del atributo de talla
+ * @param {string} colorAttributeId - ID del atributo de color
+ * @returns {Promise<Object|null>} Variante encontrada o null
+ */
 export async function searchProductVariant(productId, sizeAttributeId, colorAttributeId) {
   const params = new URLSearchParams();
   if (sizeAttributeId) params.append('size_attribute_id', sizeAttributeId);
@@ -171,6 +233,10 @@ export async function searchProductVariant(productId, sizeAttributeId, colorAttr
   return response.json();
 }
 
+/**
+ * Obtiene todas las categorías.
+ * @returns {Promise<Array>} Lista de categorías
+ */
 export async function getCategories() {
   const response = await fetch(`${API_URL}/api/categories`);
   if (!response.ok) {
@@ -179,6 +245,14 @@ export async function getCategories() {
   return response.json();
 }
 
+// ==================== AUTH ====================
+
+/**
+ * Inicia sesión y almacena tokens en localStorage.
+ * @param {string} email - Correo del usuario
+ * @param {string} password - Contraseña
+ * @returns {Promise<Object>} Datos de sesión (access_token, refresh_token, user)
+ */
 export async function login(email, password) {
   const response = await fetch(`${API_URL}/api/auth/login`, {
     method: 'POST',
@@ -202,11 +276,19 @@ export async function refreshToken() {
   return refreshAccessToken();
 }
 
+/**
+ * Obtiene el usuario almacenado en localStorage.
+ * @returns {Object|null} Usuario o null
+ */
 export function getStoredUser() {
   const userStr = localStorage.getItem('user');
   return userStr ? JSON.parse(userStr) : null;
 }
 
+/**
+ * Verifica si hay un token de acceso almacenado.
+ * @returns {boolean} true si hay sesión activa
+ */
 export function isAuthenticated() {
   return !!localStorage.getItem('access_token');
 }
@@ -218,6 +300,9 @@ export function logout() {
   localStorage.removeItem('user');
 }
 
+/**
+ * Cierra sesión en el servidor y limpia el estado local.
+ */
 export async function performLogout() {
   try {
     await authenticatedFetch(`${API_URL}/api/auth/logout`, { method: 'POST' });
@@ -227,6 +312,10 @@ export async function performLogout() {
   logout();
 }
 
+/**
+ * Extiende la sesión actual en el servidor.
+ * @returns {Promise<Object>} Respuesta de extensión de sesión
+ */
 export async function extendSession() {
   const response = await authenticatedFetch(`${API_URL}/api/auth/session/extend`, {
     method: 'GET',
@@ -234,6 +323,14 @@ export async function extendSession() {
   return response.json();
 }
 
+// ==================== UPLOAD ====================
+
+/**
+ * Sube una imagen a Cloudinary.
+ * @param {File} file - Archivo de imagen
+ * @param {string} [folder='fashionvision/products'] - Carpeta en Cloudinary
+ * @returns {Promise<Object>} Datos de la imagen subida (url, public_id)
+ */
 export async function uploadImage(file, folder = 'fashionvision/products') {
   const formData = new FormData();
   formData.append('file', file);
@@ -251,6 +348,11 @@ export async function uploadImage(file, folder = 'fashionvision/products') {
   return response.json();
 }
 
+/**
+ * Elimina una imagen de Cloudinary.
+ * @param {string} publicId - ID público de la imagen en Cloudinary
+ * @returns {Promise<Object>} Resultado de la eliminación
+ */
 export async function deleteImage(publicId) {
   const response = await fetch(`${API_URL}/api/upload/image/${publicId}`, {
     method: 'DELETE',
@@ -263,8 +365,14 @@ export async function deleteImage(publicId) {
   return response.json();
 }
 
-// ==================== SESSION FUNCTIONS ====================
+// ==================== SESSIONS ====================
 
+/**
+ * Crea una nueva sesión en el sistema.
+ * @param {string} [stationId='client-kiosk'] - Identificador de la estación
+ * @param {string|null} [clientUserId=null] - ID del usuario cliente
+ * @returns {Promise<Object>} Datos de la sesión creada
+ */
 export async function createSession(stationId = 'client-kiosk', clientUserId = null) {
   const response = await fetch(`${API_URL}/api/sessions`, {
     method: 'POST',
@@ -277,8 +385,13 @@ export async function createSession(stationId = 'client-kiosk', clientUserId = n
   return response.json();
 }
 
-// ==================== CART FUNCTIONS ====================
+// ==================== CARTS ====================
 
+/**
+ * Crea un nuevo carrito asociado a una sesión.
+ * @param {string} sessionId - UUID de la sesión
+ * @returns {Promise<Object>} Carrito creado
+ */
 export async function createCart(sessionId) {
   const response = await fetch(`${API_URL}/api/carts`, {
     method: 'POST',
@@ -291,6 +404,11 @@ export async function createCart(sessionId) {
   return response.json();
 }
 
+/**
+ * Obtiene o crea un carrito por sesión.
+ * @param {string} sessionId - UUID de la sesión
+ * @returns {Promise<Object>} Carrito existente o recién creado
+ */
 export async function getOrCreateCartBySession(sessionId) {
   const response = await fetch(`${API_URL}/api/carts/by-session/${sessionId}`, {
     method: 'GET',
@@ -319,6 +437,10 @@ export async function getCart(cartId) {
   return response.json();
 }
 
+/**
+ * Obtiene carritos pendientes (vista admin/cajero).
+ * @returns {Promise<Array>} Lista de carritos pendientes
+ */
 export async function getPendingCarts() {
   const response = await fetch(`${API_URL}/api/carts/admin`, { headers: getHeaders() });
   if (!response.ok) {
@@ -327,6 +449,12 @@ export async function getPendingCarts() {
   return response.json();
 }
 
+/**
+ * Agrega un ítem a un carrito.
+ * @param {string} cartId - UUID del carrito
+ * @param {Object} item - Datos del ítem (variant_id, quantity)
+ * @returns {Promise<Object>} Carrito actualizado
+ */
 export async function addCartItem(cartId, item) {
   const response = await fetch(`${API_URL}/api/carts/${cartId}/items`, {
     method: 'POST',
@@ -377,6 +505,12 @@ export async function rejectCart(cartId, notes = null) {
   return updateCartStatus(cartId, 'cancelled', notes);
 }
 
+/**
+ * Marca un carrito como pagado.
+ * @param {string} cartId - UUID del carrito
+ * @param {string} [paymentMethod='cash'] - Método de pago
+ * @returns {Promise<Object>} Carrito actualizado
+ */
 export async function processPayment(cartId, paymentMethod = 'cash') {
   const body = { status: 'paid', payment_method: paymentMethod };
   const response = await fetch(`${API_URL}/api/carts/${cartId}`, {
@@ -390,8 +524,14 @@ export async function processPayment(cartId, paymentMethod = 'cash') {
   return response.json();
 }
 
-// ==================== INVENTORY FUNCTIONS ====================
+// ==================== INVENTORY ====================
 
+/**
+ * Obtiene productos con información de stock.
+ * @param {string} [categoryId=null] - Filtrar por categoría
+ * @param {string} [search=null] - Búsqueda por nombre
+ * @returns {Promise<Array>} Productos con stock
+ */
 export async function getProductsWithStock(categoryId = null, search = null) {
   let url = `${API_URL}/api/products/stock/all`;
   const params = new URLSearchParams();
@@ -414,6 +554,11 @@ export async function getLowStockProducts() {
   return response.json();
 }
 
+/**
+ * Obtiene el historial de movimientos de inventario.
+ * @param {string} [variantId=null] - Filtrar por variante
+ * @returns {Promise<Array>} Historial de movimientos
+ */
 export async function getInventoryMovements(variantId = null) {
   let url = `${API_URL}/api/inventory-movements`;
   if (variantId) url += `?product_variant_id=${variantId}`;
@@ -461,6 +606,12 @@ export async function restockInventory(variantId, quantity, notes = null, refere
   return response.json();
 }
 
+/**
+ * Actualiza el umbral de stock bajo de una variante.
+ * @param {string} variantId - UUID de la variante
+ * @param {number} threshold - Nuevo umbral
+ * @returns {Promise<Object>} Resultado de la actualización
+ */
 export async function updateStockThreshold(variantId, threshold) {
   const response = await fetch(`${API_URL}/api/inventory/${variantId}/threshold?threshold=${threshold}`, {
     method: 'PUT',
@@ -472,7 +623,7 @@ export async function updateStockThreshold(variantId, threshold) {
   return response.json();
 }
 
-// ==================== POS TERMINAL FUNCTIONS ====================
+// ==================== POS TERMINAL ====================
 
 export async function posInitializePayment(cartId, amount, currency = 'MXN') {
   const response = await fetch(`${API_URL}/api/payments/pos/init`, {
@@ -541,7 +692,7 @@ export async function posCompletePayment(transactionId, cartId) {
   return response.json();
 }
 
-// ==================== PRINTER DRIVER FUNCTIONS ====================
+// ==================== PRINTERS ====================
 
 export async function getCurrentPrinterDriver() {
   const response = await authenticatedFetch(`${API_URL}/api/printers/driver`, {
@@ -596,7 +747,7 @@ export async function getReceiptPreview(receiptId) {
   return response.json();
 }
 
-// ==================== SUPPLIER FUNCTIONS ====================
+// ==================== SUPPLIERS ====================
 
 export async function getSuppliers(isActive = null) {
   let url = `${API_URL}/api/suppliers`;
@@ -643,7 +794,7 @@ export async function deleteSupplier(supplierId) {
   return response.json();
 }
 
-// ==================== ATTRIBUTE FUNCTIONS ====================
+// ==================== ATTRIBUTES ====================
 
 export async function getAttributes(type = null) {
   let url = `${API_URL}/api/attributes`;
@@ -789,7 +940,7 @@ export async function linkProductAttributes(productId, attributeIds) {
   return response.json();
 }
 
-// ==================== PRICE FUNCTIONS ====================
+// ==================== PRICES ====================
 
 export async function getPriceBreakdown(productId, variantId = null) {
   let url = `${API_URL}/api/products/${productId}/price-breakdown`;
@@ -821,7 +972,7 @@ export async function updateProductPrices(productId, priceData) {
   return response.json();
 }
 
-// ==================== INVENTORY STATUS FUNCTIONS ====================
+// ==================== INVENTORY STATUS ====================
 
 export async function updateInventoryStatus(variantId, statusData) {
   const response = await fetch(`${API_URL}/api/inventory/${variantId}/status`, {

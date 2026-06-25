@@ -1,3 +1,17 @@
+/**
+ * Hook de gestión de productos en pestañas para el módulo Kiosko.
+ *
+ * @module hooks/useProductTabs
+ * @description Maneja el estado de los productos detectados por el kiosko:
+ *   - Máximo 5 productos simultáneos (MAX_PRODUCTS)
+ *   - Navegación por pestañas (índice activo)
+ *   - Selección de talla y color por producto
+ *   - Matching de variantes disponibles
+ *   - Valores por defecto según tipo de prenda
+ *
+ * @returns {Object} Estado de productos y funciones de manipulación
+ */
+
 import { useState, useCallback, useMemo } from 'react';
 
 const MAX_PRODUCTS = 5;
@@ -35,6 +49,12 @@ const useProductTabs = () => {
     return null;
   }, [products, activeTabIndex]);
 
+  /**
+   * Agrega un producto detectado. Si ya existe uno similar (mismo ID y bbox cercano),
+   * lo actualiza en lugar de duplicarlo.
+   * @param {Object} productData — Datos del producto detectado
+   * @returns {{ success: boolean, index?: number, isUpdate?: boolean, message?: string }}
+   */
   const addProduct = useCallback((productData) => {
     if (products.length >= MAX_PRODUCTS) {
       return { success: false, message: `Máximo ${MAX_PRODUCTS} productos` };
@@ -165,6 +185,11 @@ const useProductTabs = () => {
     }));
   }, []);
 
+  /**
+   * Verifica si un producto tiene talla, color y variante seleccionados y hay stock.
+   * @param {string} productId
+   * @returns {boolean}
+   */
   const canAddToCart = useCallback((productId) => {
     const product = products.find(p => p.id === productId);
     return product &&

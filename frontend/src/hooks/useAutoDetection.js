@@ -1,3 +1,17 @@
+/**
+ * Hook de Auto-Detección para el módulo Kiosko.
+ *
+ * @module hooks/useAutoDetection
+ * @description Maneja el ciclo de vida de la detección automática de prendas:
+ *   1. `detecting` — Buscando prenda frente a la cámara (timeout 10s)
+ *   2. `countdown` — Prenda detectada, cuenta regresiva de 3s
+ *   3. `capturing` — Dispara captura y procesamiento
+ *   4. `paused` / `idle` — Estados de pausa y reposo
+ *
+ * @param {Function} onCaptureTriggered — Callback ejecutado al finalizar la cuenta regresiva
+ * @returns {Object} Estado y funciones de control
+ */
+
 import { useState, useCallback, useRef, useEffect } from 'react';
 
 const COUNTDOWN_SECONDS = 3;

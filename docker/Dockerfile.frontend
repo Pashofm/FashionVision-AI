@@ -1,20 +1,46 @@
+# ============================================================
+# FashionVision AI — Dockerfile Frontend
+# ============================================================
+# Multi-stage build para servir el frontend React con Nginx.
+#
+# Etapa 1 (builder): Node 20 Alpine
+#   - Instala dependencias npm (npm ci para builds reproducibles)
+#   - Compila la SPA con Vite (npm run build)
+#   - Output: /app/dist (archivos estáticos optimizados)
+#
+# Etapa 2 (runtime): Nginx Alpine
+#   - Copia los archivos estáticos desde el builder
+#   - Configura Nginx como servidor de archivos + proxy reverso
+#   - Proxy /api/ → backend:8000 para evitar CORS
+#   - Habilita gzip para compresión de respuestas
+# ============================================================
+
+# ---- Etapa 1: Builder ----
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Instalar dependencias (capa cacheada si package*.json no cambia)
 COPY frontend/package*.json ./
 RUN npm ci
 
+# Copiar código fuente y compilar
 COPY frontend/ ./
 
+# Variable de build: API se sirve desde el mismo dominio vía proxy Nginx
 ENV VITE_API_URL=/
 RUN npm run build
 
+# ---- Etapa 2: Runtime ----
 FROM nginx:alpine
 
+# Copiar archivos estáticos compilados
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Inline nginx config instead of copying from file
+# Configuración inline de Nginx:
+# - Sirve la SPA con fallback a index.html (para React Router)
+# - Proxy /api/ → backend:8000 (evita configuración CORS compleja)
+# - Habilita compresión gzip para mejor rendimiento
 RUN echo 'server { \
     listen 80; \
     server_name localhost; \

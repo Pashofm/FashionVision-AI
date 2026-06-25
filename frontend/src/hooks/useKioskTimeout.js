@@ -1,3 +1,16 @@
+/**
+ * Hook de timeout de inactividad para el módulo Kiosko.
+ *
+ * @module hooks/useKioskTimeout
+ * @description Detecta inactividad del usuario y ejecuta un cierre de sesión
+ *   automático después de 2 minutos sin interacción, con una cuenta regresiva
+ *   de 10 segundos para que el usuario pueda cancelar.
+ *
+ * @param {Function} onSessionEnd — Callback ejecutado al expirar la sesión
+ * @param {boolean} [enabled=true] — Deshabilita el timer si es false
+ * @returns {{ countdown: number|null, resetTimer: Function }}
+ */
+
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { isAuthenticated, extendSession } from '../services/api';
 
@@ -43,6 +56,9 @@ export function useKioskTimeout(onSessionEnd, enabled = true) {
     }, KIOSK_TIMEOUT_MS);
   }, [clearAllTimers, startCountdown]);
 
+  /**
+   * Reinicia el timer de inactividad y extiende la sesión en el servidor.
+   */
   const resetTimer = useCallback(async () => {
     if (countdown !== null) {
       clearAllTimers();
