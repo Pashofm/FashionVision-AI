@@ -1,7 +1,10 @@
 {
-  "name": "frontend",
+  "name": "fashionvision-ai",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "FashionVision AI - Sistema Inteligente de Reconocimiento de Prendas y Análisis Predictivo para tiendas de ropa",
+  "author": "FashionVision AI Team",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
