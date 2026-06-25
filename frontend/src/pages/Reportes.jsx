@@ -14,6 +14,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
 } from 'recharts';
 import '../styles/Reportes.css';
 
@@ -523,36 +524,51 @@ const Reportes = () => {
         )}
 
         <section className="charts-row">
-          <div className="chart-card">
-            <h2 className="section-title">Ventas por Hora</h2>
-            <div className="chart-wrapper">
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={salesData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="hora" tick={{ fill: '#64748b', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#64748b' }} />
-                  <Tooltip />
-                  <Bar dataKey="ventas" fill="#4da6ff" radius={[4, 4, 0, 0]} name="Órdenes" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="chart-card">
-            <h2 className="section-title">Ventas por Categoría</h2>
-            <div className="chart-wrapper">
-              {categoryData.length > 0 ? (
+            <div className="chart-card">
+              <h2 className="section-title">Ventas por Hora</h2>
+              <div className="chart-wrapper">
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={categoryData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis type="number" tick={{ fill: '#64748b' }} />
-                    <YAxis dataKey="name" type="category" tick={{ fill: '#64748b', fontSize: 11 }} width={100} />
-                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                  <BarChart data={salesData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                    <XAxis dataKey="hora" tick={{ fill: '#a0a0a0', fontSize: 10 }} />
+                    <YAxis tick={{ fill: '#a0a0a0' }} allowDecimals={false} />
+                    <Tooltip
+                      formatter={(value) => [`${value} órdenes`, 'Órdenes']}
+                      contentStyle={{
+                        backgroundColor: '#1e1e2e',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: '8px',
+                        color: '#e0e0e0',
+                      }}
+                    />
+                    <Bar dataKey="ventas" fill="#4da6ff" radius={[4, 4, 0, 0]} name="Órdenes" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="chart-card">
+              <h2 className="section-title">Ventas por Categoría</h2>
+              <div className="chart-wrapper">
+                {categoryData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={categoryData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                      <XAxis type="number" tick={{ fill: '#a0a0a0' }} />
+                      <YAxis dataKey="name" type="category" tick={{ fill: '#a0a0a0', fontSize: 11 }} width={100} />
+                      <Tooltip
+                        formatter={(value) => [formatCurrency(value), 'Revenue']}
+                        labelFormatter={(label) => label}
+                        contentStyle={{
+                          backgroundColor: '#1e1e2e',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: '8px',
+                          color: '#e0e0e0',
+                        }}
+                      />
                     <Bar dataKey="revenue" name="Revenue" radius={[0, 4, 4, 0]}>
                       {categoryData.map((entry, index) => (
-                        <React.Fragment key={`bar-${index}`}>
-                          <rect fill={entry.color} />
-                        </React.Fragment>
+                        <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Bar>
                   </BarChart>

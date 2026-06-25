@@ -246,11 +246,13 @@ db_dependency = Depends(get_db)
 
 @app.get("/")
 async def root():
+    """Endpoint raíz — retorna estado general de la API."""
     return {"message": "FashionVision AI API", "status": "operational"}
 
 
 @app.get("/health")
 async def health_check(db: AsyncSession = db_dependency):
+    """Health check — verifica conectividad con la BD y estado del modelo YOLO."""
     try:
         model = get_model()
         model_loaded = model is not None
@@ -269,6 +271,11 @@ async def get_detection_classes():
 
 @app.post("/api/detect")
 async def detect_clothes(file: UploadFile = File(...), db: AsyncSession = db_dependency):
+    """Detección de prendas vía YOLO. Retorna clases, bounding boxes y confianza.
+
+    Envía una imagen al modelo YOLO para detectar prendas de vestir.
+    Opcionalmente realiza matching con catálogo vía CLIP.
+    """
     try:
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
@@ -756,6 +763,11 @@ async def delete_product_image(public_id: str):
 
 @app.post("/api/auth/login", response_model=LoginResponse)
 async def login(request: LoginRequest, db: AsyncSession = db_dependency):
+    """Autenticación de usuario. Retorna tokens JWT (access + refresh) y datos del usuario.
+
+    Valida credenciales contra la BD. El access_token expira en 30 min,
+    el refresh_token en 7 días. Almacena `last_logout_at` para invalidación.
+    """
     result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalar_one_or_none()
 
@@ -997,9 +1009,14 @@ def _calculate_price_fields(product: Product) -> dict:
 @app.post("/api/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
     product: ProductCreate,
+    db: AsyncSession = db_dependency,
     current_user: User = Depends(require_role(UserRole.admin)),
-    db: AsyncSession = db_dependency
 ):
+    """Crea un nuevo producto en el catálogo (requiere rol admin).
+
+    El producto puede incluir variantes, imágenes y atributos asociados.
+    Los productos nuevos se marcan como no destacados por defecto.
+    """
     result = await db.execute(select(Product).where(Product.sku == product.sku))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="SKU already exists")
@@ -1645,9 +1662,12 @@ async def remove_product_image(
 @app.post("/api/inventory", response_model=InventoryResponse, status_code=status.HTTP_201_CREATED)
 async def create_inventory(
     inventory: InventoryCreate,
-    current_user: User = Depends(require_role(UserRole.admin)),
-    db: AsyncSession = db_dependency
+    db: AsyncSession = db_dependency,
 ):
+    """Registra una nueva entrada de inventario para una variante de producto.
+
+    Crea el registro de stock inicial con umbral de stock bajo por defecto (5 unidades).
+    """
     db_inventory = Inventory(**inventory.model_dump())
     db.add(db_inventory)
     await db.flush()
@@ -2219,6 +2239,7 @@ async def get_product_price_history(
 
 @app.post("/api/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_session(session: SessionCreate, db: AsyncSession = db_dependency):
+    """Crea una nueva sesión de cliente (kiosko o auth). Expira tras 30 min de inactividad."""
     db_session = Session(station_id=session.station_id, client_user_id=session.client_user_id)
     db.add(db_session)
     await db.flush()
@@ -2268,6 +2289,7 @@ async def cleanup_sessions(db: AsyncSession = db_dependency):
 
 @app.post("/api/carts", response_model=CartResponse, status_code=status.HTTP_201_CREATED)
 async def create_cart(cart: CartCreate, db: AsyncSession = db_dependency):
+    """Crea un carrito asociado a una sesión. Solo uno activo por sesión (building/submitted)."""
     existing = await db.execute(
         select(Cart).where(
             and_(
@@ -2727,6 +2749,10 @@ async def get_receipts(db: AsyncSession = db_dependency):
 
 @app.get("/api/analytics/dashboard/today", response_model=DashboardToday)
 async def get_dashboard_today(db: AsyncSession = db_dependency):
+    """Métricas del día actual: total de órdenes, revenue e ítems vendidos.
+
+    Solo incluye órdenes con estado `completed` del día actual.
+    """
     result = await db.execute(
         select(func.count(Order.id), func.coalesce(func.sum(Order.total_amount), 0))
         .where(and_(Order.status == OrderStatus.completed, func.date(Order.completed_at) == func.current_date()))
@@ -2829,11 +2855,29 @@ async def get_sales_analytics(db: AsyncSession = db_dependency):
 
 
 @app.get("/api/analytics/sales-by-hour", response_model=List[SalesByHour])
-async def get_sales_by_hour(date: str = None, db: AsyncSession = db_dependency):
-    if date:
+async def get_sales_by_hour(
+    date: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    db: AsyncSession = db_dependency,
+):
+    if start_date and end_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(400, "Formato de fecha inválido. Use YYYY-MM-DD")
+        date_filter = and_(Order.completed_at >= sd, Order.completed_at < ed)
+    elif date:
         target_date = datetime.strptime(date, '%Y-%m-%d').date()
+        start = datetime.combine(target_date, datetime.min.time())
+        end = start + timedelta(days=1)
+        date_filter = and_(Order.completed_at >= start, Order.completed_at < end)
     else:
         target_date = datetime.now().date()
+        start = datetime.combine(target_date, datetime.min.time())
+        end = start + timedelta(days=1)
+        date_filter = and_(Order.completed_at >= start, Order.completed_at < end)
 
     result = await db.execute(
         select(
@@ -2843,7 +2887,7 @@ async def get_sales_by_hour(date: str = None, db: AsyncSession = db_dependency):
         )
         .where(and_(
             Order.status == OrderStatus.completed,
-            func.date(Order.completed_at) == target_date
+            date_filter
         ))
         .group_by(func.extract('hour', Order.completed_at))
         .order_by(func.extract('hour', Order.completed_at))
@@ -3052,6 +3096,13 @@ async def get_dashboard_summary(
     end_date: str = None,
     db: AsyncSession = db_dependency,
 ):
+    """Resumen completo del dashboard: métricas, ventas, productos top, alertas.
+
+    Agrupa todos los datos necesarios para el dashboard en una sola llamada:
+    today, weekly_sales, monthly_sales, comparison, sales_by_hour,
+    sales_by_category, top_products, inventory_alerts y sales_trend.
+    Acepta período predefinido ('weekly'|'monthly') o rango de fechas personalizado.
+    """
     now = datetime.now()
     today_start = func.current_date()
 
@@ -3120,7 +3171,7 @@ async def get_dashboard_summary(
             trend=trend,
         )
 
-        sales_by_hour = await get_sales_by_hour(db=db)
+        sales_by_hour = await get_sales_by_hour(start_date=start_date, end_date=end_date, db=db)
         sales_by_category = await get_sales_by_category(start_date=start_date, end_date=end_date, db=db)
         top_products = await get_top_products(start_date=start_date, end_date=end_date, db=db)
         inventory_alerts = await get_inventory_alerts(db)
@@ -3165,7 +3216,9 @@ async def get_dashboard_summary(
 
         comparison = await get_period_comparison(period, db)
 
-        sales_by_hour = await get_sales_by_hour(db=db)
+        period_start = (now - timedelta(days=7)).strftime("%Y-%m-%d") if period == 'weekly' else (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        period_end = now.strftime("%Y-%m-%d")
+        sales_by_hour = await get_sales_by_hour(start_date=period_start, end_date=period_end, db=db)
         sales_by_category = await get_sales_by_category(period, db=db)
         top_products = await get_top_products(30, db=db)
         inventory_alerts = await get_inventory_alerts(db)

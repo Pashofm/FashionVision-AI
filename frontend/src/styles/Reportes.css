@@ -203,6 +203,24 @@
   height: 300px;
 }
 
+.reportes-page .recharts-tooltip-label {
+  color: #e0e0e0 !important;
+}
+
+.reportes-page .recharts-tooltip-item {
+  color: #e0e0e0 !important;
+}
+
+.reportes-page .recharts-tooltip-item-list {
+  color: #e0e0e0 !important;
+}
+
+.reportes-page .recharts-default-tooltip {
+  background-color: #1e1e2e !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  border-radius: 8px !important;
+}
+
 .reportes-container .top-products-section {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -226,6 +244,9 @@
 
 .reportes-container .products-table-wrapper {
   overflow-x: auto;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 2px;
 }
 
 .reportes-container .products-table {
@@ -237,24 +258,36 @@
 .reportes-container .products-table td {
   padding: 12px 15px;
   text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .reportes-container .products-table th {
-  background: rgba(255, 255, 255, 0.05);
-  color: #a0a0a0;
+  background: rgba(0, 0, 0, 0.4);
+  color: #c0c0c0;
   font-weight: 500;
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
+.reportes-container .products-table tbody tr {
+  transition: background 0.2s;
+}
+
+.reportes-container .products-table tbody tr:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.reportes-container .products-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .reportes-container .products-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(77, 166, 255, 0.15);
 }
 
 .reportes-container .products-table td {
-  color: #e0e0e0;
+  color: #ffffff;
 }
 
 .reportes-container .action-btn {
