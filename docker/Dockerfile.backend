@@ -1,7 +1,19 @@
+# ============================================================
+# FashionVision AI — Dockerfile Backend
+# ============================================================
+# Imagen para el servicio de API FastAPI con YOLO + CLIP.
+# Basada en Python 3.12 slim para minimizar tamaño.
+# Incluye dependencias del sistema para OpenCV (libgl, libsm, etc.)
+# y librerías de PostgreSQL (libpq-dev).
+# ============================================================
+
 FROM python:3.12-slim
 
 WORKDIR /app
 
+# Instalar dependencias del sistema necesarias para:
+# - psycopg2/asyncpg: libpq-dev, gcc
+# - OpenCV (cv2): libgl1, libglib2.0-0, libsm6, libxext6, libxrender-dev
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     gcc \
@@ -12,15 +24,22 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Instalar dependencias Python (requirements.txt)
+# Se copia antes del código para aprovechar caché de capas Docker
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copiar código de la aplicación
 COPY backend/ ./backend/
-COPY backend/models/ /app/models/
-COPY backend/database/ /app/database/
 
+# Copiar archivos necesarios desde backend/ a rutas esperadas en /app
+COPY backend/models/ /app/models/        # Modelo YOLO (.pt)
+COPY backend/database/ /app/database/    # Schema SQL y seed data
+
+# Crear directorios para archivos en tiempo de ejecución
 RUN mkdir -p /app/media /app/.cache/torch
 
+# Entrypoint: ejecuta migraciones Alembic y arranca el servidor
 COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 

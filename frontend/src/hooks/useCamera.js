@@ -1,3 +1,15 @@
+/**
+ * Hook de acceso a la cámara del dispositivo.
+ *
+ * @module hooks/useCamera
+ * @description Maneja el ciclo de vida del stream de la cámara:
+ *   - Apertura y cierre del stream MediaDevices
+ *   - Captura de frames individuales como PNG data URL
+ *   - Limpieza automática al desmontar el componente
+ *
+ * @returns {Object} Referencias y funciones de control de cámara
+ */
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 
 const useCamera = () => {
@@ -20,6 +32,9 @@ const useCamera = () => {
     };
   }, []);
 
+  /**
+   * Abre la cámara trasera (environment) del dispositivo.
+   */
   const openCamera = useCallback(async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -41,6 +56,9 @@ const useCamera = () => {
     }
   }, []);
 
+  /**
+   * Detiene el stream de la cámara y libera recursos.
+   */
   const closeCamera = useCallback(() => {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
@@ -49,6 +67,11 @@ const useCamera = () => {
     setIsActive(false);
   }, [stream]);
 
+  /**
+   * Captura un frame del video como imagen PNG.
+   * @param {HTMLCanvasElement} canvas — Canvas para dibujar el frame
+   * @returns {string|null} Data URL de la imagen en formato PNG
+   */
   const captureFrame = useCallback((canvas) => {
     const video = videoRef.current;
     

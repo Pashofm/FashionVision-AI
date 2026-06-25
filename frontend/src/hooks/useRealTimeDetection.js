@@ -1,3 +1,14 @@
+/**
+ * Hook de detección en tiempo real (YOLO).
+ *
+ * @module hooks/useRealTimeDetection
+ * @description Captura frames de la cámara a intervalos regulares (300ms)
+ *   y los envía al endpoint de detección YOLO. Filtra detecciones por
+ *   confianza mínima (30%) y expone el estado de la detección.
+ *
+ * @returns {Object} Estado de detección y funciones de control
+ */
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { detectClothes } from '../services/api';
 
@@ -84,6 +95,10 @@ const useRealTimeDetection = () => {
     }
   }, [captureFrame]);
 
+  /**
+   * Inicia la detección en tiempo real sobre un elemento de video.
+   * @param {React.RefObject} videoElementRef — Referencia al elemento <video>
+   */
   const startDetection = useCallback((videoElementRef) => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
