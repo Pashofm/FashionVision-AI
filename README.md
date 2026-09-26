@@ -1,289 +1,61 @@
 # FashionVision AI
-
 **Sistema Inteligente de Reconocimiento de Prendas y Análisis Predictivo**
 
-FashionVision AI es una solución tecnológica diseñada para pequeñas y medianas tiendas de ropa. Automatiza el control de inventario y facilita el proceso de venta mediante visión por computadora (YOLO) y análisis de datos.
-
----
-
-## Tabla de Contenidos
-
-- [Stack Tecnológico](#stack-tecnológico)
-- [Requisitos Previos](#requisitos-previos)
-- [Instalación Rápida](#instalación-rápida)
-- [Arquitectura del Sistema](#arquitectura-del-sistema)
-- [Modos de Uso](#modos-de-uso)
-- [Documentación](#documentación)
-- [Endpoints de la API](#endpoints-de-la-api)
+FashionVision AI es una solución tecnológica diseñada para democratizar el uso de Inteligencia Artificial en pequeñas y medianas tiendas de ropa. [cite_start]El sistema automatiza el control de inventario y facilita el proceso de autocobro mediante visión por computadora (CNN) y análisis de datos. [cite: 1, 2, 12]
 
 ---
 
 ## Stack Tecnológico
-
-| Componente | Tecnología | Versión |
-|------------|------------|---------|
-| Frontend | React 19 + Vite | 19.2.0 / 7.3.1 |
-| Backend | Python 3.12 + FastAPI | 0.115.0 |
-| Base de Datos | PostgreSQL 16 + pgvector | — |
-| Modelo IA | YOLO (Ultralytics) + CLIP | 8.3.40 |
-| ORM | SQLAlchemy + Alembic | 2.0.35 / 1.13.3 |
-| Proxy | Nginx | 1.25 |
-| Contenedores | Docker + Docker Compose | — |
+- **Frontend:** React.js + CSS Moderno (Flexbox).
+- **Backend:** Python 3.10+ con FastAPI.
+- **Servidor Web:** Uvicorn.
 
 ---
 
-## Requisitos Previos
+## Instalación y Uso
 
-| Software | Versión | Notas |
-|----------|---------|-------|
-| Docker | 24.0+ | Con el plugin `compose` (incluido en Docker Desktop) |
-| Git | 2.40+ | Para clonar el repositorio |
-| Espacio en disco | 10 GB libres | Las imágenes Docker y dependencias de IA ocupan varios GB |
+Sigue estos pasos para ejecutar el prototipo en tu máquina local:
 
-> **Nota:** No necesitas instalar Python ni Node.js en tu máquina. Todo corre dentro de contenedores Docker.
+### 1. Requisitos Previos
+- Node.js y npm instalados.
+- Python 3.10 o superior instalado.
 
----
+### 2. Configuración del Backend (Python)
+Desde la terminal, en la raíz del proyecto:
+```bash
+# Entrar a la carpeta
+cd backend
 
-## Instalación Rápida
+# Crear entorno virtual (Recomendado para Linux/Mac/Windows)
+python -m venv venv
+
+# Activar entorno virtual
+# En Linux/Mac:
+source venv/bin/activate
+# En Windows:
+.\venv\Scripts\activate
+
+# Instalar dependencias
+pip install fastapi uvicorn
+
+# Iniciar servidor
+python -m uvicorn main:app --reload
+```
+
+El backend estará corriendo en: http://127.0.0.1:8000
+
+### 3. Configuración del Frontend (Vite + React) 
+Abre una nueva terminal y ejecuta:
 
 ```bash
-# 1. Clonar el repositorio
-git clone git@github.com:Pashofm/FashionVision-AI.git
-cd FashionVision-AI
+# Entrar a la carpeta
+cd frontend
 
-# 2. Configurar variables de entorno
-cp .env.example .env
+# Instalar dependencias de Node
+npm install
 
-# 3. Construir y levantar los 4 servicios
-make up-build
-
-# 4. Ejecutar migraciones de base de datos
-make migrate
-
-# 5. Cargar datos iniciales de prueba
-make seed
+# Iniciar entorno de desarrollo con Vite
+npm run dev
 ```
 
-**Acceso inmediato:**
-
-| Servicio | URL |
-|----------|-----|
-| App | http://localhost |
-| Backend API | http://localhost/api |
-| API Docs (Swagger) | http://localhost/docs |
-| pgAdmin | http://localhost:5050 (`docker compose --profile tools up -d pgadmin`) |
-
-**Usuarios de prueba:**
-
-| Email | Rol | Contraseña |
-|-------|-----|------------|
-| admin@tienda.com | admin | admin123 |
-| cajero@tienda.com | cashier | admin123 |
-| cliente@demo.com | client | admin123 |
-
----
-
-## Arquitectura del Sistema
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        HOST (tu máquina)                         │
-│                                                                  │
-│   Puerto 80 ──────────────────────────────────────────────┐      │
-│                                                            │      │
-└────────────────────────────────────────────────────────────│──────┘
-                                                             │
-┌────────────────────────────────────────────────────────────│──────┐
-│                     DOCKER: pos-network                     │      │
-│                                                            ▼      │
-│   ┌──────────────────────────────────────────────────────────┐    │
-│   │                     NGINX (:80)                          │    │
-│   │   Reverse Proxy — único punto de entrada al sistema      │    │
-│   │   /api/* → backend:8000    /* → frontend:5173            │    │
-│   └──────────┬───────────────────────────────┬───────────────┘    │
-│              │                               │                    │
-│              ▼                               ▼                    │
-│   ┌──────────────────────┐    ┌──────────────────────────────┐   │
-│   │   BACKEND (:8000)    │    │   FRONTEND (:5173)            │   │
-│   │   FastAPI + YOLO     │    │   React 19 + Vite             │   │
-│   │   + CLIP + Alembic   │    │   Hot reload en desarrollo    │   │
-│   └──────────┬───────────┘    └──────────────────────────────┘   │
-│              │                                                    │
-│              ▼                                                    │
-│   ┌──────────────────────┐                                       │
-│   │   DB (:5432)          │    ┌──────────────────────────┐      │
-│   │   PostgreSQL 16       │    │   PGADMIN (:5050)         │      │
-│   │   + pgvector          │    │   (perfil tools opcional)  │      │
-│   └──────────────────────┘    └──────────────────────────┘      │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Modos de Uso
-
-### Modo Desarrollo (Docker con hot reload)
-
-```bash
-make up-build    # Construye y levanta todos los servicios con volúmenes de código
-make migrate     # Aplica migraciones pendientes
-```
-
-Los cambios en `backend/` y `frontend/src/` se reflejan instantáneamente gracias a los volúmenes montados y hot reload (uvicorn --reload + Vite HMR).
-
-### Modo Producción
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-```
-
-Sin volúmenes de código, sin hot reload, backend con gunicorn + 4 workers uvicorn, restart always.
-
-### Desarrollo sin Docker (avanzado)
-
-Si necesitas correr backend/frontend fuera de Docker (por debugging o IDE), consulta [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md#desarrollo-sin-docker-avanzado).
-
----
-
-## Comandos Principales
-
-```bash
-make help            # Lista todos los comandos disponibles
-make up              # Levanta servicios (sin reconstruir)
-make up-build        # Reconstruye imágenes y levanta
-make down            # Detiene contenedores
-make logs            # Logs de todos los servicios
-make logs-backend    # Solo logs del backend
-make shell-backend   # Shell interactiva en backend
-make shell-db        # Cliente psql en la base de datos
-make migrate         # alembic upgrade head
-make migrate-status  # Ver estado de migraciones
-make seed            # Cargar datos de prueba
-make test-backend    # pytest en el contenedor backend
-make test-frontend   # vitest en el contenedor frontend
-make clean           # Eliminar todo (contenedores + volúmenes)
-```
-
----
-
-## Documentación
-
-| Documento | Descripción |
-|-----------|-------------|
-| [QUICKSTART.md](./QUICKSTART.md) | Guía rápida para nuevos desarrolladores |
-| [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Guía completa de desarrollo |
-| [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) | Entorno Docker y migraciones |
-| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Arquitectura del sistema |
-| [docs/INSTALLATION.md](./docs/INSTALLATION.md) | Instalación para todos los SO |
-| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Guía de despliegue en producción |
-| [docs/COMANDOS.md](./docs/COMANDOS.md) | Referencia completa de comandos |
-
----
-
-## Endpoints de la API
-
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/health` | Estado del servidor y base de datos |
-| GET | `/api/categories` | Listar categorías |
-| GET | `/api/products` | Listar productos |
-| POST | `/api/detect` | Detectar prendas en imagen (YOLO + CLIP) |
-| POST | `/api/auth/login` | Iniciar sesión |
-| POST | `/api/carts` | Crear carrito |
-| POST | `/api/carts/{id}/items` | Agregar item al carrito |
-| GET | `/api/orders` | Listar órdenes |
-
-### Detección de Prendas
-
-```bash
-curl -X POST "http://localhost/api/detect" \
-  -F "file=@imagen.jpg"
-```
-
----
-
-## Gestión de Base de Datos (Migraciones)
-
-El sistema usa **Alembic** para gestionar cambios en el schema de forma versionada.
-
-```bash
-make migrate          # Aplicar migraciones pendientes
-make migrate-status   # Ver estado actual
-make migrate-history  # Ver historial
-make migrate-down     # Revertir última migración
-```
-
-**Flujo de trabajo para crear una nueva migración:**
-
-```bash
-# 1. Modificar modelos en backend/app/models/
-# 2. Entrar al contenedor
-make shell-backend
-
-# 3. Dentro del contenedor:
-cd /app/backend
-alembic revision --autogenerate -m "descripcion_del_cambio"
-
-# 4. El archivo se crea en backend/alembic/versions/
-# 5. Commit y push
-```
-
----
-
-## Verificación del Sistema
-
-```bash
-# Health check del backend
-curl http://localhost/health
-
-# Login de prueba
-curl -X POST http://localhost/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@tienda.com","password":"admin123"}'
-
-# Verificar frontend
-curl -I http://localhost
-
-# Verificar migraciones
-make migrate-status
-```
-
----
-
-## Troubleshooting
-
-### Error: `port is already allocated`
-
-```bash
-docker compose down
-lsof -i :80    # Linux/Mac
-# netstat -ano | findstr :80   # Windows
-kill -9 <PID>
-make up
-```
-
-### Error: `connection refused` en PostgreSQL
-
-```bash
-docker compose ps db           # Verificar que db está corriendo
-docker compose restart db      # Reiniciar si es necesario
-make logs-db                   # Ver logs
-```
-
-### Error: migraciones no aplicadas
-
-```bash
-make migrate-status            # Ver estado
-make migrate                   # Forzar aplicación
-```
-
-### Error: `No module named 'backend'`
-
-Esto solo ocurre en modo desarrollo sin Docker. Asegúrate de ejecutar desde la raíz del proyecto con `PYTHONPATH=$PWD`.
-
-### Acceso a PostgreSQL
-
-La base de datos no publica un puerto en el host para evitar conflictos con instalaciones locales. Usa `make shell-db` o pgAdmin para administrarla.
-
----
+El frontend estará disponible en la URL que indique la consola (usualmente http://localhost:5173).
