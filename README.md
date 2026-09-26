@@ -10,7 +10,7 @@ FashionVision AI es una solución tecnológica diseñada para pequeñas y median
 
 - [Stack Tecnológico](#stack-tecnológico)
 - [Requisitos Previos](#requisitos-previos)
-- [Instalación Rápida](#instalación-rápida)
+- [Formas de instalación](#formas-de-instalación)
 - [Arquitectura del Sistema](#arquitectura-del-sistema)
 - [Modos de Uso](#modos-de-uso)
 - [Flujo funcional](#flujo-funcional)
@@ -45,22 +45,28 @@ FashionVision AI es una solución tecnológica diseñada para pequeñas y median
 
 ---
 
-## Instalación Rápida
+## Formas de instalación
+
+El sistema se ejecuta con Docker en los tres entornos siguientes. No necesitas instalar Python, Node.js ni PostgreSQL en el host.
+
+| Entorno | Método | Guía |
+|---|---|---|
+| Linux | Docker Engine nativo | [Instalación Linux](./docs/INSTALLATION.md#linux) |
+| Windows 10/11 | Docker Desktop y PowerShell | [Windows nativo](./docs/INSTALLATION.md#windows-nativo) |
+| Windows 10/11 | Docker Desktop y Ubuntu en WSL2 | [Windows con WSL2](./docs/WINDOWS_WSL2.md) |
+
+**Windows con WSL2 es el método recomendado para desarrollar**, ya que ofrece mejor rendimiento de volúmenes y hot reload que trabajar en el filesystem de Windows.
+
+Después de preparar Docker y Git según tu plataforma, ejecuta el flujo de demo:
 
 ```bash
-# 1. Clonar el repositorio
 git clone https://github.com/Pashofm/FashionVision-AI.git
 cd FashionVision-AI
-
-# 2. Configurar variables de entorno
 cp .env.example .env
-
-# 3. Construir y esperar los 4 servicios
 docker compose up -d --build --wait
-
-# 4. Cargar datos iniciales de prueba
-make seed
 ```
+
+En Linux y WSL2 carga los datos demo con `make seed`. En Windows nativo, o si no tienes `make`, usa el comando equivalente de [COMANDOS.md](./docs/COMANDOS.md#datos-iniciales-y-migraciones).
 
 **Acceso inmediato:**
 
@@ -70,6 +76,8 @@ make seed
 | Backend API | http://localhost/api |
 | API Docs (Swagger) | http://localhost/docs |
 | pgAdmin | http://localhost:5050 (`docker compose --profile tools up -d pgadmin`) |
+
+Consulta [docs/INSTALLATION.md](./docs/INSTALLATION.md) para instalación, reinicio completo, puertos y diagnóstico por plataforma.
 
 **Usuarios de prueba:**
 
