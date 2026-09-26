@@ -7,6 +7,15 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ---
 
+## [Unreleased]
+
+### Changed
+- Reorganizada la documentación por audiencia y añadido el flujo funcional por roles.
+- Alineadas las guías de instalación, Docker, producción, pgAdmin y testing con la configuración actual.
+- Añadida la referencia de configuración de `.env.example`.
+
+---
+
 ## [1.0.0] — 2026-06-24
 
 ### Added

@@ -289,7 +289,7 @@ async def periodic_session_cleanup(app: FastAPI):
 ### Cleanup Manual
 
 ```bash
-curl -X POST http://localhost:8000/api/sessions/cleanup
+curl -X POST http://localhost/api/sessions/cleanup
 ```
 
 Respuesta:
@@ -467,7 +467,7 @@ GROUP BY status;
 
 ### Forzar cleanup manual
 ```bash
-curl -X POST http://localhost:8000/api/sessions/cleanup
+curl -X POST http://localhost/api/sessions/cleanup
 ```
 
 ### Ver carritos huérfanos (sin items y building)

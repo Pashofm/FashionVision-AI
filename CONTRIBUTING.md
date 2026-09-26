@@ -76,19 +76,19 @@ tipo(ámbito): descripción breve
 
 ## Entorno de Desarrollo
 
-Sigue el [QUICKSTART.md](QUICKSTART.md) para levantar el sistema en 5 comandos.
+Sigue el [QUICKSTART.md](QUICKSTART.md) para levantar el sistema en 4 comandos.
 
 ### Modos de trabajo
 
 | Modo | Comando | Descripción |
 |------|---------|-------------|
 | Docker dev | `make up-build` | Entorno completo con hot reload activo |
-| Docker prod | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` | Sin hot reload, gunicorn workers |
+| Docker prod | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` | Sin hot reload, gunicorn workers |
 
 ### Ejecutar Tests
 
 ```bash
-# Backend (dentro del contenedor)
+# Backend (requiere una BD de pruebas separada; consulta docs/testing/TESTING_GUIDE.md)
 make test-backend
 
 # Frontend (dentro del contenedor)

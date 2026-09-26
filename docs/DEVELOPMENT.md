@@ -11,7 +11,6 @@ Documentación para configurar el entorno de desarrollo en equipo con Docker.
 - [Comandos Rápidos](#comandos-rápidos)
 - [Migraciones con Alembic](#migraciones-con-alembic)
 - [Solución de Problemas](#solución-de-problemas)
-- [Desarrollo sin Docker (avanzado)](#desarrollo-sin-docker-avanzado)
 
 ---
 
@@ -41,7 +40,7 @@ Documentación para configurar el entorno de desarrollo en equipo con Docker.
 ### Entorno de Testing/Demo (Producción simulada)
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 ---
@@ -77,7 +76,7 @@ make up
 **Para testing, demos a clientes, o cuando no necesitas hot-reload. Sin montajes de código fuente, usando imágenes de producción con gunicorn + uvicorn workers.**
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 O reconstruyendo las imágenes de producción:
@@ -101,17 +100,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 |----------|---------|-------|
 | Docker | 24.0+ | Con Docker Compose V2 |
 | Git | Any | Para clonar |
-| Python | 3.12+ | Solo para desarrollo sin Docker |
-| Node.js | 20+ | Solo para desarrollo sin Docker |
 
 ### 2. Instalación (Nuevos miembros del equipo)
 
 ```bash
-git clone git@github.com:Pashofm/FashionVision-AI.git
+git clone https://github.com/Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 cp .env.example .env
-make up-build
-make migrate
+docker compose up -d --build --wait
 make seed
 ```
 
@@ -179,7 +175,7 @@ El proyecto incluye un Makefile en la raíz con los comandos esenciales. Ejecuta
 
 | Comando | Descripción |
 |---------|-------------|
-| `make test-backend` | Corre los tests del backend con pytest y cobertura |
+| `make test-backend` | Corre pytest en el backend; requiere una BD de pruebas separada |
 | `make test-frontend` | Corre los tests del frontend |
 
 ---
@@ -209,9 +205,9 @@ make up-build
 docker compose logs backend
 docker compose restart backend
 make shell-backend
-
-docker compose exec backend pytest /app/backend/tests -v
 ```
+
+Las pruebas backend requieren una base aislada que el Compose de demo no proporciona. Consulta [testing/TESTING_GUIDE.md](testing/TESTING_GUIDE.md).
 
 ### Frontend (Docker)
 
@@ -283,9 +279,9 @@ cp .env.example .env
 POSTGRES_DB=fashionvision_ai
 POSTGRES_USER=fashionvision_ai_user
 POSTGRES_PASSWORD=your_password
-POSTGRES_HOST_PORT=5432
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
 
-BACKEND_HOST_PORT=8000
 FRONTEND_HOST_PORT=80
 
 SECRET_KEY=generate_with_openssl_rand_base64_32
@@ -314,14 +310,14 @@ docker compose ps db
 
 ### Error: `connection refused` en PostgreSQL
 
-**Causa:** PostgreSQL no está escuchando en el puerto esperado.
+**Causa:** PostgreSQL no está escuchando en el puerto esperado o el puerto no está publicado para el host.
 
 **Solución:**
 
 ```bash
 docker compose ps db
 docker compose logs db
-netstat -an | grep 5432
+docker compose config
 ```
 
 ### Error: puerto en uso
@@ -331,7 +327,6 @@ netstat -an | grep 5432
 **Solución:**
 
 ```bash
-lsof -i :8000
 lsof -i :80
 kill -9 <PID>
 ```
@@ -356,101 +351,3 @@ curl http://localhost | head -20
 6. **Los modelos de PyTorch (YOLO, CLIP)** se cachean en el volumen `torch_cache` para no descargarlos en cada reinicio.
 
 ---
-
-## Desarrollo sin Docker (avanzado)
-
-Para desarrollo local sin Docker, solo la base de datos corre en contenedor. Esto requiere Python 3.12+ y Node.js 20+ instalados localmente.
-
-### Requisitos previos adicionales
-
-| Software | Versión |
-|----------|---------|
-| Python | 3.12+ |
-| Node.js | 20+ |
-| npm | 10+ |
-
-### Instalación
-
-```bash
-git clone git@github.com:Pashofm/FashionVision-AI.git
-cd FashionVision-AI
-cp .env.example .env
-```
-
-#### Backend
-
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cd ..
-```
-
-#### Frontend
-
-```bash
-cd frontend
-npm install
-cd ..
-```
-
-#### Base de datos
-
-```bash
-docker compose up -d db
-```
-
-Asegúrate de que `.env` tenga `POSTGRES_HOST=localhost` para conexión local.
-
-### Iniciar desarrollo local
-
-```bash
-docker compose up -d db
-
-export PYTHONPATH=$PWD
-source backend/venv/bin/activate
-uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-```
-
-```bash
-cd frontend && npm run dev
-```
-
-**Acceso:**
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
-
-### Comandos útiles locales
-
-#### Base de datos
-
-```bash
-docker compose up -d db
-docker compose ps db
-docker compose logs db
-docker compose restart db
-
-docker exec -it fashionvision_db psql -U fashionvision_ai_user -d fashionvision_ai
-```
-
-#### Backend
-
-```bash
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
-
-uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-python -c "from backend.app.main import app; print('OK')"
-```
-
-#### Frontend
-
-```bash
-cd frontend
-npm run dev
-npm run build
-npm run lint
-```
