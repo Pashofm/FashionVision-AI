@@ -24,10 +24,11 @@ FashionVision AI es una solución tecnológica diseñada para pequeñas y median
 |------------|------------|---------|
 | Frontend | React 19 + Vite | 19.2.0 / 7.3.1 |
 | Backend | Python 3.12 + FastAPI | 0.115.0 |
-| Base de Datos | PostgreSQL 16 | - |
-| Modelo IA | YOLO (Ultralytics) | 8.3.40 |
-| ORM | SQLAlchemy + Alembic | 2.0.35 / 1.18.4 |
-| Contenedores | Docker + Docker Compose | - |
+| Base de Datos | PostgreSQL 16 + pgvector | — |
+| Modelo IA | YOLO (Ultralytics) + CLIP | 8.3.40 |
+| ORM | SQLAlchemy + Alembic | 2.0.35 / 1.13.3 |
+| Proxy | Nginx | 1.25 |
+| Contenedores | Docker + Docker Compose | — |
 
 ---
 
@@ -35,158 +36,134 @@ FashionVision AI es una solución tecnológica diseñada para pequeñas y median
 
 | Software | Versión | Notas |
 |----------|---------|-------|
-| Docker Desktop | 4.0+ | Para base de datos PostgreSQL + pgAdmin |
-| Git | Any | Para clonar repositorio |
-| Sudo/Admin | - | Para instalar dependencias del sistema |
+| Docker | 24.0+ | Con el plugin `compose` (incluido en Docker Desktop) |
+| Git | 2.40+ | Para clonar el repositorio |
+| Espacio en disco | 10 GB libres | Las imágenes Docker y dependencias de IA ocupan varios GB |
 
-### Dependencias del Sistema Operativo
-
-**Antes de ejecutar el proyecto**, necesitas instalar las dependencias del sistema. Consulta [docs/SYSTEM_REQUIREMENTS.md](./docs/SYSTEM_REQUIREMENTS.md) para instrucciones completas.
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get update && sudo apt-get install -y \
-    build-essential libffi-dev python3-dev libjpeg-dev libpq-dev git curl docker.io docker-compose
-```
-
-**Verificación crítica** (después de instalar dependencias):
-```bash
-python3 -c "import _ctypes" && echo "OK: _ctypes funciona"
-```
-
-**Importante:** Python 3.12 y Node.js 18+ se instalan automáticamente por los scripts de setup. No necesitas instalarlos manualmente.
+> **Nota:** No necesitas instalar Python ni Node.js en tu máquina. Todo corre dentro de contenedores Docker.
 
 ---
 
 ## Instalación Rápida
 
-### Paso 1: Clonar el repositorio
-
 ```bash
-git clone <repo-url> FashionVision-AI
+# 1. Clonar el repositorio
+git clone git@github.com:Pashofm/FashionVision-AI.git
 cd FashionVision-AI
+
+# 2. Configurar variables de entorno
+cp .env.example .env
+
+# 3. Construir y levantar los 4 servicios
+make up-build
+
+# 4. Ejecutar migraciones de base de datos
+make migrate
+
+# 5. Cargar datos iniciales de prueba
+make seed
 ```
 
-### Paso 2: Instalar dependencias del sistema
+**Acceso inmediato:**
 
-```bash
-sudo apt-get update && sudo apt-get install -y build-essential libffi-dev python3-dev libjpeg-dev libpq-dev git curl docker.io docker-compose
-```
+| Servicio | URL |
+|----------|-----|
+| App | http://localhost |
+| Backend API | http://localhost/api |
+| API Docs (Swagger) | http://localhost/docs |
+| pgAdmin | http://localhost:5050 (`docker compose --profile tools up -d pgadmin`) |
 
-### Paso 3: Ejecutar setup (primera vez)
+**Usuarios de prueba:**
 
-```bash
-./scripts/setup.sh
-```
-
-> **Nota:** La primera ejecución puede tardar **10-20 minutos** porque instala pyenv, Python 3.12, nvm, Node.js 18, y compila paquetes como torch.
-
-### Paso 4: Iniciar servicios (sesiones siguientes)
-
-```bash
-./scripts/dev-start.sh
-```
-
-### Paso 5: Iniciar backend y frontend
-
-**Terminal 1 - Backend:**
-```bash
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
-uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-```
-
-**Terminal 2 - Frontend:**
-```bash
-cd frontend
-npm run dev
-```
+| Email | Rol | Contraseña |
+|-------|-----|------------|
+| admin@tienda.com | admin | admin123 |
+| cajero@tienda.com | cashier | admin123 |
+| cliente@demo.com | client | admin123 |
 
 ---
 
 ## Arquitectura del Sistema
 
-### Modo Desarrollo (Local + Docker)
-
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Tu Equipo de Desarrollo                  │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
-│   │   Frontend   │   │   Backend    │   │     DB       │   │
-│   │    Local     │   │    Local     │   │   Docker     │   │
-│   │   :5173      │   │   :8000      │   │   :5432      │   │
-│   │  (Vite)      │   │  (HotReload) │   │              │   │
-│   └──────────────┘   └──────────────┘   └──────────────┘   │
-│                                              │              │
-│                                              ▼              │
-│                                       ┌──────────────┐     │
-│                                       │   pgAdmin    │     │
-│                                       │   Docker     │     │
-│                                       │   :5050      │     │
-│                                       └──────────────┘     │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Modo Producción (Docker Completo)
-
-```bash
-# Todo en contenedores Docker
-docker compose up -d
+┌──────────────────────────────────────────────────────────────────┐
+│                        HOST (tu máquina)                         │
+│                                                                  │
+│   Puerto 80 ──────────────────────────────────────────────┐      │
+│                                                            │      │
+└────────────────────────────────────────────────────────────│──────┘
+                                                             │
+┌────────────────────────────────────────────────────────────│──────┐
+│                     DOCKER: pos-network                     │      │
+│                                                            ▼      │
+│   ┌──────────────────────────────────────────────────────────┐    │
+│   │                     NGINX (:80)                          │    │
+│   │   Reverse Proxy — único punto de entrada al sistema      │    │
+│   │   /api/* → backend:8000    /* → frontend:5173            │    │
+│   └──────────┬───────────────────────────────┬───────────────┘    │
+│              │                               │                    │
+│              ▼                               ▼                    │
+│   ┌──────────────────────┐    ┌──────────────────────────────┐   │
+│   │   BACKEND (:8000)    │    │   FRONTEND (:5173)            │   │
+│   │   FastAPI + YOLO     │    │   React 19 + Vite             │   │
+│   │   + CLIP + Alembic   │    │   Hot reload en desarrollo    │   │
+│   └──────────┬───────────┘    └──────────────────────────────┘   │
+│              │                                                    │
+│              ▼                                                    │
+│   ┌──────────────────────┐                                       │
+│   │   DB (:5432)          │    ┌──────────────────────────┐      │
+│   │   PostgreSQL 16       │    │   PGADMIN (:5050)         │      │
+│   │   + pgvector          │    │   (perfil tools opcional)  │      │
+│   └──────────────────────┘    └──────────────────────────┘      │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Modos de Uso
 
-### Modo A: Desarrollo (Hot-Reload Activo)
-
-Para desarrollo activo cuando necesitas iterar rápido.
+### Modo Desarrollo (Docker con hot reload)
 
 ```bash
-# 1. Iniciar base de datos + pgAdmin en Docker
-docker compose up -d db pgadmin
-
-# 2. Backend con hot-reload
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
-uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-
-# 3. Frontend con hot-reload
-cd frontend
-npm run dev
+make up-build    # Construye y levanta todos los servicios con volúmenes de código
+make migrate     # Aplica migraciones pendientes
 ```
 
-**Acceso:**
-| Servicio | URL |
-|----------|-----|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
-| pgAdmin | http://localhost:5050 |
+Los cambios en `backend/` y `frontend/src/` se reflejan instantáneamente gracias a los volúmenes montados y hot reload (uvicorn --reload + Vite HMR).
+
+### Modo Producción
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+Sin volúmenes de código, sin hot reload, backend con gunicorn + 4 workers uvicorn, restart always.
+
+### Desarrollo sin Docker (avanzado)
+
+Si necesitas correr backend/frontend fuera de Docker (por debugging o IDE), consulta [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md#desarrollo-sin-docker-avanzado).
 
 ---
 
-### Modo B: Testing / Demo (Docker Completo)
-
-Para testing, demos a clientes, o cuando no necesitas hot-reload.
+## Comandos Principales
 
 ```bash
-# Todo en Docker (comando único)
-docker compose up -d
+make help            # Lista todos los comandos disponibles
+make up              # Levanta servicios (sin reconstruir)
+make up-build        # Reconstruye imágenes y levanta
+make down            # Detiene contenedores
+make logs            # Logs de todos los servicios
+make logs-backend    # Solo logs del backend
+make shell-backend   # Shell interactiva en backend
+make shell-db        # Cliente psql en la base de datos
+make migrate         # alembic upgrade head
+make migrate-status  # Ver estado de migraciones
+make seed            # Cargar datos de prueba
+make test-backend    # pytest en el contenedor backend
+make test-frontend   # vitest en el contenedor frontend
+make clean           # Eliminar todo (contenedores + volúmenes)
 ```
-
-**Acceso:**
-| Servicio | URL |
-|----------|-----|
-| App | http://localhost |
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
-| pgAdmin | http://localhost:5050 |
 
 ---
 
@@ -196,11 +173,11 @@ docker compose up -d
 |-----------|-------------|
 | [QUICKSTART.md](./QUICKSTART.md) | Guía rápida para nuevos desarrolladores |
 | [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Guía completa de desarrollo |
-| [docs/SYSTEM_REQUIREMENTS.md](./docs/SYSTEM_REQUIREMENTS.md) | Dependencias del sistema y solución de problemas |
-| [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) | Entorno Docker con migraciones |
-| [docs/INSTALLATION.md](./docs/INSTALLATION.md) | Guia de instalacion para todos los SO |
-| [docs/COMANDOS.md](./docs/COMANDOS.md) | Comandos importantes del proyecto |
-| [docs/GUIAS_PGADMIN.md](./docs/GUIAS_PGADMIN.md) | Guía de pgAdmin |
+| [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) | Entorno Docker y migraciones |
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Arquitectura del sistema |
+| [docs/INSTALLATION.md](./docs/INSTALLATION.md) | Instalación para todos los SO |
+| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Guía de despliegue en producción |
+| [docs/COMANDOS.md](./docs/COMANDOS.md) | Referencia completa de comandos |
 
 ---
 
@@ -211,31 +188,17 @@ docker compose up -d
 | GET | `/health` | Estado del servidor y base de datos |
 | GET | `/api/categories` | Listar categorías |
 | GET | `/api/products` | Listar productos |
-| POST | `/api/detect` | Detectar prendas en imagen (YOLO) |
+| POST | `/api/detect` | Detectar prendas en imagen (YOLO + CLIP) |
 | POST | `/api/auth/login` | Iniciar sesión |
 | POST | `/api/carts` | Crear carrito |
 | POST | `/api/carts/{id}/items` | Agregar item al carrito |
 | GET | `/api/orders` | Listar órdenes |
 
-### Detección de Prendas (YOLO)
+### Detección de Prendas
 
 ```bash
-curl -X POST "http://localhost:8000/api/detect" \
+curl -X POST "http://localhost/api/detect" \
   -F "file=@imagen.jpg"
-```
-
-**Respuesta:**
-```json
-{
-  "detections": [
-    {
-      "class": "gorra-roja-lacoste",
-      "confidence": 0.95,
-      "bbox": [x1, y1, x2, y2]
-    }
-  ],
-  "image_size": [640, 480]
-}
 ```
 
 ---
@@ -245,103 +208,25 @@ curl -X POST "http://localhost:8000/api/detect" \
 El sistema usa **Alembic** para gestionar cambios en el schema de forma versionada.
 
 ```bash
-# Ver estado de migraciones
-./scripts/migrate.sh status
-
-# Ver historial
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-alembic history
-
-# Crear nueva migración
-alembic revision --autogenerate -m "descripcion_del_cambio"
+make migrate          # Aplicar migraciones pendientes
+make migrate-status   # Ver estado actual
+make migrate-history  # Ver historial
+make migrate-down     # Revertir última migración
 ```
 
-**Flujo de trabajo:**
-1. Modificar modelos en `backend/app/models/`
-2. Crear migración: `alembic revision --autogenerate -m "mensaje"`
-3. Commit y push
-4. Otros desarrolladores ejecutan `./scripts/dev-start.sh` y las migraciones se aplican automáticamente
-
----
-
-## Estructura del Proyecto
-
-```
-FashionVision-AI/
-├── backend/
-│   ├── app/
-│   │   ├── main.py          # FastAPI application
-│   │   ├── config.py        # Configuración
-│   │   ├── database.py      # Conexión a DB
-│   │   ├── models/          # Modelos SQLAlchemy
-│   │   ├── schemas/         # Schemas Pydantic
-│   │   └── services/        # Servicios (auth, detection, etc)
-│   ├── alembic/             # Migraciones de base de datos
-│   ├── models/              # Modelo YOLO (best.pt)
-│   ├── database/            # SQL scripts (schema.sql, seed.sql)
-│   └── requirements.txt     # Dependencias Python
-├── frontend/
-│   ├── src/
-│   │   ├── pages/           # Páginas React
-│   │   ├── components/      # Componentes reutilizables
-│   │   ├── hooks/           # Custom hooks
-│   │   ├── services/        # Servicios API
-│   │   └── styles/          # Estilos CSS
-│   └── package.json         # Dependencias npm
-├── docker/                  # Dockerfiles
-├── scripts/                 # Scripts de ayuda
-├── docs/                    # Documentación
-└── docker-compose.yml       # Orquestación Docker
-```
-
----
-
-## Scripts de Ayuda
-
-| Script | Uso | Descripción |
-|--------|-----|-------------|
-| `dev-start.sh` | `./scripts/dev-start.sh` | Inicia modo desarrollo completo |
-| `dev-stop.sh` | `./scripts/dev-stop.sh` | Detiene servicios Docker |
-| `docker-start.sh` | `./scripts/docker-start.sh` | Inicia todo en Docker |
-| `migrate.sh` | `./scripts/migrate.sh` | Control de migraciones |
-| `pgadmin-start.sh` | `./scripts/pgadmin-start.sh` | Inicia pgAdmin |
-| `pgadmin-stop.sh` | `./scripts/pgadmin-stop.sh` | Detiene pgAdmin |
-| `db-reset.sh` | `./scripts/db-reset.sh` | Reinicia la base de datos |
-
----
-
-## Credenciales
-
-| Servicio | Usuario | Contraseña | Puerto |
-|----------|---------|------------|--------|
-| pgAdmin | `admin@fashionvision.com` | `admin123` | 5050 |
-| PostgreSQL | `fashionvision_ai_user` | `fashionvision_ai_pass` | 5432 |
-| Login (desarrollo) | `admin@tienda.com` | `admin123` | - |
-
----
-
-## Comandos de Desarrollo
+**Flujo de trabajo para crear una nueva migración:**
 
 ```bash
-# Frontend
-cd frontend
-npm run dev          # Desarrollo
-npm run build        # Build producción
-npm run lint         # ESLint
-npm run test         # Tests
+# 1. Modificar modelos en backend/app/models/
+# 2. Entrar al contenedor
+make shell-backend
 
-# Backend
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
-uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
+# 3. Dentro del contenedor:
+cd /app/backend
+alembic revision --autogenerate -m "descripcion_del_cambio"
 
-# Docker
-docker compose up -d          # Iniciar todo
-docker compose ps             # Ver estado
-docker compose logs -f        # Ver logs
-docker compose down           # Detener todo
+# 4. El archivo se crea en backend/alembic/versions/
+# 5. Commit y push
 ```
 
 ---
@@ -349,84 +234,56 @@ docker compose down           # Detener todo
 ## Verificación del Sistema
 
 ```bash
-# 1. Health check del backend
-curl http://localhost:8000/health
+# Health check del backend
+curl http://localhost/health
 
-# 2. Verificar frontend
-curl http://localhost:5173 | head -20
+# Login de prueba
+curl -X POST http://localhost/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@tienda.com","password":"admin123"}'
 
-# 3. Verificar pgAdmin
-curl http://localhost:5050
+# Verificar frontend
+curl -I http://localhost
 
-# 4. Ver estado de migraciones
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-cd backend
-alembic current
+# Verificar migraciones
+make migrate-status
 ```
 
 ---
 
 ## Troubleshooting
 
-### Error: `ModuleNotFoundError: No module named '_ctypes'`
-
-**Causa:** Python fue compilado sin `libffi-dev`.
+### Error: `port is already allocated`
 
 ```bash
-# Solución:
-sudo apt-get install -y libffi-dev python3-dev
-rm -rf ~/.pyenv/versions/3.12.0
-~/.pyenv/bin/pyenv install 3.12.0
-rm -rf backend/venv
-./scripts/setup.sh
-```
-
-Para más detalles, ver [docs/SYSTEM_REQUIREMENTS.md](./docs/SYSTEM_REQUIREMENTS.md).
-
-### Error: `ModuleNotFoundError: No module named 'backend'`
-
-```bash
-export PYTHONPATH=$PWD
-# Ejecutar desde la raíz del proyecto
-```
-
-### Error: `alembic: command not found`
-
-```bash
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
-alembic upgrade head
+docker compose down
+lsof -i :80    # Linux/Mac
+# netstat -ano | findstr :80   # Windows
+kill -9 <PID>
+make up
 ```
 
 ### Error: `connection refused` en PostgreSQL
 
 ```bash
-# Verificar que Docker está corriendo
-docker compose ps db
-
-# Reiniciar si es necesario
-docker compose restart db
+docker compose ps db           # Verificar que db está corriendo
+docker compose restart db      # Reiniciar si es necesario
+make logs-db                   # Ver logs
 ```
 
-### Error: Puerto en uso
+### Error: migraciones no aplicadas
 
 ```bash
-# Linux/Mac
-lsof -i :8000
-kill -9 <PID>
-
-# Windows
-netstat -ano | findstr :8000
-taskkill /PID <PID> /F
+make migrate-status            # Ver estado
+make migrate                   # Forzar aplicación
 ```
 
+### Error: `No module named 'backend'`
+
+Esto solo ocurre en modo desarrollo sin Docker. Asegúrate de ejecutar desde la raíz del proyecto con `PYTHONPATH=$PWD`.
+
+### Acceso a PostgreSQL
+
+La base de datos no publica un puerto en el host para evitar conflictos con instalaciones locales. Usa `make shell-db` o pgAdmin para administrarla.
+
 ---
-
-## Próximos Pasos
-
-1. Revisar [QUICKSTART.md](./QUICKSTART.md) para configuración inicial
-2. Revisar [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) para flujo de trabajo
-3. Revisar [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) para gestión de migraciones
-4. Explorar la API en http://localhost:8000/docs

@@ -1,98 +1,122 @@
 # FashionVision-AI - Entorno Docker
 
-Guía completa para configurar y usar los entornos de desarrollo y producción con Docker.
+Guia completa para configurar y usar los entornos de desarrollo y produccion con Docker.
 
 ## Tabla de Contenidos
 
 1. [Arquitectura](#arquitectura)
 2. [Modos de Uso](#modos-de-uso)
-3. [Primeros Pasos](#primeros-pasos)
-4. [Scripts de Ayuda](#scripts-de-ayuda)
-5. [Configuración de pgAdmin](#configuración-de-pgadmin)
-6. [Solución de Problemas](#solución-de-problemas)
+3. [Makefile](#makefile)
+4. [Primeros Pasos](#primeros-pasos)
+5. [Migraciones de Base de Datos (Alembic)](#migraciones-de-base-de-datos-alembic)
+6. [Configuracion de pgAdmin](#configuracion-de-pgadmin)
+7. [Variables de Entorno](#variables-de-entorno)
+8. [Solucion de Problemas](#solucion-de-problemas)
+9. [Comandos Rapidos de Referencia](#comandos-rapidos-de-referencia)
+10. [Acceso Rapido](#acceso-rapido)
+11. [Documentacion Relacionada](#documentacion-relacionada)
 
 ---
 
 ## Arquitectura
 
-### Modo Desarrollo (Local + Docker)
+### Modo Desarrollo (4 servicios en Docker con hot reload)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Tu Equipo de Desarrollo                  │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
-│   │   Frontend   │   │   Backend    │   │     DB       │   │
-│   │    Local     │   │    Local     │   │   Docker     │   │
-│   │   :5173      │   │   :8000      │   │   :5432      │   │
-│   │  (Vite)      │   │  (HotReload) │   │              │   │
-│   └──────────────┘   └──────────────┘   └──────────────┘   │
-│                                              │              │
-│                                              ▼              │
-│                                       ┌──────────────┐     │
-│                                       │   pgAdmin    │     │
-│                                       │   Docker     │     │
-│                                       │   :5050      │     │
-│                                       └──────────────┘     │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
++--------------------------------------------------------------+
+|                    Docker (Desarrollo)                        |
+|                                                              |
+|   +-----------+     +-------------+     +-------------+      |
+|   |   Nginx   |     |  Frontend   |     |   Backend   |      |
+|   |   :80    <-------  Vite :5173 |     |  uvicorn    |      |
+|   |           |     | (hot reload) |     |  :8000      |      |
+|   +-----+-----+     +-------------+     +------+------+      |
+|         |                                      |              |
+|         |    /api/*  --> backend:8000          |              |
+|         |    /*      --> frontend:5173         |              |
+|         |                                      |              |
+|         |                             +--------+------+      |
+|         |                             |      DB       |      |
+|         |                             |  PostgreSQL   |      |
+|         |                             |    :5432      |      |
+|         |                             +---------------+      |
+|         |                                    |               |
+|         |                                    v               |
+|         |                             +---------------+      |
+|         +---------------------------->+   pgAdmin     |      |
+|                                       |   :5050       |      |
+|                                       |  (opcional)   |      |
+|                                       +---------------+      |
++--------------------------------------------------------------+
 ```
 
-### Modo Producción (Docker Completo)
+| Servicio | Puerto interno | Descripcion |
+|----------|---------------|-------------|
+| nginx | 80 (host) | Reverse proxy unificado |
+| frontend | 5173 | Vite dev server, hot reload activo |
+| backend | 8000 | FastAPI + YOLO + CLIP, hot reload con --reload |
+| db | 5432 | PostgreSQL 16 + pgvector |
+| pgadmin | 5050 (opcional) | Administracion web de BD (perfil `tools`) |
+
+### Modo Produccion (Docker completo sin hot reload)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Producción                           │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
-│   │   Frontend   │   │   Backend    │   │     DB       │   │
-│   │   Docker     │   │   Docker     │   │   Docker     │   │
-│   │   :80        │   │   :8000      │   │   :5432      │   │
-│   └──────────────┘   └──────────────┘   └──────────────┘   │
-│         │                  │                    │          │
-│         └──────────────────┴────────────────────┘          │
-│                              │                              │
-│                              ▼                              │
-│                       ┌──────────────┐                     │
-│                       │   pgAdmin    │                     │
-│                       │   Docker     │                     │
-│                       │   :5050      │                     │
-│                       └──────────────┘                     │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
++--------------------------------------------------------------+
+|                    Docker (Produccion)                        |
+|                                                              |
+|   +-----------+     +-------------+     +-------------+      |
+|   |   Nginx   |     |  Frontend   |     |   Backend   |      |
+|   |   :80    <-------  build :80  |     |  gunicorn   |      |
+|   |           |     | (estaticos) |     |  :8000      |      |
+|   +-----+-----+     +-------------+     +------+------+      |
+|         |                                      |              |
+|         |    /api/*  --> backend:8000          |              |
+|         |    /*      --> frontend:80           |              |
+|         |                                      |              |
+|         |                             +--------+------+      |
+|         |                             |      DB       |      |
+|         |                             |  PostgreSQL   |      |
+|         |                             |    :5432      |      |
+|         |                             +---------------+      |
+|                                                              |
++--------------------------------------------------------------+
 ```
+
+| Servicio | Puerto interno | Descripcion |
+|----------|---------------|-------------|
+| nginx | 80 (host) | Reverse proxy unificado |
+| frontend | 80 | Build estatico de Vite servido por nginx |
+| backend | 8000 | FastAPI + YOLO + CLIP con gunicorn (4 workers) |
+| db | 5432 | PostgreSQL 16 + pgvector |
 
 ---
 
 ## Modos de Uso
 
-### Modo A: Desarrollo (Hot-Reload Activo)
+### Modo A: Desarrollo (hot reload en Docker)
 
-Para desarrollo activo cuando necesitas iterar rápido.
+Para desarrollo activo con todos los servicios en Docker y hot reload habilitado.
 
 ```bash
-# 1. Iniciar base de datos + pgAdmin en Docker
-docker compose up -d db pgadmin
+make up-build
+make migrate
+```
 
-# 2. Terminal Backend (hot-reload)
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
-uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
+El comando `make up-build` reconstruye las imagenes y levanta los 4 servicios (db, backend, frontend, nginx). Las migraciones de base de datos se ejecutan automaticamente al iniciar el backend. `make migrate` es un paso adicional por seguridad para verificar que las migraciones esten al dia.
 
-# 3. Terminal Frontend (hot-reload)
-cd frontend
-npm run dev
+Para incluir pgAdmin (opcional):
+
+```bash
+docker compose --profile tools up -d pgadmin
 ```
 
 **Acceso:**
+
 | Servicio | URL |
 |----------|-----|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
+| App | http://localhost |
+| Backend API | http://localhost/api |
+| API Docs | http://localhost/docs |
 | pgAdmin | http://localhost:5050 |
 
 **Credenciales pgAdmin:**
@@ -101,28 +125,85 @@ npm run dev
 
 ---
 
-### Modo B: Testing / Demo (Docker Completo)
+### Modo B: Produccion
 
-Para testing, demos a clientes, o cuando no necesitas hot-reload.
+Para despliegue en produccion sin hot reload, imagenes optimizadas y gunicorn.
 
 ```bash
-# Todo en Docker (comando único)
-docker compose up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
 
+Esto levanta los 4 servicios usando las imagenes de produccion: backend con gunicorn + 4 workers uvicorn, frontend con build estatico, sin montajes de codigo fuente, y con `restart: always`.
+
+```bash
 # Ver servicios
-docker compose ps
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 
 # Ver logs
-docker compose logs -f
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+
+# Detener
+docker compose -f docker-compose.yml -f docker-compose.prod.yml down
 ```
 
 **Acceso:**
+
 | Servicio | URL |
 |----------|-----|
 | App | http://localhost |
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
-| pgAdmin | http://localhost:5050 |
+| Backend API | http://localhost/api |
+| API Docs | http://localhost/docs |
+
+---
+
+## Makefile
+
+El proyecto incluye un `Makefile` en la raiz con los siguientes targets:
+
+| Target | Comando | Descripcion |
+|--------|---------|-------------|
+| `make up` | `docker compose up -d` | Levanta los 4 servicios (db, backend, frontend, nginx) en modo desarrollo |
+| `make up-build` | `docker compose up -d --build` | Reconstruye imagenes y levanta los 4 servicios |
+| `make down` | `docker compose down` | Detiene y elimina todos los contenedores |
+| `make logs` | `docker compose logs -f` | Muestra logs de todos los servicios en tiempo real |
+| `make logs-backend` | `docker compose logs -f backend` | Logs del backend (FastAPI) |
+| `make logs-db` | `docker compose logs -f db` | Logs de PostgreSQL |
+| `make logs-frontend` | `docker compose logs -f frontend` | Logs del frontend (Vite dev server) |
+| `make logs-nginx` | `docker compose logs -f nginx` | Logs de nginx |
+| `make shell-backend` | `docker compose exec backend bash` | Abre shell interactiva en el contenedor backend |
+| `make shell-db` | `docker compose exec db psql -U ...` | Abre psql en el contenedor de base de datos |
+| `make migrate` | `alembic upgrade head` en contenedor | Aplica todas las migraciones pendientes |
+| `make migrate-status` | `alembic current` en contenedor | Muestra la revision actual de la BD |
+| `make migrate-history` | `alembic history` en contenedor | Muestra el historial completo de migraciones |
+| `make migrate-down` | `alembic downgrade -1` en contenedor | Revierte la ultima migracion aplicada |
+| `make seed` | carga seed.sql en BD | Carga datos iniciales de prueba en la base de datos |
+| `make test-backend` | `pytest` en contenedor | Corre los tests del backend con cobertura |
+| `make test-frontend` | `npm run test:run` en contenedor | Corre los tests del frontend |
+| `make clean` | `docker compose down -v --remove-orphans` | Elimina contenedores, volumenes e imagenes huerfanas |
+
+**Uso tipico:**
+
+```bash
+# Iniciar desarrollo
+make up-build
+make migrate
+
+# Ver logs de un servicio
+make logs-backend
+
+# Entrar al contenedor del backend
+make shell-backend
+
+# Correr tests
+make test-backend
+make test-frontend
+
+# Detener todo
+make down
+
+# Limpiar completamente (incluye datos de BD)
+make clean
+```
 
 ---
 
@@ -130,85 +211,42 @@ docker compose logs -f
 
 ### Requisitos Previos
 
-| Software | Versión | Notas |
+| Software | Version | Notas |
 |----------|---------|-------|
-| Docker Desktop | 4.0+ | Para Windows/WSL |
-| Git | Any | Para clonar |
-| Python | 3.12+ | Para venv local |
-| Node.js | 20+ | Para frontend local |
+| Docker | 24.0+ | Con Docker Compose V2 integrado |
+| Git | Any | Para clonar el repositorio |
 
-### Instalación (Nuevos miembros del equipo)
+### Instalacion (Nuevos miembros del equipo)
 
 ```bash
 # 1. Clonar repositorio
-git clone <repo-url> FashionVision-AI
+git clone git@github.com:Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 
-# 2. Copiar archivo de variables
-cp .env.template .env
+# 2. Copiar archivo de variables de entorno
+cp .env.example .env
 
-# 3. Crear entorno virtual de Python
-cd backend
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-pip install -r requirements.txt
+# 3. (Opcional) Editar .env con valores personalizados
+# vi .env
 
-# 4. Crear entorno de frontend
-cd ../frontend
-npm install
+# 4. Construir e iniciar todos los servicios
+make up-build
 
-# 5. Iniciar entorno de desarrollo
-cd ..
-./scripts/dev-start.sh
+# 5. Verificar que las migraciones esten aplicadas
+make migrate
 ```
 
----
-
-## Scripts de Ayuda
-
-### Scripts Disponibles
-
-| Script | Uso | Descripción |
-|--------|-----|-------------|
-| `dev-start.sh` | `./scripts/dev-start.sh` | Inicia modo desarrollo (DB + pgAdmin + migraciones) |
-| `dev-stop.sh` | `./scripts/dev-stop.sh` | Detiene servicios Docker |
-| `docker-start.sh` | `./scripts/docker-start.sh` | Inicia todo en Docker (modo producción/testing) |
-| `db-reset.sh` | `./scripts/db-reset.sh` | Reinicia la base de datos (¡cuidado!) |
-| `pgadmin-start.sh` | `./scripts/pgadmin-start.sh` | Inicia solo pgAdmin |
-| `pgadmin-stop.sh` | `./scripts/pgadmin-stop.sh` | Detiene pgAdmin |
-| `migrate.sh` | `./scripts/migrate.sh` | Control manual de migraciones Alembic |
-
-### Uso Típico
+**Verificar que todo funciona:**
 
 ```bash
-# --- DESARROLLO ---
-# Iniciar entorno desarrollo (incluye migraciones automáticas)
-./scripts/dev-start.sh
+# Ver estado de los servicios
+docker compose ps
 
-# Backend: cd backend && source venv/bin/activate && export PYTHONPATH=$PWD && uvicorn backend.app.main:app --reload
-# Frontend: cd frontend && npm run dev
+# Ver logs en tiempo real
+make logs
 
-# Ver estado de migraciones
-./scripts/migrate.sh status
-
-# Detener servicios
-./scripts/dev-stop.sh
-
-# --- PRODUCCIÓN/TESTING ---
-# Iniciar todo en Docker
-./scripts/docker-start.sh
-
-# Detener todo
-docker compose down
-
-# --- SOLO PGADMIN ---
-./scripts/pgadmin-start.sh
-./scripts/pgadmin-stop.sh
-
-# --- MIGRACIONES ---
-./scripts/migrate.sh status   # Ver estado
-./scripts/migrate.sh down     # Rollback
-./scripts/migrate.sh reset    # Reset completo
+# Acceder a la aplicacion
+# Abrir http://localhost en el navegador
 ```
 
 ---
@@ -217,26 +255,32 @@ docker compose down
 
 El sistema usa **Alembic** para gestionar cambios en el schema de la base de datos de forma versionada.
 
-### ¿Cómo funciona?
+### Como funciona?
 
 1. Los cambios de DB se crean como **migraciones** en `backend/alembic/versions/`
-2. Cuando otro desarrollador hace `git pull` y ejecuta `dev-start.sh`, las migraciones se aplican automáticamente
-3. Los datos existentes se preservan (Alembic solo modifica el schema, no los datos)
+2. El backend ejecuta automaticamente `alembic upgrade head` al iniciar
+3. Cuando otro desarrollador hace `git pull` y ejecuta `make up-build`, las migraciones se aplican automaticamente
+4. Los datos existentes se preservan (Alembic solo modifica el schema, no los datos)
 
 ### Flujo de Trabajo
 
 ```bash
 # DESARROLLADOR A: Crear un cambio en la DB
 
-# 1. Hacer cambios en los modelos Python (backend/app/models/)
-# 2. Crear migración automáticamente
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
+# 1. Entrar al contenedor del backend
+make shell-backend
+
+# 2. Dentro del contenedor, ir al directorio de backend
+cd /app/backend
+
+# 3. Crear migracion automaticamente desde cambios en modelos
 alembic revision --autogenerate -m "descripcion_del_cambio"
 
-# 3. Revisar la migración creada en backend/alembic/versions/
-# 4. Commit y push
+# 4. Salir del contenedor
+exit
+
+# 5. Revisar la migracion creada en backend/alembic/versions/
+# 6. Commit y push
 git add backend/alembic/versions/
 git commit -m "migration: descripcion_del_cambio"
 git push
@@ -246,82 +290,97 @@ git push
 # 1. Pull
 git pull
 
-# 2. Ejecutar dev-start.sh (las migraciones se aplican automáticamente)
-./scripts/dev-start.sh
+# 2. Reconstruir (las migraciones se aplican automaticamente)
+make up-build
 ```
 
-### Scripts de Migración
-
-| Script | Uso | Descripción |
-|--------|-----|-------------|
-| `dev-start.sh` | `./scripts/dev-start.sh` | Ejecuta `alembic upgrade head` automáticamente |
-| `migrate.sh` | `./scripts/migrate.sh` | Control manual de migraciones |
-
-### Comandos de Migración
+### Comandos de Migracion via Makefile
 
 ```bash
 # Ver estado actual de migraciones
-./scripts/migrate.sh status
+make migrate-status
 
 # Ver historial de migraciones
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-alembic history
+make migrate-history
 
-# Hacer rollback de una migración
-./scripts/migrate.sh down
+# Aplicar migraciones pendientes
+make migrate
 
-# Resetear migraciones (¡cuidado!)
-./scripts/migrate.sh reset
+# Revertir la ultima migracion
+make migrate-down
+
+# Para revertir multiples migraciones, repetir make migrate-down
+# O entrar al contenedor y ejecutar directamente:
+#   make shell-backend
+#   cd /app/backend
+#   alembic downgrade -2    (revierte 2 migraciones)
+#   alembic downgrade base   (revierte todas)
+
+# Para un reset completo de BD (pierde todos los datos):
+make clean && make up-build
 ```
 
-### Crear una Nueva Migración
+### Crear una Nueva Migracion
 
 ```bash
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
+# Entrar al contenedor del backend
+make shell-backend
 
-# Crear migración automáticamente desde cambios en modelos
+# Dentro del contenedor:
+cd /app/backend
+
+# Crear migracion automaticamente desde cambios en modelos
 alembic revision --autogenerate -m "agregar campo telefono a users"
 
-# O crear migración vacía para hacer cambios manuales
+# O crear migracion vacia para cambios manuales
 alembic revision -m "crear tabla nuevo_modulo"
+
+# Salir del contenedor
+exit
 ```
 
-### Archivos de Migración
+### Archivos de Migracion
 
 Las migraciones se guardan en:
+
 ```
 backend/alembic/versions/
-├── 001_initial.py      # Schema inicial
-├── 002_xxx.py          # Siguientes migraciones
-└── ...
++-- 001_initial.py      # Schema inicial
++-- 002_xxx.py          # Siguientes migraciones
++-- ...
 ```
 
-**Importante:** No editar migraciones ya aplicadas. Crear una nueva migración para cada cambio.
+**Importante:** No editar migraciones ya aplicadas. Crear una nueva migracion para cada cambio.
 
 ---
 
-## Configuración de pgAdmin
+## Configuracion de pgAdmin
+
+pgAdmin es un servicio opcional que se levanta con el perfil `tools`. Para iniciarlo:
+
+```bash
+docker compose --profile tools up -d pgadmin
+```
 
 ### Conectar a la Base de Datos
 
 1. Abrir http://localhost:5050
 2. Login con credenciales de `.env`
-3. Click derecho en "Servers" → "Create" → "Server..."
+3. Click derecho en "Servers" > "Create" > "Server..."
 
-**Configuración de conexión:**
+**Configuracion de conexion:**
 
 | Campo | Valor |
 |-------|-------|
-| Host name/address | `fashionvision_db` |
+| Host name/address | `db` |
 | Port | `5432` |
 | Maintenance database | `fashionvision_ai` |
 | Username | `fashionvision_ai_user` |
 | Password | (de .env) |
 
-### Cambio de Contraseña pgAdmin
+> **Nota:** El hostname es `db` (nombre del servicio en Docker Compose). La red interna `pos-network` permite que los contenedores se comuniquen usando el nombre del servicio como hostname.
+
+### Cambio de Contrasena pgAdmin
 
 Editar `.env`:
 
@@ -331,8 +390,9 @@ PGADMIN_PASSWORD=tu_nueva_password
 ```
 
 Reiniciar contenedor:
+
 ```bash
-docker compose restart pgadmin
+docker compose --profile tools restart pgadmin
 ```
 
 ---
@@ -340,6 +400,14 @@ docker compose restart pgadmin
 ## Variables de Entorno
 
 ### Archivo `.env`
+
+Copiar desde el template:
+
+```bash
+cp .env.example .env
+```
+
+Editar `.env` con valores reales antes de levantar el sistema. Nunca commitear `.env` al repositorio.
 
 ```env
 # =============================================================================
@@ -371,176 +439,227 @@ SECRET_KEY=generate_with_openssl_rand_base64_32
 
 ### Puertos por Defecto
 
-| Servicio | Puerto | Descripción |
+| Servicio | Puerto | Descripcion |
 |----------|--------|-------------|
-| Frontend (dev) | 5173 | Vite dev server |
-| Frontend (prod) | 80 | Nginx Docker |
-| Backend | 8000 | FastAPI |
+| Frontend (via nginx) | 80 | Acceso unificado a la app |
+| Backend | 8000 | FastAPI (via nginx o directo) |
 | PostgreSQL | 5432 | Base de datos |
-| pgAdmin | 5050 | Administración DB |
+| pgAdmin | 5050 | Administracion DB (perfil tools) |
 
 ---
 
-## Solución de Problemas
+## Solucion de Problemas
 
 ### pgAdmin no conecta a la base de datos
 
-**Síntoma**: Error "could not connect"
+**Sintoma:** Error "could not connect"
 
-**Solución**:
+**Solucion:**
+
 ```bash
-# Verificar que la DB está corriendo
+# Verificar que la DB esta corriendo
 docker compose ps db
+
+# Ver logs de la base de datos
+make logs-db
 
 # Ver logs de pgAdmin
 docker compose logs pgadmin
 
 # Reiniciar pgAdmin
-docker compose restart pgadmin
+docker compose --profile tools restart pgadmin
 ```
 
 ### El contenedor de pgAdmin no inicia
 
-**Síntoma**: Contenedor en estado "Restarting"
+**Sintoma:** Contenedor en estado "Restarting"
 
-**Solución**:
+**Solucion:**
+
 ```bash
 # Ver logs de errores
-docker logs fashionvision_pgadmin
+docker compose logs pgadmin
 
 # Eliminar y recrear
-docker compose down pgadmin
-docker compose up -d pgadmin
+docker compose --profile tools down pgadmin
+docker compose --profile tools up -d pgadmin
 ```
 
-### Cambié credenciales de pgAdmin y no puedo entrar
+### Cambie credenciales de pgAdmin y no puedo entrar
 
-**Solución**:
+**Solucion:**
+
 ```bash
-# Eliminar volumen de pgAdmin (pierde configuración)
-docker compose down -v pgadmin
-docker compose up -d pgadmin
+# Eliminar volumen de pgAdmin (pierde configuracion)
+docker compose --profile tools down -v pgadmin
+docker compose --profile tools up -d pgadmin
 
 # O editar .env y reiniciar
-docker compose restart pgadmin
+docker compose --profile tools restart pgadmin
 ```
 
-### La base de datos no está healthy
+### La base de datos no esta healthy
 
-**Síntoma**: `condition: service_healthy` failed
+**Sintoma:** `condition: service_healthy` failed
 
-**Solución**:
+**Solucion:**
+
 ```bash
 # Ver logs de PostgreSQL
-docker compose logs db
+make logs-db
 
-# Reiniciar database
+# Reiniciar base de datos
 docker compose restart db
 
-# Si persiste, resetear
-./scripts/db-reset.sh
+# Si persiste, resetear completamente
+make clean && make up-build
 ```
 
 ### Error en migraciones Alembic
 
-**Síntoma**: Error "Can't locate revision" o similares
+**Sintoma:** Error "Can't locate revision" o similares
 
-**Solución**:
+**Solucion:**
+
 ```bash
 # Ver estado actual
-./scripts/migrate.sh status
+make migrate-status
 
 # Ver historial de migraciones
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-alembic history
+make migrate-history
 
-# Si hay conflicto, resetear migraciones
-./scripts/migrate.sh reset
+# Si hay conflicto, resetear migraciones (pierde datos)
+make clean && make up-build
+
+# O revertir una a una
+make migrate-down
 ```
 
 ### Migraciones no se ejecutan
 
-**Síntoma**: La DB no tiene los cambios esperados
+**Sintoma:** La DB no tiene los cambios esperados
 
-**Solución**:
+**Solucion:**
+
 ```bash
-# Forzar ejecución de migraciones
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-alembic upgrade head
+# Forzar ejecucion de migraciones
+make migrate
 
 # Verificar estado
+make migrate-status
+
+# Si el problema persiste, entrar al contenedor y verificar
+make shell-backend
+cd /app/backend
 alembic current
+alembic heads
+```
+
+### Puertos en conflicto
+
+**Sintoma:** Error "port is already allocated"
+
+**Solucion:**
+
+```bash
+# Ver que proceso esta usando el puerto
+sudo lsof -i :80
+sudo lsof -i :8000
+sudo lsof -i :5432
+
+# Detener el proceso o cambiar los puertos en .env
+# Luego reiniciar
+make down && make up
 ```
 
 ---
 
-## Comandos Rápidos de Referencia
+## Comandos Rapidos de Referencia
 
 ### Ver servicios activos
+
 ```bash
 docker compose ps
 ```
 
-### Ver todos los logs
-```bash
-docker compose logs -f
-```
+### Logs
 
-### Ver logs de un servicio específico
 ```bash
-docker compose logs -f pgadmin
-docker compose logs -f db
-docker compose logs -f backend
+make logs                # Todos los servicios
+make logs-backend        # Solo backend
+make logs-db             # Solo base de datos
+make logs-frontend       # Solo frontend
+make logs-nginx          # Solo nginx
 ```
 
 ### Reiniciar un servicio
+
 ```bash
-docker compose restart pgadmin
+docker compose restart backend
 docker compose restart db
+docker compose restart frontend
+docker compose restart nginx
 ```
 
-### Detener todos los servicios
-```bash
-docker compose stop
-```
+### Detener servicios
 
-### Eliminar todos los contenedores
 ```bash
-docker compose down
+make down                # Detiene y elimina contenedores
 ```
 
 ### Rebuild completo
+
 ```bash
-docker compose build --no-cache
-docker compose up -d
+make clean               # Elimina contenedores y volumenes
+make up-build            # Reconstruye y levanta
+```
+
+### Shell en contenedores
+
+```bash
+make shell-backend       # Shell bash en backend
+make shell-db            # psql en base de datos
+```
+
+### Migraciones
+
+```bash
+make migrate             # Aplicar migraciones
+make migrate-status      # Ver estado
+make migrate-history     # Ver historial
+make migrate-down        # Revertir ultima
+```
+
+### Tests
+
+```bash
+make test-backend        # Tests del backend
+make test-frontend       # Tests del frontend
 ```
 
 ---
 
-## Acceso Rápido
+## Acceso Rapido
 
 | Recurso | URL |
 |---------|-----|
-| App (producción) | http://localhost |
-| Frontend (dev) | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
+| App (produccion y desarrollo) | http://localhost |
+| Backend API | http://localhost/api |
+| API Docs | http://localhost/docs |
 | pgAdmin | http://localhost:5050 |
 
 ### Credenciales por Defecto
 
-| Servicio | Usuario | Contraseña |
+| Servicio | Usuario | Contrasena |
 |----------|---------|------------|
 | pgAdmin | `admin@fashionvision.com` | `admin123` |
 | PostgreSQL | `fashionvision_ai_user` | `fashionvision_ai_pass` |
 
 ---
 
-## Documentación Relacionada
+## Documentacion Relacionada
 
-- [Guía de Desarrollo](./DEVELOPMENT.md)
+- [Guia de Desarrollo](./DEVELOPMENT.md)
 - [Comandos Importantes](./COMANDOS.md)
-- [Guía de pgAdmin](./GUIAS_PGADMIN.md)
+- [Guia de pgAdmin](./GUIAS_PGADMIN.md)
 - [Sistema de Sesiones y Carritos](./SESIONES_Y_CARRITOS.md)

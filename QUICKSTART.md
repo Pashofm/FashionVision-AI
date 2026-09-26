@@ -1,30 +1,30 @@
 # Quickstart - FashionVision-AI
 
-Guía rápida para nuevos desarrolladores que quieren poner en marcha el proyecto.
+Guía rápida para poner en marcha el proyecto. Todo corre en Docker — no necesitas instalar Python ni Node.js en tu máquina.
 
 ---
 
-## Resumen: 5 Pasos para Empezar
+## 5 Comandos para Empezar
 
 ```bash
 # 1. Clonar el repositorio
-git clone <repo-url> FashionVision-AI
+git clone git@github.com:Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 
 # 2. Configurar variables de entorno
-cp .env.template .env
+cp .env.example .env
 
-# 3. Iniciar base de datos y pgAdmin
-docker compose up -d db pgadmin
+# 3. Construir y levantar los 4 servicios (DB + Backend + Frontend + Nginx)
+make up-build
 
-# 4. Instalar dependencias
-cd backend && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
-cd ../frontend && npm install
+# 4. Ejecutar migraciones de base de datos
+make migrate
 
-# 5. Iniciar servicios
-# Terminal 1: cd backend && source venv/bin/activate && export PYTHONPATH=$PWD && uvicorn backend.app.main:app --reload
-# Terminal 2: cd frontend && npm run dev
+# 5. Cargar datos iniciales de prueba
+make seed
 ```
+
+El sistema ya está corriendo. Abre http://localhost en tu navegador.
 
 ---
 
@@ -32,20 +32,21 @@ cd ../frontend && npm install
 
 | Software | Versión | Verificar |
 |----------|---------|-----------|
-| Python | 3.12+ | `python --version` |
-| Node.js | 20+ | `node --version` |
-| Docker | 4.0+ | `docker --version` |
+| Docker | 24.0+ | `docker --version` |
+| Docker Compose | v2 (plugin) | `docker compose version` |
+| Git | 2.40+ | `git --version` |
+| Espacio en disco | 10 GB libres | Dependencias e imágenes Docker |
 
 ---
 
 ## URLs de Acceso
 
-| Servicio | URL | Credenciales |
-|----------|-----|--------------|
-| Frontend (dev) | http://localhost:5173 | - |
-| Backend API | http://localhost:8000 | - |
-| API Docs | http://localhost:8000/docs | - |
-| pgAdmin | http://localhost:5050 | admin@fashionvision.com / admin123 |
+| Servicio | URL | Notas |
+|----------|-----|-------|
+| App | http://localhost | Vía nginx (puerto 80) |
+| Backend API | http://localhost/api | FastAPI vía nginx |
+| API Docs | http://localhost/docs | Swagger UI vía nginx |
+| pgAdmin | http://localhost:5050 | Requiere `docker compose --profile tools up -d pgadmin` |
 
 ---
 
@@ -62,89 +63,57 @@ cd ../frontend && npm install
 ## Comandos Más Comunes
 
 ```bash
-# Iniciar todo (desarrollo)
-./scripts/dev-start.sh
-
-# Ver estado de servicios
-docker compose ps
-
-# Ver logs
-docker compose logs -f
-
-# Detener servicios
-./scripts/dev-stop.sh
-
-# Ver migraciones
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-cd backend
-alembic current
+make help            # Ver todos los comandos disponibles
+make logs            # Ver logs de todos los servicios
+make logs-backend    # Solo logs del backend
+make down            # Detener todos los servicios
+make clean           # Eliminar contenedores y volúmenes
+make shell-backend   # Abrir shell en el contenedor backend
+make shell-db        # Abrir psql en la base de datos
+make test-backend    # Correr tests del backend
+make test-frontend   # Correr tests del frontend
 ```
 
 ---
 
 ## Solución de Problemas Comunes
 
-### "Module not found: backend"
+### "Port already in use"
 
 ```bash
-export PYTHONPATH=$PWD
-# Ejecutar desde la raíz del proyecto
+# Linux/Mac
+lsof -i :80
+kill -9 <PID>
+
+# Windows
+netstat -ano | findstr :80
+taskkill /PID <PID> /F
 ```
 
 ### "Database connection refused"
 
 ```bash
-# Verificar que Docker está corriendo
-docker compose ps
-
-# Reiniciar base de datos
-docker compose restart db
+docker compose ps db               # Verificar que db está corriendo
+make logs-db                       # Ver logs de PostgreSQL
+docker compose restart db          # Reiniciar
 ```
 
-### "Port already in use"
+### "Cannot connect to the Docker daemon"
 
 ```bash
-# Linux/Mac
-lsof -i :8000
-kill -9 <PID>
-
-# Windows
-netstat -ano | findstr :8000
-taskkill /PID <PID> /F
+sudo systemctl start docker        # Linux
+# Windows/Mac: abrir Docker Desktop
 ```
+
+### La detección descarga dependencias en el primer uso
+
+La primera detección puede tardar mientras PyTorch prepara su caché. Espera a que finalice y revisa `make logs-backend` si el proceso no concluye.
 
 ---
 
 ## Próximos Pasos
 
-1. Revisar [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) para flujo de trabajo
-2. Revisar [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) para migraciones
-3. Explorar la API en http://localhost:8000/docs
-
----
-
-## Estructura de Archivos
-
-```
-FashionVision-AI/
-├── backend/           # Python/FastAPI
-│   ├── app/          # Código de la aplicación
-│   ├── alembic/      # Migraciones de DB
-│   └── models/       # Modelo YOLO
-├── frontend/          # React/Vite
-├── docker/           # Dockerfiles
-├── scripts/           # Scripts de automatización
-├── docs/             # Documentación
-└── docker-compose.yml
-```
-
----
-
-## Help
-
-Si algo no funciona:
-
-1. Revisar esta guía de nuevo
-2. Consultar [docs/COMANDOS.md](./docs/COMANDOS.md)
-3. Consultar [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md)
+1. Revisar [README.md](./README.md) para la arquitectura completa
+2. Revisar [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) para flujo de trabajo
+3. Revisar [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) para migraciones
+4. Explorar la API en http://localhost/docs

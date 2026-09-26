@@ -1,0 +1,11 @@
+# Dependencies are installed with npm ci inside the image.
+node_modules/
+dist/
+.npm/
+.eslintcache
+coverage/
+
+# Local configuration and generated artifacts.
+.env
+.env.local
+*.log

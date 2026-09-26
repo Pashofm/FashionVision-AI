@@ -76,28 +76,23 @@ tipo(ámbito): descripción breve
 
 ## Entorno de Desarrollo
 
-Sigue la [Guía de Instalación](docs/INSTALLATION.md) para configurar tu entorno.
+Sigue el [QUICKSTART.md](QUICKSTART.md) para levantar el sistema en 5 comandos.
 
 ### Modos de trabajo
 
 | Modo | Comando | Descripción |
 |------|---------|-------------|
-| Hot-reload | `./scripts/dev-start.sh` | Ideal para desarrollo frontend/backend |
-| Docker full | `./scripts/docker-start.sh` | Entorno completo con BD, pgAdmin |
+| Docker dev | `make up-build` | Entorno completo con hot reload activo |
+| Docker prod | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` | Sin hot reload, gunicorn workers |
 
 ### Ejecutar Tests
 
 ```bash
-# Backend
-cd backend
-python -m pytest tests/ -v
+# Backend (dentro del contenedor)
+make test-backend
 
-# Frontend
-cd frontend
-npm run test:run
-
-# Con scripts
-./backend/scripts/run_tests.sh
+# Frontend (dentro del contenedor)
+make test-frontend
 ```
 
 ---
@@ -106,24 +101,29 @@ npm run test:run
 
 ```
 FashionVision-AI/
-├── backend/           # API FastAPI + SQLAlchemy
-│   ├── app/           # Código de la aplicación
-│   ├── alembic/       # Migraciones de BD
-│   ├── database/      # Schema SQL y seed data
-│   ├── tests/         # Tests unitarios e integración
-│   └── scripts/       # Scripts de BD de testing
-├── frontend/          # React 19 + Vite
+├── backend/              # API FastAPI + SQLAlchemy + YOLO + CLIP
+│   ├── Dockerfile        # Multi-stage: dev + prod
+│   ├── app/              # Código de la aplicación
+│   ├── alembic/          # Migraciones de BD
+│   ├── database/         # Schema SQL y seed data
+│   ├── models/           # Pesos del modelo YOLO incluidos para la demo
+│   └── tests/            # Tests unitarios e integración
+├── frontend/             # React 19 + Vite
+│   ├── Dockerfile        # Multi-stage: dev + prod
 │   └── src/
-│       ├── components/ # Componentes reutilizables
-│       ├── contexts/   # Contextos de React
-│       ├── hooks/      # Hooks personalizados
-│       ├── pages/      # Páginas de la app
-│       ├── services/   # Clientes de API
-│       └── styles/     # Hojas de estilo
-├── docker/            # Dockerfiles y configs
-├── docs/              # Documentación del proyecto
-├── scripts/           # Scripts de automatización
-└── docker-compose.yml
+│       ├── components/   # Componentes reutilizables
+│       ├── contexts/     # Contextos de React
+│       ├── hooks/        # Hooks personalizados
+│       ├── pages/        # Páginas de la app
+│       ├── services/     # Clientes de API
+│       └── styles/       # Hojas de estilo
+├── nginx/                # Configuración de nginx (dev + prod)
+├── docker/               # Dockerfiles legacy y postgres-init
+├── docs/                 # Documentación del proyecto
+├── scripts/              # Scripts de utilidad
+├── Makefile              # Comandos principales del proyecto
+├── docker-compose.yml    # Orquestación desarrollo
+└── docker-compose.prod.yml  # Override producción
 ```
 
 ---

@@ -175,30 +175,17 @@ Si tienes problemas de conexión, verificar que los puertos no estén bloqueados
 
 ## Iniciar los Servicios
 
-### Opción A: Script automático (recomendado para nuevo setup)
+### Iniciar con Docker
 
 ```bash
 cd ~/Projects/FashionVision-AI
 
-# Primera vez: instalar todo
-./scripts/setup.sh
-
-# Iniciar servicios manualmente:
-# Terminal 1:
-cd backend && source venv/bin/activate && export PYTHONPATH=$PWD && uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-
-# Terminal 2:
-cd frontend && npm run dev
+cp .env.example .env
+make up-build
+make seed
 ```
 
-### Opción B: Script deploy-local (un solo comando)
-
-```bash
-cd ~/Projects/FashionVision-AI
-./scripts/deploy-local.sh
-```
-
-Esto iniciara backend y frontend en segundo plano.
+Docker inicia la base de datos, backend, frontend y nginx. No necesitas instalar Python ni Node.js en WSL2.
 
 ---
 
@@ -208,8 +195,8 @@ Esto iniciara backend y frontend en segundo plano.
 
 ```bash
 # En otra terminal de WSL2
-curl http://localhost:8000/health
-curl http://localhost:5173
+curl http://localhost/health
+curl http://localhost
 ```
 
 ### Verificar Docker
@@ -222,9 +209,9 @@ docker compose ps
 
 | Servicio | URL | Credenciales |
 |----------|-----|--------------|
-| Frontend (dev) | http://localhost:5173 | - |
-| Backend API | http://localhost:8000 | - |
-| API Docs | http://localhost:8000/docs | - |
+| App | http://localhost | - |
+| Backend API | http://localhost/api | - |
+| API Docs | http://localhost/docs | - |
 | pgAdmin | http://localhost:5050 | ver .env |
 | PostgreSQL | localhost:5432 | ver .env |
 

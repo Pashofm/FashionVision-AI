@@ -1,15 +1,17 @@
 # FashionVision-AI - Guía de Desarrollo en Equipo
 
-Documentación para configurar el entorno de desarrollo en equipo con Docker + desarrollo local mixto.
+Documentación para configurar el entorno de desarrollo en equipo con Docker.
 
 ## Índice
 
 - [Arquitectura](#arquitectura)
 - [Modos de Uso](#modos-de-uso)
 - [Primeros Pasos](#primeros-pasos)
+- [Comandos Makefile](#comandos-makefile)
 - [Comandos Rápidos](#comandos-rápidos)
-- [Scripts de Ayuda](#scripts-de-ayuda)
+- [Migraciones con Alembic](#migraciones-con-alembic)
 - [Solución de Problemas](#solución-de-problemas)
+- [Desarrollo sin Docker (avanzado)](#desarrollo-sin-docker-avanzado)
 
 ---
 
@@ -18,28 +20,28 @@ Documentación para configurar el entorno de desarrollo en equipo con Docker + d
 ### Entorno de Desarrollo Activo
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Tu Equipo de Desarrollo                  │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
-│   │   Frontend   │   │   Backend    │   │     DB      │   │
-│   │    Local     │   │    Local     │   │   Docker    │   │
-│   │   :5173      │   │   :8000      │   │   :5432     │   │
-│   │  (Vite)      │   │  (HotReload) │   │             │   │
-│   └──────────────┘   └──────────────┘   └──────────────┘   │
-│         ↑                  ↑                   ↑           │
-│         │                  │                   │           │
-│         └──────────────────┴───────────────────┘           │
-│                              ↓                              │
-│                    Desarrollo Activo                        │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        Tu Equipo de Desarrollo                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────┐ │
+│   │   Frontend   │   │   Backend    │   │     DB       │   │  Nginx   │ │
+│   │   Docker     │   │   Docker     │   │   Docker     │   │  Docker  │ │
+│   │   :5173      │   │   :8000      │   │   :5432      │   │  :80     │ │
+│   │  (Vite HMR)  │   │  (HotReload) │   │  (pgvector)  │   │ (proxy)  │ │
+│   └──────────────┘   └──────────────┘   └──────────────┘   └──────────┘ │
+│         ↑                  ↑                   ↑                ↑        │
+│         │                  │                   │                │        │
+│         └──────────────────┴───────────────────┴────────────────┘        │
+│                                    ↑                                     │
+│                             make up / make up-build                      │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Entorno de Testing/Demo (Docker Completo)
+### Entorno de Testing/Demo (Producción simulada)
 
 ```bash
-docker compose up -d   # Todo en contenedores
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 ---
@@ -48,47 +50,46 @@ docker compose up -d   # Todo en contenedores
 
 ### Modo A: Desarrollo (hot-reload activo)
 
-**Para desarrollo activo cuando necesitas iterar rápido.**
+**Para desarrollo activo cuando necesitas iterar rápido. Hot reload en frontend y backend dentro de Docker.**
 
 ```bash
-# Terminal 1 - Base de datos (solo una vez al inicio)
-docker compose up -d db
-
-# Terminal 2 - Backend con hot-reload
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-
-# Terminal 3 - Frontend con hot-reload
-cd frontend && npm run dev
+make up-build
 ```
 
+Esto levanta los 4 servicios (db, backend, frontend, nginx) con el código fuente montado como volumen. Los cambios en el código local se reflejan instantáneamente gracias al hot reload de uvicorn y Vite.
+
 **Acceso:**
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
+- App completa (nginx): http://localhost
+- Backend API: http://localhost/api
+- API Docs: http://localhost/docs
+- pgAdmin (opcional): http://localhost:5050
+
+Si solo necesitas reiniciar sin reconstruir (porque ya tienes las imágenes):
+
+```bash
+make up
+```
 
 ---
 
-### Modo B: Testing / Demo (Docker completo)
+### Modo B: Testing / Demo (producción simulada)
 
-**Para testing, demos a clientes, o cuando no necesitas hot-reload.**
+**Para testing, demos a clientes, o cuando no necesitas hot-reload. Sin montajes de código fuente, usando imágenes de producción con gunicorn + uvicorn workers.**
 
 ```bash
-# Todo en Docker (single command)
-docker compose up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
 
-# Ver servicios
-docker compose ps
+O reconstruyendo las imágenes de producción:
 
-# Ver logs
-docker compose logs -f
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 **Acceso:**
 - App completa: http://localhost
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
+- Backend API: http://localhost/api
+- API Docs: http://localhost/docs
 
 ---
 
@@ -98,57 +99,88 @@ docker compose logs -f
 
 | Software | Versión | Notas |
 |----------|---------|-------|
-| Docker Desktop | 4.0+ | Para Windows/WSL |
-| WSL2 | Latest | Solo Windows |
+| Docker | 24.0+ | Con Docker Compose V2 |
 | Git | Any | Para clonar |
-| Python | 3.12+ | Para venv local |
-| Node.js | 20+ | Para frontend local |
+| Python | 3.12+ | Solo para desarrollo sin Docker |
+| Node.js | 20+ | Solo para desarrollo sin Docker |
 
 ### 2. Instalación (Nuevos miembros del equipo)
 
 ```bash
-# 1. Clonar repositorio
-git clone <repo-url> FashionVision-AI
+git clone git@github.com:Pashofm/FashionVision-AI.git
 cd FashionVision-AI
-
-# 2. Copiar archivo de variables
-cp .env.template .env
-
-# 3. Crear entorno virtual de Python
-cd backend
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
-
-# 4. Instalar dependencias Python
-pip install -r requirements.txt
-
-# 5. Crear venv de frontend
-cd ../frontend
-npm install
-
-# 6. Levantar base de datos Docker
-cd ..
-docker compose up -d db
-
-# 7. Verificar que DB está lista
-docker compose ps db
-# Debería mostrar "healthy"
+cp .env.example .env
+make up-build
+make migrate
+make seed
 ```
+
+El sistema estará disponible en:
+
+- App: http://localhost
+- Backend: http://localhost/api
+- API Docs: http://localhost/docs
 
 ### 3. Iniciar Desarrollo
 
 ```bash
-# Terminal 1 - Backend
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
-uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-
-# Terminal 2 - Frontend (nueva terminal)
-cd frontend
-npm run dev
+make up-build
 ```
+
+Los logs de todos los servicios se pueden seguir con:
+
+```bash
+make logs
+```
+
+---
+
+## Comandos Makefile
+
+El proyecto incluye un Makefile en la raíz con los comandos esenciales. Ejecutar `make help` para ver la lista completa.
+
+### Gestión de servicios
+
+| Comando | Descripción |
+|---------|-------------|
+| `make up` | Levanta los 4 servicios (db, backend, frontend, nginx) en modo desarrollo |
+| `make up-build` | Reconstruye imágenes y levanta servicios |
+| `make down` | Detiene y elimina contenedores |
+| `make clean` | Elimina contenedores, volúmenes e imágenes huérfanas |
+
+### Logs
+
+| Comando | Descripción |
+|---------|-------------|
+| `make logs` | Muestra logs de todos los servicios |
+| `make logs-backend` | Logs del backend (FastAPI) |
+| `make logs-db` | Logs de PostgreSQL |
+| `make logs-frontend` | Logs del frontend (Vite dev server) |
+| `make logs-nginx` | Logs de nginx |
+
+### Shell en contenedores
+
+| Comando | Descripción |
+|---------|-------------|
+| `make shell-backend` | Abre shell interactiva en el contenedor backend |
+| `make shell-db` | Abre psql en el contenedor de base de datos |
+
+### Migraciones y datos
+
+| Comando | Descripción |
+|---------|-------------|
+| `make migrate` | Corre alembic upgrade head |
+| `make migrate-status` | Muestra el estado actual de las migraciones |
+| `make migrate-history` | Muestra el historial completo de migraciones |
+| `make migrate-down` | Revierte la última migración (-1) |
+| `make seed` | Carga datos iniciales de prueba en la base de datos |
+
+### Tests
+
+| Comando | Descripción |
+|---------|-------------|
+| `make test-backend` | Corre los tests del backend con pytest y cobertura |
+| `make test-frontend` | Corre los tests del frontend |
 
 ---
 
@@ -157,102 +189,107 @@ npm run dev
 ### Base de datos (Docker)
 
 ```bash
-# Iniciar solo DB
-docker compose up -d db
-
-# Ver estado
 docker compose ps db
-
-# Ver logs
 docker compose logs db
-
-# Conectar directamente
-docker exec -it fashionvision_db psql -U fashionvision_ai_user -d fashionvision_ai
-
-# Reiniciar DB
 docker compose restart db
 
-# Reset completo (¡cuidado! Elimina datos)
-docker compose down -v
-docker compose up -d db
+make shell-db
 ```
 
-### Backend (local)
+Para reset completo de la base de datos:
 
 ```bash
-cd backend
-source venv/bin/activate
-export PYTHONPATH=$PWD
-
-# Iniciar con hot-reload
-uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-
-# Solo verificar que funciona
-python -c "from backend.app.main import app; print('OK')"
+make clean
+make up-build
 ```
 
-### Frontend (local)
+### Backend (Docker)
 
 ```bash
-cd frontend
+docker compose logs backend
+docker compose restart backend
+make shell-backend
 
-# Iniciar con hot-reload
-npm run dev
-
-# Build para producción
-npm run build
-
-# Solo lint
-npm run lint
+docker compose exec backend pytest /app/backend/tests -v
 ```
 
-### Docker completo
+### Frontend (Docker)
 
 ```bash
-# Iniciar todo
-docker compose up -d
+docker compose logs frontend
+docker compose restart frontend
+docker compose exec frontend npm run lint
+docker compose exec frontend npm run test:run
+```
 
-# Detener todo
-docker compose down
+### Todos los servicios
 
-# Rebuild completo
-docker compose build --no-cache
-docker compose up -d
-
-# Ver servicios activos
-docker compose ps
-
-# Ver todos los logs
-docker compose logs -f
+```bash
+make up
+make down
+make logs
+make clean
 ```
 
 ---
 
-## Scripts de Ayuda
+## Migraciones con Alembic
 
-### Scripts disponibles en `/scripts/`
+Las migraciones se ejecutan automáticamente al iniciar el backend (tanto en `make up` como en `make up-build`). Para operaciones manuales:
 
-| Script | Uso | Descripción |
-|--------|-----|-------------|
-| `dev-start.sh` | `./scripts/dev-start.sh` | Inicia modo desarrollo (DB + backend + frontend) |
-| `dev-stop.sh` | `./scripts/dev-stop.sh` | Detiene todos los servicios |
-| `docker-start.sh` | `./scripts/docker-start.sh` | Inicia todo en Docker (modo testing) |
-| `db-reset.sh` | `./scripts/db-reset.sh` | Reinicia la base de datos |
-
-### Uso de scripts
+### Comandos rápidos vía Makefile
 
 ```bash
-# Modo desarrollo completo
-./scripts/dev-start.sh
+make migrate
+make migrate-status
+make migrate-history
+make migrate-down
+```
 
-# Solo Docker (testing)
-./scripts/docker-start.sh
+### Workflow manual con shell
 
-# Detener todo
-./scripts/dev-stop.sh
+Para crear nuevas migraciones o ejecutar comandos avanzados:
 
-# Reset de base de datos
-./scripts/db-reset.sh
+```bash
+make shell-backend
+```
+
+Dentro del contenedor:
+
+```bash
+cd /app/backend
+
+alembic current
+alembic history
+alembic upgrade head
+alembic downgrade -1
+
+alembic revision --autogenerate -m "descripcion_del_cambio"
+```
+
+---
+
+## Variables de Entorno
+
+El archivo `.env` en la raíz del proyecto configura todo el sistema. Se copia desde `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+**Variables principales:**
+
+```env
+POSTGRES_DB=fashionvision_ai
+POSTGRES_USER=fashionvision_ai_user
+POSTGRES_PASSWORD=your_password
+POSTGRES_HOST_PORT=5432
+
+BACKEND_HOST_PORT=8000
+FRONTEND_HOST_PORT=80
+
+SECRET_KEY=generate_with_openssl_rand_base64_32
+ENVIRONMENT=development
 ```
 
 ---
@@ -264,21 +301,14 @@ docker compose logs -f
 **Causa:** La base de datos no está corriendo o no se creó correctamente.
 
 **Solución:**
+
 ```bash
-# Ver estado de la DB
 docker compose ps db
-
-# Si no está corriendo
-docker compose up -d db
-
-# Ver logs
 docker compose logs db
 
-# Si el problema persiste, resetear
-docker compose down -v
-docker compose up -d db
+make clean
+make up-build
 
-# Esperar a que esté healthy
 docker compose ps db
 ```
 
@@ -287,26 +317,11 @@ docker compose ps db
 **Causa:** PostgreSQL no está escuchando en el puerto esperado.
 
 **Solución:**
+
 ```bash
-# Verificar que postgres está corriendo
 docker compose ps db
-
-# Ver logs
 docker compose logs db
-
-# Ver puertos en uso
-netstat -an | grep 5432  # Linux/Mac
-netstat -ano | findstr 5432  # Windows
-```
-
-### Error: módulo no encontrado `backend.app`
-
-**Causa:** Falta `PYTHONPATH=$PWD`
-
-**Solución:**
-```bash
-export PYTHONPATH=$PWD
-# Ejecutar desde la raíz del proyecto
+netstat -an | grep 5432
 ```
 
 ### Error: puerto en uso
@@ -314,64 +329,128 @@ export PYTHONPATH=$PWD
 **Causa:** Otro proceso está usando el puerto.
 
 **Solución:**
-```bash
-# Encontrar proceso en puerto 8000
-lsof -i :8000  # Linux/Mac
-netstat -ano | findstr 8000  # Windows
 
-# Matar proceso si es necesario
+```bash
+lsof -i :8000
+lsof -i :80
 kill -9 <PID>
 ```
 
 ### Verificar que todo funciona
 
 ```bash
-# 1. DB
-docker compose ps db
-docker exec -it fashionvision_db psql -U fashionvision_ai_user -d fashionvision_ai -c "SELECT 1"
-
-# 2. Backend
-curl http://localhost:8000/health
-
-# 3. Frontend
-curl http://localhost:5173 | head -20
-```
-
----
-
-## Variables de Entorno
-
-El archivo `.env` en la raíz del proyecto configura todo el sistema.
-
-**Variables principales:**
-
-```env
-# Database
-POSTGRES_DB=fashionvision_ai
-POSTGRES_USER=fashionvision_ai_user
-POSTGRES_PASSWORD=your_password
-POSTGRES_HOST_PORT=5432
-
-# Backend
-BACKEND_HOST_PORT=8000
-
-# Frontend (para desarrollo local)
-FRONTEND_HOST_PORT=5173
+docker compose ps
+curl http://localhost/health
+curl http://localhost | head -20
 ```
 
 ---
 
 ## Tips para el Equipo
 
-1. **Siempre ejecutar desde la raíz del proyecto** al usar `export PYTHONPATH=$PWD`
+1. **Siempre usa `make` para operaciones comunes**: `make up`, `make logs`, `make migrate`, etc.
+2. **Si algo falla**: verifica `docker compose ps` y `make logs` para diagnosticar.
+3. **Para reset completo**: `make clean && make up-build`.
+4. **Para testing/demo sin hot reload**: usa `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
+5. **Nunca commitees el archivo `.env`** al repositorio.
+6. **Los modelos de PyTorch (YOLO, CLIP)** se cachean en el volumen `torch_cache` para no descargarlos en cada reinicio.
 
-2. **La DB en Docker debe estar corriendo** antes de iniciar el backend local
+---
 
-3. **Para nuevos miembros**: Seguir sección [Primeros Pasos](#primeros-pasos)
+## Desarrollo sin Docker (avanzado)
 
-4. **Para testing/demo**: Usar `docker compose up -d` (Modo B)
+Para desarrollo local sin Docker, solo la base de datos corre en contenedor. Esto requiere Python 3.12+ y Node.js 20+ instalados localmente.
 
-5. **Si algo falla**:
-   - Verificar `docker compose ps` que todos los servicios están corriendo
-   - Ver logs con `docker compose logs <service>`
-   - Resetear con `docker compose down -v && docker compose up -d`
+### Requisitos previos adicionales
+
+| Software | Versión |
+|----------|---------|
+| Python | 3.12+ |
+| Node.js | 20+ |
+| npm | 10+ |
+
+### Instalación
+
+```bash
+git clone git@github.com:Pashofm/FashionVision-AI.git
+cd FashionVision-AI
+cp .env.example .env
+```
+
+#### Backend
+
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cd ..
+```
+
+#### Frontend
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+#### Base de datos
+
+```bash
+docker compose up -d db
+```
+
+Asegúrate de que `.env` tenga `POSTGRES_HOST=localhost` para conexión local.
+
+### Iniciar desarrollo local
+
+```bash
+docker compose up -d db
+
+export PYTHONPATH=$PWD
+source backend/venv/bin/activate
+uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
+```
+
+```bash
+cd frontend && npm run dev
+```
+
+**Acceso:**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+
+### Comandos útiles locales
+
+#### Base de datos
+
+```bash
+docker compose up -d db
+docker compose ps db
+docker compose logs db
+docker compose restart db
+
+docker exec -it fashionvision_db psql -U fashionvision_ai_user -d fashionvision_ai
+```
+
+#### Backend
+
+```bash
+cd backend
+source venv/bin/activate
+export PYTHONPATH=$PWD
+
+uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
+python -c "from backend.app.main import app; print('OK')"
+```
+
+#### Frontend
+
+```bash
+cd frontend
+npm run dev
+npm run build
+npm run lint
+```

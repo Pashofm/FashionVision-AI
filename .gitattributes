@@ -1,0 +1,8 @@
+# Binarios — evitar diff textual
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.ico binary
+*.lock binary
+*.whl binary

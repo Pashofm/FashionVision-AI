@@ -1,13 +1,42 @@
 # Scripts - FashionVision-AI
 
-Documentación de todos los scripts de automatización disponibles.
+Documentación de todos los scripts de automatización disponibles y del Makefile principal.
+
+## Makefile (Herramienta Principal)
+
+El `Makefile` en la raíz del proyecto reemplaza la mayoría de los scripts anteriores. Todos los comandos se ejecutan desde la raíz del proyecto con `make <target>`.
+
+| Comando `make` | Descripción | Reemplaza a |
+|---|---|---|
+| `make up` | Levanta los 4 servicios en modo desarrollo | `dev-start.sh` + `docker-start.sh` |
+| `make up-build` | Reconstruye imágenes y levanta servicios | `dev-start.sh` + `docker-start.sh` |
+| `make down` | Detiene y elimina contenedores | `dev-stop.sh` |
+| `make logs` | Muestra logs de todos los servicios | — |
+| `make logs-backend` | Logs del backend (FastAPI) | — |
+| `make logs-db` | Logs de PostgreSQL | — |
+| `make logs-frontend` | Logs del frontend (Vite dev server) | — |
+| `make logs-nginx` | Logs de nginx | — |
+| `make shell-backend` | Abre shell interactiva en el contenedor backend | — |
+| `make shell-db` | Abre psql en el contenedor de base de datos | — |
+| `make migrate` | Corre `alembic upgrade head` | `migrate.sh` |
+| `make migrate-status` | Muestra el estado actual de las migraciones | `migrate.sh status` |
+| `make migrate-history` | Muestra el historial completo de migraciones | `migrate.sh` |
+| `make migrate-down` | Revierte la última migración (-1) | `migrate.sh down` |
+| `make seed` | Carga datos iniciales de prueba | Seed de `setup.sh` |
+| `make test-backend` | Corre los tests del backend | Tests de `deploy-local.sh` |
+| `make test-frontend` | Corre los tests del frontend | Tests de `deploy-local.sh` |
+| `make clean` | Elimina contenedores, volúmenes e imágenes huérfanas | `db-reset.sh` |
+| `make help` | Muestra todos los comandos disponibles | — |
+
+---
 
 ## Tabla de Contenidos
 
-1. [Scripts Disponibles](#scripts-disponibles)
-2. [Uso Rápido](#uso-rápido)
-3. [Descripción Detallada](#descripción-detallada)
-4. [Flujo de Trabajo](#flujo-de-trabajo)
+1. [Makefile (Herramienta Principal)](#makefile-herramienta-principal)
+2. [Scripts Disponibles](#scripts-disponibles)
+3. [Uso Rápido](#uso-rápido)
+4. [Descripción Detallada](#descripción-detallada)
+5. [Flujo de Trabajo](#flujo-de-trabajo)
 
 ---
 
@@ -15,15 +44,10 @@ Documentación de todos los scripts de automatización disponibles.
 
 | Script | Uso | Descripción |
 |--------|-----|-------------|
-| `setup.sh` | `./scripts/setup.sh` | Setup inicial para clonación fresca |
-| `dev-start.sh` | `./scripts/dev-start.sh` | Inicia modo desarrollo (DB + dependencias) |
-| `dev-stop.sh` | `./scripts/dev-stop.sh` | Detiene servicios Docker |
-| `deploy-local.sh` | `./scripts/deploy-local.sh` | Inicia backend + frontend con 1 comando |
-| `docker-start.sh` | `./scripts/docker-start.sh` | Todo en Docker (testing/demo) |
-| `update.sh` | `./scripts/update.sh [action]` | Actualizar servicios sin rebuild |
-| `migrate.sh` | `./scripts/migrate.sh [action]` | Control de migraciones |
-| `db-reset.sh` | `./scripts/db-reset.sh` | Reset de base de datos |
 | `check-env.sh` | `./scripts/check-env.sh` | Verificación de seguridad |
+| `common_versions.sh` | `source scripts/common_versions.sh` | Librería de funciones para gestión de versiones Python/Node |
+| `export-openapi.py` | `python scripts/export-openapi.py` | Exporta especificación OpenAPI a JSON estático |
+| `update.sh` | `./scripts/update.sh [action]` | Actualizar servicios sin rebuild |
 
 ---
 
@@ -33,136 +57,103 @@ Documentación de todos los scripts de automatización disponibles.
 
 ```bash
 # 1. Clonar repositorio
-git clone <repo-url> FashionVision-AI
+git clone git@github.com:Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 
-# 2. Setup inicial (instala todo)
-./scripts/setup.sh
-
-# 3. Editar .env con credenciales
+# 2. Copiar y editar .env
+cp .env.template .env
 nano .env
 
-# 4. Volver a ejecutar setup si es necesario
-./scripts/setup.sh
+# 3. Levantar todos los servicios
+make up-build
+
+# 4. Ejecutar migraciones y seed
+make migrate
+make seed
 ```
 
 ### Desarrollo Diario
 
 ```bash
-# Iniciar servicios (2 terminales)
-./scripts/deploy-local.sh  # Terminal 1: todo en background
-
-# O manualmente:
-./scripts/dev-start.sh      # Terminal 1: prepara DB + dependencias
-# Terminal 2: cd backend && source venv/bin/activate && export PYTHONPATH=$PWD && uvicorn ...
-# Terminal 3: cd frontend && npm run dev
+# Iniciar servicios
+make up
 
 # Detener
-./scripts/dev-stop.sh
+make down
 ```
 
 ### Testing/Demo (Docker completo)
 
 ```bash
 # Iniciar todo en Docker
-./scripts/docker-start.sh
+make up-build
 
 # Detener
-docker compose down
+make down
 ```
 
 ---
 
 ## Descripción Detallada
 
-### setup.sh
+### check-env.sh
 
-Setup inicial para máquina nueva o clonación fresca.
+Verificación de seguridad.
 
 ```bash
-./scripts/setup.sh
+./scripts/check-env.sh
 ```
 
-**Qué hace:**
-1. Verifica prerrequisitos (docker, python, node)
-2. Crea `.env` desde `.env.template` si no existe
-3. Inicia base de datos en Docker
-4. Instala dependencias Python (venv + requirements)
-5. Instala dependencias frontend (npm)
-6. Ejecuta migraciones de Alembic
+**Qué verifica:**
+- Que `.env` no esté tracked en git
+- Que `backend/.env` no esté tracked
+- Que `.gitignore` tenga las reglas correctas
+- Que `.env.template` exista con placeholders
 
-**Primera vez:** Ejecutar, editar `.env`, ejecutar de nuevo.
+**Útil para:** Detectar problemas de seguridad antes de commit.
 
 ---
 
-### dev-start.sh
+### common_versions.sh
 
-Prepara el entorno de desarrollo (no inicia los servers).
+Librería de funciones compartidas para gestión de versiones de Python y Node.js. No se ejecuta directamente, se importa con `source` desde otros scripts.
 
 ```bash
-./scripts/dev-start.sh
+source scripts/common_versions.sh
 ```
 
-**Qué hace:**
-1. Verifica/crea `.env`
-2. Inicia DB y pgAdmin en Docker
-3. Crea venv de Python si no existe
-4. Instala dependencias Python
-5. Ejecuta migraciones Alembic
-6. Instala dependencias frontend si no existen
+**Funciones principales:**
 
-**No inicia:** Backend ni Frontend (manual o con deploy-local.sh).
+| Función | Descripción |
+|---------|-------------|
+| `check_python_version` | Verifica que haya Python 3.10–3.12 disponible |
+| `check_node_version` | Verifica que haya Node.js 18+ disponible |
+| `setup_python_environment` | Instala Python vía pyenv si no hay versión compatible |
+| `setup_node_environment` | Instala Node.js vía nvm si no hay versión compatible |
+| `ensure_python_venv` | Crea/recrea el virtualenv de Python en `backend/venv` |
+| `ensure_node_deps` | Instala dependencias de frontend (`npm install`) |
+| `check_python_ctypes` | Verifica que el módulo `_ctypes` esté disponible |
+| `get_python_binary` | Devuelve la ruta al binario de Python adecuado |
+| `install_pyenv` | Instala pyenv si no está presente |
+| `install_nvm` | Instala nvm si no está presente |
+
+**Versiones requeridas:**
+- Python: 3.10, 3.11 o 3.12 (máximo)
+- Node.js: 18+
 
 ---
 
-### dev-stop.sh
+### export-openapi.py
 
-Detiene servicios Docker del entorno de desarrollo.
-
-```bash
-./scripts/dev-stop.sh
-```
-
-**Qué hace:**
-- `docker compose stop db pgadmin`
-- Preserva datos en volúmenes
-
----
-
-### deploy-local.sh
-
-Inicia backend y frontend con un solo comando.
+Exporta la especificación OpenAPI de FashionVision AI a un archivo JSON estático.
 
 ```bash
-./scripts/deploy-local.sh
+python scripts/export-openapi.py
 ```
 
-**Qué hace:**
-1. Verifica que DB esté corriendo
-2. Limpia puertos 8000 y 5173 si hay procesos
-3. Inicia backend en background (puerto 8000)
-4. Inicia frontend en background (puerto 5173)
-5. Muestra logs en `/tmp/fashionvision-*.log`
+**Output:** `docs/api/openapi.json` — Especificación completa de la API en formato OpenAPI 3.1.
 
-**Precaución:** Mata procesos existentes en esos puertos.
-
----
-
-### docker-start.sh
-
-Inicia todo en contenedores Docker (modo testing/demo/producción).
-
-```bash
-./scripts/docker-start.sh
-```
-
-**Qué hace:**
-1. Verifica `.env`
-2. `docker compose up -d --build`
-3. Espera a que servicios estén ready
-4. Muestra estado de servicios
-
-**Uso:** Para testing, demos, o despliegue producción.
+**Requisitos:** Dependencias del backend instaladas (`pip install -r backend/requirements.txt`).
 
 ---
 
@@ -195,69 +186,7 @@ Actualiza servicios sin rebuild completo.
 ./scripts/update.sh logs           # Ver todos los logs
 ```
 
----
-
-### migrate.sh
-
-Control de migraciones de Alembic.
-
-```bash
-./scripts/migrate.sh [action]
-```
-
-**Acciones disponibles:**
-
-| Acción | Descripción |
-|--------|-------------|
-| (ninguna) | Ejecuta `alembic upgrade head` |
-| `status` | Muestra estado actual e historial |
-| `down` | Hace rollback de una migración |
-| `reset` | Reset completo (requiere confirmación) |
-
-**Ejemplos:**
-```bash
-./scripts/migrate.sh        # Aplicar migraciones pendientes
-./scripts/migrate.sh status  # Ver estado
-./scripts/migrate.sh down    # Rollback una migración
-./scripts/migrate.sh reset   # Reset completo
-```
-
----
-
-### db-reset.sh
-
-Reset de base de datos (¡CUIDADO! Elimina datos).
-
-```bash
-./scripts/db-reset.sh
-```
-
-**Qué hace:**
-1. Pide confirmación
-2. `docker compose down`
-3. Elimina volumen de datos
-4. Inicia DB nuevamente
-5. Espera a que esté ready
-
-**Útil para:** Reset de desarrollo limpio.
-
----
-
-### check-env.sh
-
-Verificación de seguridad.
-
-```bash
-./scripts/check-env.sh
-```
-
-**Qué verifica:**
-- Que `.env` no esté tracked en git
-- Que `backend/.env` no esté tracked
-- Que `.gitignore` tenga las reglas correctas
-- Que `.env.template` exista
-
-**Útil para:** Detectar problemas de seguridad antes de commit.
+> **Nota:** `update.sh` asume que los servicios se levantaron con `make up` o `make up-build`. Para un rebuild completo desde cero, usar `make up-build`.
 
 ---
 
@@ -266,48 +195,59 @@ Verificación de seguridad.
 ### Flujo: Nuevo Desarrollador
 
 ```
-1. git clone <repo>
-2. ./scripts/setup.sh
-3. Editar .env
-4. ./scripts/setup.sh (otra vez)
-5. ./scripts/deploy-local.sh
-6. Abrir http://localhost:5173
+1. git clone git@github.com:Pashofm/FashionVision-AI.git
+2. cp .env.template .env
+3. nano .env
+4. make up-build
+5. make migrate
+6. make seed
+7. Abrir http://localhost
 ```
 
 ### Flujo: Desarrollo Diario
 
 ```
-1. ./scripts/dev-start.sh      # Preparar entorno
-2. Terminal 1: backend manually  # o ./scripts/deploy-local.sh
-3. Terminal 2: frontend
-4. coding...
-5. ./scripts/dev-stop.sh       # Al terminar
+1. make up                    # Iniciar servicios
+2. coding...
+3. make logs-backend          # Ver logs si es necesario
+4. make down                  # Al terminar
 ```
 
 ### Flujo: Testing/Demo
 
 ```
-1. ./scripts/docker-start.sh
+1. make up-build
 2. Abrir http://localhost
 3. Testing...
-4. docker compose down          # Al terminar
+4. make down                  # Al terminar
 ```
 
 ### Flujo: Update Servicios
 
 ```
 1. git pull
-2. ./scripts/update.sh backend-full   # Si hay cambios en backend
-3. ./scripts/update.sh frontend-full  # Si hay cambios en frontend
-# O simplemente:
-4. ./scripts/docker-start.sh          # Rebuild completo
+2. make up-build              # Rebuild completo
+# O para cambios puntuales:
+3. ./scripts/update.sh backend-full   # Si hay cambios en backend
+4. ./scripts/update.sh frontend-full  # Si hay cambios en frontend
+```
+
+### Flujo: Migraciones
+
+```
+1. make migrate               # Aplicar migraciones pendientes
+2. make migrate-status        # Ver estado actual
+3. make migrate-history       # Ver historial
+4. make migrate-down          # Rollback de última migración
 ```
 
 ---
 
 ## Notas Importantes
 
-- Todos los scripts asumen que se ejecutan desde la raíz del proyecto
-- Los scripts Docker requieren que `.env` exista (copiado de `.env.template`)
-- `deploy-local.sh` requiere que `backend/venv` esté creado
-- Para producción, usar `./scripts/docker-start.sh` o la guía en `docs/DEPLOYMENT.md`
+- El **Makefile** es la herramienta principal. Usar `make help` para ver todos los comandos.
+- Todos los comandos `make` y scripts asumen que se ejecutan desde la raíz del proyecto.
+- Los comandos Docker requieren que `.env` exista (copiado de `.env.template`).
+- `update.sh` requiere que los servicios estén corriendo en Docker (levantados con `make up`).
+- `export-openapi.py` requiere las dependencias de backend instaladas localmente.
+- Para limpiar todo y empezar de cero: `make clean && make up-build`.

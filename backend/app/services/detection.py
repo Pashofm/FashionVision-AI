@@ -105,13 +105,13 @@ def clamp_bbox(
 
 def get_model_path() -> Path:
     env_path = os.environ.get("MODEL_PATH")
-    if env_path:
+    if env_path and Path(env_path).exists():
         return Path(env_path)
     if DEFAULT_MODEL_PATH.exists():
         return DEFAULT_MODEL_PATH
     if LOCAL_MODEL_PATH.exists():
         return LOCAL_MODEL_PATH
-    return DEFAULT_MODEL_PATH
+    return Path(env_path) if env_path else DEFAULT_MODEL_PATH
 
 
 model: Optional[YOLO] = None
