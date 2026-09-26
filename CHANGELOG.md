@@ -7,6 +7,35 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ---
 
+## [1.0.0] — 2026-06-24
+
+### Added
+- Docker multi-stage para backend (`dev`: uvicorn --reload, `prod`: gunicorn + 4 uvicorn workers, usuario no-root)
+- Docker multi-stage para frontend (`dev`: Vite dev server, `prod`: build estático + nginx:alpine)
+- Servicio nginx independiente como reverse proxy unificado (separado del frontend)
+- Red interna `pos-network` para comunicación entre servicios
+- `Makefile` raíz con 17 targets documentados (up, logs, migrate, seed, tests, clean, etc.)
+- `.env.example` con 40+ variables documentadas por sección
+- `docker-compose.prod.yml` como override de producción (restart: always, gunicorn, sin volúmenes de código)
+- Configuración dual de nginx (`nginx.conf` para dev, `nginx.prod.conf` para prod)
+- `.gitattributes` para marcar artefactos binarios
+- Headers de seguridad en nginx (X-Frame-Options, X-Content-Type-Options, Referrer-Policy)
+
+### Changed
+- Arquitectura Docker reestructurada: 4 servicios (db, backend, frontend, nginx) + pgadmin opcional (perfil `tools`)
+- Frontend Vite config: proxy `/api` → backend:8000, `usePolling: true` para compatibilidad Docker
+- Backend `config.py`: agregadas variables `POSTGRES_HOST`, `POSTGRES_PORT` para uso en Docker
+- `requirements.txt`: reorganizado por secciones, agregados `gunicorn==23.0.0`, `httptools==0.6.4`, `uvicorn[standard]`
+- `.gitignore`: agregados patrones para `*.pt`, `*.bin`, `*.onnx`, `uploads/`, `logs/`
+- Documentación completa actualizada a flujo Docker-first (README, QUICKSTART, DEVELOPMENT, etc.)
+
+### Removed
+- Scripts legacy redundantes: `setup.sh`, `dev-start.sh`, `dev-stop.sh`, `docker-start.sh`, `deploy-local.sh`, `db-reset.sh`, `migrate.sh` (reemplazados por `make` targets)
+- Flujo de instalación manual con pyenv/nvm/venv como ruta primaria
+- Ramas locales huérfanas ya mergeadas (6 ramas feature/fix)
+
+---
+
 ## [0.1.0] — 2025
 
 ### Added

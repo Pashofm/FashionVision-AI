@@ -14,6 +14,7 @@ Referencia rápida de comandos para desarrollar, ejecutar y mantener el proyecto
 6. [Logs y Debugging](#6-logs-y-debugging)
 7. [Base de Datos - Backup y Restore](#7-base-de-datos---backup-y-restore)
 8. [Limpieza y Mantenimiento](#8-limpieza-y-mantenimiento)
+9. [Makefile](#9-makefile)
 
 ---
 
@@ -26,9 +27,12 @@ Referencia rápida de comandos para desarrollar, ejecutar y mantener el proyecto
 # LEVANTAR BASE DE DATOS
 # ============================================
 
-# Linux y Windows (PowerShell/CMD)
+# Usando make (recomendado)
+make up-build
+
+# Manual con docker compose
 cd backend
-docker-compose up -d
+docker compose up -d
 
 # Ver que está corriendo
 docker ps
@@ -38,7 +42,7 @@ docker ps
 # ============================================
 # EN WINDOWS (Git Bash)
 # ============================================
-# Usar PowerShell o CMD, NO Git Bash para docker-compose
+# Usar PowerShell o CMD, NO Git Bash para docker compose
 ```
 
 ```bash
@@ -46,35 +50,41 @@ docker ps
 # DETENER BASE DE DATOS
 # ============================================
 
-# Detener contenedor
-docker-compose down
+# Usando make (recomendado)
+make down
+
+# Manual
+docker compose down
 
 # Detener y eliminar datos (¡CUIDADO! Elimina todo)
-docker-compose down -v
+docker compose down -v
 ```
 
 ### Reiniciar Base de Datos
 
 ```bash
 # Reiniciar contenedor
-docker-compose restart
+docker compose restart
 
 # Forzar reinicio
-docker-compose stop
-docker-compose start
+docker compose stop
+docker compose start
 
 # Ver estado
-docker-compose ps
+docker compose ps
 ```
 
 ### Ver Logs de PostgreSQL
 
 ```bash
-# Ver logs en tiempo real
-docker-compose logs -f db
+# Usando make (recomendado)
+make logs-db
+
+# Manual: ver logs en tiempo real
+docker compose logs -f db
 
 # Ver últimas 50 líneas
-docker-compose logs --tail 50 db
+docker compose logs --tail 50 db
 
 # Ver logs de contenedor específico
 docker logs fashionvision_db
@@ -83,14 +93,17 @@ docker logs fashionvision_db
 ### Eliminar y Recrear Contenedor
 
 ```bash
-# Detener y eliminar
-docker-compose down
+# Usando make (recomendado)
+make clean && make up-build
+
+# Manual: detener y eliminar
+docker compose down
 
 # Eliminar volumen de datos (¡PÉRDIDA DE DATOS!)
-docker volume rm backend_postgres_data
+docker volume rm postgres_data
 
 # Recrear desde cero
-docker-compose up -d
+docker compose up -d
 ```
 
 ---
@@ -167,8 +180,8 @@ uvicorn app.main:app --reload  # Si PYTHONPATH está configurado
 ### Verificar que Backend Funciona
 
 ```bash
-# Health check
-curl http://localhost:8000/health
+# Health check en el entorno Docker
+curl http://localhost/health
 
 # Respuesta esperada:
 # {"status":"healthy","database":"connected"}
@@ -262,16 +275,16 @@ npm run preview
 
 ```bash
 # ============================================
-# DESDE DOCKER (cualquier SO)
+# USANDO MAKE (recomendado)
 # ============================================
-docker exec -it fashionvision_db psql -U fashionvision_ai_user -d fashionvision_ai
+make shell-db
 ```
 
 ```bash
 # ============================================
 # DESDE TERMINAL DIRECTA (Linux)
 # ============================================
-PGPASSWORD=fashionvision_ai_pass psql -h localhost -p 5433 -U fashionvision_ai_user -d fashionvision_ai
+PGPASSWORD=fashionvision_ai_pass psql -h localhost -p 5432 -U fashionvision_ai_user -d fashionvision_ai
 ```
 
 ```powershell
@@ -280,7 +293,7 @@ PGPASSWORD=fashionvision_ai_pass psql -h localhost -p 5433 -U fashionvision_ai_u
 # ============================================
 # Primero instalar psql o usar Git Bash
 set PGPASSWORD=fashionvision_ai_pass
-psql -h localhost -p 5433 -U fashionvision_ai_user -d fashionvision_ai
+psql -h localhost -p 5432 -U fashionvision_ai_user -d fashionvision_ai
 ```
 
 ### Comandos dentro de psql
@@ -397,7 +410,7 @@ git config --list
 # ============================================
 # CLONAR REPOSITORIO
 # ============================================
-git clone https://github.com/tu-usuario/FashionVision-AI.git
+git clone git@github.com:Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 ```
 
@@ -480,33 +493,42 @@ git remote -v
 ### Ver Logs del Backend
 
 ```bash
+# Usando make (recomendado)
+make logs-backend
+
 # Si está corriendo con uvicorn, ver en terminal directamente
 
 # Si está corriendo en background
 journalctl -u uvicorn  # Linux (si es servicio)
-tail -f /tmp/server.log  # Si guardamos logs ahí
 ```
 
 ### Ver Logs de Docker
 
 ```bash
-# Todos los contenedores
-docker-compose logs
+# Usando make (recomendado)
+make logs
+
+# Manual: todos los contenedores
+docker compose logs
 
 # Contenedor específico
-docker-compose logs db
-docker-compose logs -f app
+docker compose logs db
+docker compose logs -f app
 
 # Últimas 100 líneas
-docker-compose logs --tail 100
+docker compose logs --tail 100
 ```
 
 ### Reconstruir Contenedor Backend (si hay cambios)
 
 ```bash
+# Usando make (recomendado)
+make up-build
+
+# Manual
 cd backend
-docker-compose build --no-cache
-docker-compose up -d
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ### Debug Python
@@ -575,11 +597,14 @@ Get-Content backup_archivo.sql | docker exec -i fashionvision_db psql -U fashion
 ### Limpiar Docker
 
 ```bash
-# Detener y eliminar contenedores
-docker-compose down
+# Usando make (recomendado)
+make clean
+
+# Manual: detener y eliminar contenedores
+docker compose down
 
 # Eliminar volúmenes (¡PÉRDIDA DE DATOS!)
-docker-compose down -v
+docker compose down -v
 
 # Eliminar imágenes no usadas
 docker image prune -a
@@ -591,8 +616,12 @@ docker system prune -a --volumes
 ### Reconstruir Todo desde Cero
 
 ```bash
+# Usando make (recomendado)
+make clean && make up-build && make migrate && make seed
+
+# Manual
 # 1. Eliminar todo
-docker-compose down -v
+docker compose down -v
 rm -rf backend/venv
 rm -f .env
 
@@ -604,10 +633,9 @@ pip install -r requirements.txt
 
 # 3. Copiar configuración
 cp .env.example .env
-ln -s backend/.env .env  # Linux
 
 # 4. Levantar base de datos
-docker-compose up -d
+docker compose up -d
 
 # 5. Iniciar backend
 export PYTHONPATH=$PWD
@@ -643,9 +671,13 @@ taskkill /PID <PID> /F
 ### Levantar Proyecto Completo
 
 ```bash
+# Usando make (recomendado)
+make up-build && make migrate && make seed
+
+# Manual
 # Terminal 1: Base de datos
 cd backend
-docker-compose up -d
+docker compose up -d
 
 # Terminal 2: Backend
 source backend/venv/bin/activate
@@ -664,14 +696,53 @@ npm run dev
 docker ps
 
 # ¿Backend funcionando?
-curl http://localhost:8000/health
+curl http://localhost/health
 
 # ¿pgAdmin funcionando?
 curl http://localhost:5050
 
 # ¿Frontend funcionando?
-curl http://localhost:5173
+curl http://localhost
 ```
+
+---
+
+## 9. Makefile
+
+El proyecto incluye un `Makefile` para simplificar las operaciones más comunes.
+
+### Comandos disponibles
+
+Ejecutar `make help` para ver todos los comandos.
+
+### Flujo de Docker
+
+```bash
+cp .env.example .env
+make up-build
+make seed
+```
+
+Las migraciones se aplican automáticamente al iniciar el backend. Usa `make migrate` únicamente para aplicarlas de forma manual.
+
+### Comandos de acceso a contenedores
+
+En lugar de usar `docker exec`, usar:
+
+| Operación | Comando |
+|---|---|
+| Shell en backend | `make shell-backend` |
+| Shell psql en BD | `make shell-db` |
+
+### Comandos de logs
+
+| Operación | Comando |
+|---|---|
+| Todos los logs | `make logs` |
+| Logs del backend | `make logs-backend` |
+| Logs de BD | `make logs-db` |
+| Logs del frontend | `make logs-frontend` |
+| Logs de nginx | `make logs-nginx` |
 
 ---
 

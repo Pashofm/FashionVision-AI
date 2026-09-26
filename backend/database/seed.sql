@@ -150,25 +150,35 @@ INSERT INTO product_variants (id, product_id, size_attribute_id, color_attribute
 ON CONFLICT DO NOTHING;
 
 -- ─── Inventario inicial ───────────────────────────────────────────────────────
-INSERT INTO inventory (id, product_variant_id, quantity_available, quantity_reserved, low_stock_threshold, stock_status, warehouse_location, updated_by) VALUES
-    ('a0000001-0000-0000-0000-000000000020', 'f0000001-0000-0000-0000-000000000001', 5, 0, 5, 'available', 'A-01-03', 'a0000001-0000-0000-0000-000000000001'),
-    ('adb90ee5-2cfb-4008-8740-665b1c3df5bc', 'd317341d-b306-46ca-b18a-1e56a6eb252c', 13, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
-    ('a3a60e75-ac3b-4e83-8aca-3bbac211d1cb', 'a3d7f491-82a8-4db6-a4c0-5396e5cbd0ba', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
-    ('2c57a0a1-4a3a-4512-9feb-ea5ae5f7eefb', '74be3456-50c2-41be-b8ae-307c579b7648', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
-    ('a421ab48-2e53-4ad2-8127-5ab61e42641f', '7aef4af3-5903-4185-8e54-8ec397f98fdc', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
-    ('ad9d90e0-9e8f-4558-877e-6e0a7e93f2e6', '2b6f88c4-2bac-4505-bb29-d15799c8b654', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
-    ('f456d2d5-6e85-4e68-b0db-76f51c9e4274', '60bf83c8-1a7c-4a2c-9d0e-1e9b103e3e5d', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001')
+INSERT INTO inventory (id, product_variant_id, quantity_available, quantity_reserved, low_stock_threshold, stock_status, warehouse_location, updated_by)
+SELECT seed.id::uuid, variants.id, seed.quantity_available, seed.quantity_reserved,
+       seed.low_stock_threshold, seed.stock_status, seed.warehouse_location, seed.updated_by::uuid
+FROM (VALUES
+    ('a0000001-0000-0000-0000-000000000020', 'GOR-RED-001-OS-ROJ', 5, 0, 5, 'available', 'A-01-03', 'a0000001-0000-0000-0000-000000000001'),
+    ('adb90ee5-2cfb-4008-8740-665b1c3df5bc', 'GOR-RED-001-OS-NEG', 13, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
+    ('a3a60e75-ac3b-4e83-8aca-3bbac211d1cb', 'GOR-VEN-001-OS-ROJ', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
+    ('2c57a0a1-4a3a-4512-9feb-ea5ae5f7eefb', 'GOR-VEN-001-OS-NEG', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
+    ('a421ab48-2e53-4ad2-8127-5ab61e42641f', 'GOR-VEN-001-OS-BLA', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
+    ('ad9d90e0-9e8f-4558-877e-6e0a7e93f2e6', 'PAN-MEZ-CAR-001-CHI-AZM', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001'),
+    ('f456d2d5-6e85-4e68-b0db-76f51c9e4274', 'PAN-MEZ-OVE-01-CHI-AZU', 10, 0, 5, 'available', NULL, 'a0000001-0000-0000-0000-000000000001')
+) AS seed(id, sku_variant, quantity_available, quantity_reserved, low_stock_threshold, stock_status, warehouse_location, updated_by)
+JOIN product_variants AS variants ON variants.sku_variant = seed.sku_variant
 ON CONFLICT DO NOTHING;
 
 -- ─── Movimientos de inventario ───────────────────────────────────────────────
-INSERT INTO inventory_movements (id, product_variant_id, movement_type, quantity_change, quantity_before, quantity_after, notes, created_by) VALUES
-    ('a0000001-0000-0000-0000-000000000021', 'f0000001-0000-0000-0000-000000000001', 'restock', 5, 0, 5, 'Stock inicial cargado desde seed', 'a0000001-0000-0000-0000-000000000001'),
-    ('7d43f0e7-3dec-4ae2-8e7e-b96af857fca8', 'd317341d-b306-46ca-b18a-1e56a6eb252c', 'restock', 13, 0, 13, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
-    ('f25f8e0b-14b6-4c2a-9af7-9cce13440eeb', 'a3d7f491-82a8-4db6-a4c0-5396e5cbd0ba', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
-    ('15aff7e7-3d5d-4d1b-8fee-5b7a9e5f45b3', '74be3456-50c2-41be-b8ae-307c579b7648', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
-    ('a67a2f40-5e78-4d00-a4b6-c5fcd1b45006', '7aef4af3-5903-4185-8e54-8ec397f98fdc', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
-    ('4d5fe43f-4011-460a-9669-7974df3f94ed', '2b6f88c4-2bac-4505-bb29-d15799c8b654', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
-    ('811ad231-ded4-4eeb-8864-6206f9f1c196', '60bf83c8-1a7c-4a2c-9d0e-1e9b103e3e5d', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001')
+INSERT INTO inventory_movements (id, product_variant_id, movement_type, quantity_change, quantity_before, quantity_after, notes, created_by)
+SELECT seed.id::uuid, variants.id, seed.movement_type, seed.quantity_change,
+       seed.quantity_before, seed.quantity_after, seed.notes, seed.created_by::uuid
+FROM (VALUES
+    ('a0000001-0000-0000-0000-000000000021', 'GOR-RED-001-OS-ROJ', 'restock', 5, 0, 5, 'Stock inicial cargado desde seed', 'a0000001-0000-0000-0000-000000000001'),
+    ('7d43f0e7-3dec-4ae2-8e7e-b96af857fca8', 'GOR-RED-001-OS-NEG', 'restock', 13, 0, 13, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
+    ('f25f8e0b-14b6-4c2a-9af7-9cce13440eeb', 'GOR-VEN-001-OS-ROJ', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
+    ('15aff7e7-3d5d-4d1b-8fee-5b7a9e5f45b3', 'GOR-VEN-001-OS-NEG', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
+    ('a67a2f40-5e78-4d00-a4b6-c5fcd1b45006', 'GOR-VEN-001-OS-BLA', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
+    ('4d5fe43f-4011-460a-9669-7974df3f94ed', 'PAN-MEZ-CAR-001-CHI-AZM', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001'),
+    ('811ad231-ded4-4eeb-8864-6206f9f1c196', 'PAN-MEZ-OVE-01-CHI-AZU', 'restock', 10, 0, 10, 'Stock inicial', 'a0000001-0000-0000-0000-000000000001')
+) AS seed(id, sku_variant, movement_type, quantity_change, quantity_before, quantity_after, notes, created_by)
+JOIN product_variants AS variants ON variants.sku_variant = seed.sku_variant
 ON CONFLICT DO NOTHING;
 
 -- ─── Proveedores ──────────────────────────────────────────────────────────────

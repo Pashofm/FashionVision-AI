@@ -4,74 +4,53 @@ Documento de arquitectura de referencia para FashionVision AI. Describe los comp
 
 ---
 
-## Diagrama de Componentes
+## Diagrama de Componentes (Docker)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                          CLIENTE (Navegador)                         │
-│                                                                      │
-│  ┌──────────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
-│  │   Kiosko (Cliente)   │  │   Dashboard      │  │   Inventario  │  │
-│  │   React + Cámara     │  │   Admin/Cajero   │  │   Admin       │  │
-│  │   Detección YOLO     │  │   Reportes/PDF   │  │   Catálogo    │  │
-│  └─────────┬────────────┘  └────────┬─────────┘  └───────┬───────┘  │
-│            │                        │                     │          │
-└────────────┼────────────────────────┼─────────────────────┼──────────┘
-             │                        │                     │
-        HTTP/REST                HTTP/REST             HTTP/REST
-             │                  (JWT Auth)                  │
-             ▼                        ▼                     ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                        NGINX (Frontend Container)                    │
-│  • Sirve SPA (React build)                                          │
-│  • Proxy /api/* → backend:8000                                      │
-│  • Compresión gzip                                                  │
+│                     HOST — Puerto 80                                 │
 └────────────────────────────┬────────────────────────────────────────┘
-                             │
-                    proxy_pass /api/*
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                   BACKEND — FastAPI (Python 3.12)                    │
-│                                                                      │
-│  ┌───────────┐ ┌──────────┐ ┌───────────┐ ┌──────────────────────┐ │
-│  │   Auth    │ │  Products│ │ Inventory │ │   Analytics          │ │
-│  │  JWT      │ │  CRUD    │ │  Stock    │ │   Dashboard/Reportes │ │
-│  │  Sessions │ │  Variants│ │  Movements│ │   Top Products       │ │
-│  └───────────┘ └──────────┘ └───────────┘ └──────────────────────┘ │
-│                                                                      │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │  Servicios de Visión por Computadora                          │   │
-│  │  ┌─────────────────┐  ┌──────────────────────────────────┐   │   │
-│  │  │  YOLO Detection │  │  CLIP Matcher                    │   │   │
-│  │  │  • Detecta      │  │  • Embeddings de productos       │   │   │
-│  │  │    prendas      │  │  • Match por similitud coseno    │   │   │
-│  │  │  • Bounding box │  │  • Búsqueda en catálogo          │   │   │
-│  │  └─────────────────┘  └──────────────────────────────────┘   │   │
-│  └──────────────────────────────────────────────────────────────┘   │
-│                                                                      │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │  Servicios de Negocio                                        │   │
-│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ │   │
-│  │  │  Cart/Orders │ │  Receipts    │ │  POS Terminal        │ │   │
-│  │  │  Flujo de    │ │  Impresión   │ │  Pagos (Mock/Stripe) │ │   │
-│  │  │  compra      │ │  Recibos     │ │  Init→Process→Done   │ │   │
-│  │  └──────────────┘ └──────────────┘ └──────────────────────┘ │   │
-│  └──────────────────────────────────────────────────────────────┘   │
-│                                                                      │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │  Infraestructura                                              │   │
-│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ │   │
-│  │  │  SQLAlchemy  │ │  Alembic     │ │  Cloudinary          │ │   │
-│  │  │  ORM Async   │ │  Migrations  │ │  Almacenamiento      │ │   │
-│  │  │  PostgreSQL  │ │  Versionado  │ │  de imágenes         │ │   │
-│  │  └──────────────┘ └──────────────┘ └──────────────────────┘ │   │
-│  └──────────────────────────────────────────────────────────────┘   │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │
-                    SQLAlchemy Async
-                             │
-                             ▼
+│                    NGINX (Reverse Proxy)                              │
+│  • Único punto de entrada                                            │
+│  • /api/* → backend:8000    /* → frontend:5173 (dev) / :80 (prod)   │
+│  • WebSocket upgrade (Vite HMR)                                      │
+│  • Gzip, headers de seguridad, client_max_body_size 50M              │
+└────────┬──────────────────────────────────┬─────────────────────────┘
+         │                                  │
+         ▼                                  ▼
+┌─────────────────────────┐    ┌──────────────────────────────────────┐
+│   FRONTEND (Vite/React) │    │   BACKEND — FastAPI (Python 3.12)    │
+│   • Puerto 5173 (dev)   │    │                                      │
+│   • Puerto 80 (prod)    │    │  ┌───────────┐ ┌──────────────────┐  │
+│   • React 19 + React     │    │  │   Auth    │ │  Products CRUD   │  │
+│     Router + Recharts    │    │  │  JWT      │ │  Variants        │  │
+│   • jsPDF + SheetJS      │    │  └───────────┘ └──────────────────┘  │
+└─────────────────────────┘    │                                      │
+                               │  ┌───────────────────────────────┐   │
+                               │  │  Visión por Computadora       │   │
+                               │  │  • YOLO: detección prendas    │   │
+                               │  │  • CLIP: embeddings + match   │   │
+                               │  └───────────────────────────────┘   │
+                               │                                      │
+                               │  ┌───────────────────────────────┐   │
+                               │  │  Negocio                      │   │
+                               │  │  • Cart/Orders • Receipts     │   │
+                               │  │  • POS Terminal • Inventory   │   │
+                               │  └───────────────────────────────┘   │
+                               │                                      │
+                               │  ┌───────────────────────────────┐   │
+                               │  │  Infraestructura              │   │
+                               │  │  • SQLAlchemy Async • Alembic │   │
+                               │  │  • Cloudinary (imágenes)      │   │
+                               │  └───────────────────────────────┘   │
+                               └────────────┬─────────────────────────┘
+                                            │
+                                   SQLAlchemy Async
+                                            │
+                                            ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                PostgreSQL 16 + pgvector + pg_trgm                    │
 │                                                                      │
@@ -292,20 +271,23 @@ Documento de arquitectura de referencia para FashionVision AI. Describe los comp
 
 | Capa | Tecnología | Propósito |
 |------|-----------|-----------|
-| **Frontend** | React 19 + Vite 7 | SPA con hot-reload |
+| **Frontend** | React 19 + Vite 7 | SPA con hot-reload (Docker o local) |
 | **Routing** | React Router DOM 7 | Navegación SPA |
 | **Charts** | Recharts 3 | Gráficos de dashboard y reportes |
 | **Export** | jsPDF + xlsx | PDF y Excel |
 | **Backend** | FastAPI 0.115 (Python 3.12) | API REST asíncrona |
+| **ASGI** | Uvicorn (dev) / Gunicorn + Uvicorn workers (prod) | Servidor ASGI |
 | **ORM** | SQLAlchemy 2.0 (async) | Mapeo objeto-relacional |
 | **Auth** | JWT (HS256) + bcrypt | Autenticación sin estado |
 | **BD** | PostgreSQL 16 | Datos transaccionales |
 | **Vectorial** | pgvector | Búsqueda por similitud de embeddings |
 | **Texto** | pg_trgm | Búsqueda por similitud de texto |
-| **Migraciones** | Alembic 1.18 | Versionado de esquema de BD |
+| **Migraciones** | Alembic 1.13 | Versionado de esquema de BD |
 | **Visión** | YOLO (Ultralytics 8) | Detección de prendas |
-| **Embeddings** | CLIP (ViT-B/32) | Vectores de imagen para matching |
+| **Embeddings** | CLIP (ViT-B/32, open-clip-torch) | Vectores de imagen para matching |
 | **Imágenes** | Cloudinary | Almacenamiento externo de imágenes |
+| **Proxy** | Nginx 1.25 | Reverse proxy unificado + gzip + SSL |
+| **Contenedores** | Docker + Docker Compose | Orquestación multi-servicio |
 | **Impresión** | ESCPOS / HTML / TextFile | Drivers de recibos |
 | **Contenedores** | Docker + Docker Compose | Orquestación de servicios |
 | **Proxy** | Nginx (Alpine) | Servidor web + proxy reverso |

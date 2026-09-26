@@ -1,106 +1,84 @@
 # Guia de Instalacion - FashionVision-AI
 
-Sistema completo para levantar y ejecutar FashionVision-AI.
+Sistema completo para levantar y ejecutar FashionVision-AI usando Docker.
 
 ---
 
-## Selecciona tu Sistema Operativo
+## Requisitos Previos (todos los SO)
 
-| Sistema | Seccion |
-|---------|---------|
-| Linux (Ubuntu, Debian, Fedora, Arch) | [Linux](#linux) |
-| Windows + WSL2 (Recomendado) | [WSL2](#windows-wsl2) |
-| Windows Nativo (PowerShell) | [Windows](#windows-nativo) |
-| macOS | [macOS](#macos) |
+| Software | Version | Instalacion |
+|----------|---------|-------------|
+| Docker | Latest | `curl -fsSL https://get.docker.com | sh` |
+| Git | 2.30+ | [git-scm.com](https://git-scm.com) |
+
+## Flujo Principal (todos los SO)
+
+Una vez instalado Docker y Git, el flujo es identico para Linux, macOS, Windows WSL2 y Windows Nativo:
+
+```bash
+# 1. Clonar repositorio
+git clone git@github.com:Pashofm/FashionVision-AI.git
+cd FashionVision-AI
+
+# 2. Configurar variables de entorno
+cp .env.example .env
+# Editar .env con tus credenciales (nano .env / notepad .env)
+
+# 3. Construir y levantar todos los servicios
+make up-build
+
+# 4. Ejecutar migraciones
+make migrate
+
+# 5. Cargar datos de prueba
+make seed
+```
+
+Servicios disponibles:
+
+| Servicio | URL |
+|----------|-----|
+| App (Frontend) | http://localhost |
+| Backend API | http://localhost/api |
+| API Docs (Swagger) | http://localhost/docs |
+| pgAdmin | http://localhost:5050 |
 
 ---
 
 ## Linux
 
-### Requisitos Previos
-
-| Software | Version | Comando de Instalacion |
-|----------|---------|------------------------|
-| Python | 3.12+ | `sudo apt install python3 python3-pip` |
-| Docker | Latest | `sudo apt install docker.io docker-compose` |
-| Git | 2.30+ | `sudo apt install git` |
-| Node.js | 20+ | https://nodejs.org/ |
-
-### Instalacion
+### 1. Instalar Docker
 
 ```bash
-# 1. Clonar repositorio
-cd ~/Proyectos
-git clone https://github.com/tu-usuario/FashionVision-AI.git
-cd FashionVision-AI
-
-# 2. Instalar dependencias del sistema
-sudo apt update
-sudo apt install -y python3-venv python3-pip docker.io docker-compose
-
-# 3. Crear entorno virtual y backend
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# 4. Configurar Docker
+curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
-# Cerrar sesion y volver a entrar
-
-# 5. Instalar Frontend
-cd ../frontend
-npm install
-
-# 6. Copiar variables de entorno
-cp .env.template .env
-
-# 7. Editar .env
-nano .env
-
-# 8. Levantar base de datos
-docker compose up -d db
-
-# 9. Verificar que PostgreSQL esta corriendo
-docker ps
-
-# 10. Levantar Backend
-cd ..
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-alembic upgrade head
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# 11. Levantar Frontend (en otra terminal)
-cd frontend
-npm run dev
+# Cerrar sesion y volver a entrar para que el grupo tenga efecto
 ```
 
-### Verificacion
+### 2. Instalar Git
 
 ```bash
-# Health check
-curl http://localhost:8000/health
-
-# Login
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@tienda.com","password":"admin123"}'
+sudo apt install git -y   # Debian/Ubuntu
+sudo dnf install git -y   # Fedora
+sudo pacman -S git        # Arch
 ```
+
+### 3. Seguir el Flujo Principal
+
+Ejecutar los comandos de la seccion [Flujo Principal](#flujo-principal-todos-los-so).
 
 ### Solucion de Problemas
 
 ```bash
-# Error: Puerto en uso
-lsof -i :8000
-kill -9 <PID>
-
 # Error: permission denied con Docker
 sudo docker compose up -d
 
 # Error: PostgreSQL connection refused
+make logs-db
 docker compose restart db
-docker compose logs db
+
+# Verificar servicios
+docker ps
 ```
 
 ---
@@ -112,26 +90,16 @@ docker compose logs db
 ```
 Windows Host
 ├── WSL2 (Ubuntu)
-│   ├── Backend (:8000)
-│   └── Frontend (:5173)
+│   └── Codigo fuente
 └── Docker Desktop
+    ├── Frontend (:80)
+    ├── Backend (:8000)
     ├── DB (:5432)
     ├── pgAdmin (:5050)
-    └── Backend Docker
+    └── nginx
 ```
 
-### Requisitos Previos
-
-| Software | Version | Instalacion |
-|----------|---------|-------------|
-| Windows 10/11 | 22H2+ | - |
-| WSL2 | Latest | `wsl --install` |
-| Ubuntu | 22.04 LTS | Microsoft Store |
-| Docker Desktop | 4.0+ | docker.com |
-
-### Instalacion Paso a Paso
-
-#### 1. Habilitar WSL2 (PowerShell como Administrador)
+### 1. Habilitar WSL2 (PowerShell como Administrador)
 
 ```powershell
 wsl --install
@@ -139,17 +107,17 @@ wsl --install
 
 Reiniciar el equipo.
 
-#### 2. Instalar Ubuntu desde Microsoft Store
+### 2. Instalar Ubuntu desde Microsoft Store
 
-Buscar "Ubuntu 22.04 LTS" e instalar.
+Buscar "Ubuntu 22.04 LTS" o superior e instalar.
 
-#### 3. Instalar Docker Desktop
+### 3. Instalar Docker Desktop
 
 1. Descargar de https://www.docker.com/products/docker-desktop/
 2. Marcar "Use WSL 2 instead of Hyper-V"
 3. Reiniciar
 
-#### 4. Configurar Docker en WSL2
+### 4. Configurar Docker en WSL2
 
 En la terminal de Ubuntu:
 
@@ -159,37 +127,9 @@ sudo usermod -aG docker $USER
 docker ps
 ```
 
-#### 5. Clonar el Repositorio
+### 5. Seguir el Flujo Principal
 
-```bash
-mkdir -p ~/Projects && cd ~/Projects
-git clone <repo-url> FashionVision-AI
-cd FashionVision-AI
-```
-
-#### 6. Setup inicial
-
-```bash
-./scripts/setup.sh
-nano .env  # Editar credenciales
-```
-
-#### 7. Iniciar servicios
-
-```bash
-# Terminal 1: Backend
-cd backend && source venv/bin/activate && export PYTHONPATH=$PWD && uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-
-# Terminal 2: Frontend
-cd frontend && npm run dev
-```
-
-### Verificacion
-
-```bash
-curl http://localhost:8000/health
-curl http://localhost:5173
-```
+Ejecutar los comandos de la seccion [Flujo Principal](#flujo-principal-todos-los-so) desde la terminal de Ubuntu.
 
 ### Solucion de Problemas
 
@@ -213,77 +153,22 @@ kill -9 <PID>
 
 **Nota:** Para mejor compatibilidad, se recomienda usar WSL2. Ver seccion anterior.
 
-### Requisitos Previos
+### 1. Instalar Docker Desktop
 
-| Software | Version | Descargar |
-|----------|---------|----------|
-| Python | 3.12+ | python.org/downloads |
-| Docker Desktop | Latest | docker.com |
-| Git | 2.30+ | git-scm.com |
-| Node.js | 20+ | nodejs.org |
+1. Descargar de https://www.docker.com/products/docker-desktop/
+2. Instalar y reiniciar
 
-### Instalacion
+### 2. Instalar Git
 
-#### 1. Clonar Repositorio (PowerShell)
+Descargar de https://git-scm.com e instalar (incluir Git Bash).
 
-```powershell
-cd C:\Proyectos
-git clone https://github.com/tu-usuario/FashionVision-AI.git
-cd FashionVision-AI
-```
+### 3. Seguir el Flujo Principal
 
-#### 2. Crear Entorno Virtual y Backend
-
-```powershell
-cd backend
-python -m venv venv
-.\venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-#### 3. Instalar Frontend
-
-```powershell
-cd ..\frontend
-npm install
-```
-
-#### 4. Configurar .env
-
-```powershell
-copy .env.template .env
-# Editar con credenciales
-```
-
-#### 5. Levantar Base de Datos
-
-```powershell
-docker compose up -d db
-```
-
-#### 6. Levantar Backend
-
-```powershell
-cd ..
-$env:PYTHONPATH = $PWD
-alembic upgrade head
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-#### 7. Levantar Frontend (otra terminal)
-
-```powershell
-cd frontend
-npm run dev
-```
+Ejecutar los comandos de la seccion [Flujo Principal](#flujo-principal-todos-los-so) desde PowerShell o Git Bash.
 
 ### Solucion de Problemas
 
 ```powershell
-# Puerto en uso
-netstat -ano | findstr :8000
-taskkill /PID <PID> /F
-
 # Hyper-V no habilitado
 Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All -All
 
@@ -299,76 +184,43 @@ docker compose restart db
 
 ```
 macOS Host
-├── Frontend Local (:5173)
-├── Backend Local (:8000)
 └── Docker
+    ├── Frontend (:80)
+    ├── Backend (:8000)
     ├── DB (:5432)
-    └── pgAdmin (:5050)
+    ├── pgAdmin (:5050)
+    └── nginx
 ```
 
-### Requisitos Previos
-
-| Software | Version | Comando |
-|----------|---------|---------|
-| Homebrew | Latest | /bin/bash -c "$(curl -fsSL ...)" |
-| Docker Desktop | 4.0+ | brew install --cask docker |
-| Git | Any | brew install git |
-| Python | 3.12+ | brew install python@3.12 |
-| Node.js | 20+ | brew install node |
-
-### Instalacion
-
-#### 1. Instalar Homebrew
+### 1. Instalar Homebrew
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-#### 2. Instalar Docker y dependencias
+### 2. Instalar Docker y Git
 
 ```bash
-brew install --cask docker python@3.12 node
+brew install --cask docker git
 ```
 
 Abrir Docker Desktop desde Applications.
 
-#### 3. Clonar Repositorio
+### 3. Seguir el Flujo Principal
 
-```bash
-mkdir -p ~/Projects && cd ~/Projects
-git clone <repo-url> FashionVision-AI
-cd FashionVision-AI
-```
-
-#### 4. Setup inicial
-
-```bash
-./scripts/setup.sh
-nano .env
-```
-
-#### 5. Iniciar servicios
-
-```bash
-# Terminal 1: Backend
-cd backend && source venv/bin/activate && export PYTHONPATH=$PWD && uvicorn backend.app.main:app --reload --port 8000 --host 0.0.0.0
-
-# Terminal 2: Frontend
-cd frontend && npm run dev
-```
+Ejecutar los comandos de la seccion [Flujo Principal](#flujo-principal-todos-los-so).
 
 ### Verificacion
 
 ```bash
-curl http://localhost:8000/health
-curl http://localhost:5173
+curl http://localhost/health
+curl http://localhost
 ```
 
-### Apple Silicon (M1/M2/M3)
+### Apple Silicon (M1/M2/M3/M4)
 
 ```bash
 uname -m  # debe mostrar arm64
-which python3
 ```
 
 ---
@@ -381,15 +233,62 @@ which python3
 | pgAdmin | admin@fashionvision.com | admin123 | 5050 |
 | Login por defecto | admin@tienda.com | admin123 | - |
 
-## URLs de Acceso
+---
+
+## Desarrollo sin Docker (avanzado)
+
+Si prefieres ejecutar los servicios de forma nativa sin contenedores, sigue estos pasos.
+
+### Requisitos Previos
+
+| Software | Version | Comando |
+|----------|---------|---------|
+| Python | 3.12+ | Ver [python.org](https://python.org) |
+| Node.js | 20+ | Ver [nodejs.org](https://nodejs.org) |
+| PostgreSQL | 16+ | Instalacion nativa o vía Docker |
+
+### Instalacion
+
+```bash
+# 1. Clonar repositorio
+git clone git@github.com:Pashofm/FashionVision-AI.git
+cd FashionVision-AI
+
+# 2. Copiar variables de entorno
+cp .env.example .env
+# Editar .env con credenciales de PostgreSQL local
+
+# 3. Levantar solo la base de datos con Docker (opcional si no tienes PostgreSQL nativo)
+docker compose up -d db
+
+# 4. Backend
+cd backend
+python3 -m venv venv
+source venv/bin/activate      # Linux/macOS
+# .\venv\Scripts\activate     # Windows PowerShell
+pip install -r requirements.txt
+cd ..
+export PYTHONPATH=$PWD        # Linux/macOS
+# $env:PYTHONPATH = $PWD      # Windows PowerShell
+alembic upgrade head
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 5. Frontend (otra terminal)
+cd frontend
+npm install
+npm run dev
+```
+
+### URLs (desarrollo local)
 
 | Servicio | URL |
 |----------|-----|
 | Frontend (dev) | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
-| pgAdmin | http://localhost:5050 |
-| App (Docker) | http://localhost |
+| Backend API | http://localhost/api |
+| API Docs | http://localhost/docs |
+| pgAdmin (si se usa Docker) | http://localhost:5050 |
+
+---
 
 ## Proximos Pasos
 

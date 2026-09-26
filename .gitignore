@@ -3,40 +3,33 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
 
 # Virtual environments
 venv/
 env/
 .venv/
 
-# Backend
-backend/__pycache__/
-backend/*.pyc
-backend/venv/
-backend/app/__pycache__/
-
-# Node (frontend)
+# Node
 node_modules/
-frontend/node_modules/
-
-# Build outputs
 frontend/dist/
 frontend/build/
-dist/
-build/
+npm-debug.log*
+.eslintcache
 
-# Agent guidelines (local only, not for repo)
-AGENTS.md
-
-# Environment files (contain credentials)
+# Environment files (contain credentials — NEVER commit)
 .env
 .env.local
 .env.*.local
-backend/.env
-backend/.env.local
-backend/.env.*.local
+*.env.local
 
 # Environment templates (safe to commit)
+!.env.example
 !.env.template
 
 # IDE
@@ -44,6 +37,7 @@ backend/.env.*.local
 .vscode/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
@@ -53,17 +47,37 @@ Thumbs.db
 *.log
 logs/
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
 # Docker
 docker/*.local.*
 
-# Media files (uploaded by users)
+# Media files (uploaded by users, not for git)
 backend/media/
+backend/app/receipts/audit/
+backend/app/receipts/previews/
 media/
+uploads/
+*.jpg
+*.jpeg
+*.png
+*.gif
 
-# Alembic (keep versions but not generated .pyc)
+# AI Model files — too large for git, mounted as volumes or downloaded at runtime
+*.pt
+*.bin
+*.onnx
+*.pth
+*.safetensors
+*.h5
+*.pb
+*.ckpt
+
+# Alembic
 backend/alembic/__pycache__/
+
+# Agent guidelines (local only)
+AGENTS.md
+
+# Backup files
+*.bak
+*.backup
+*.tmp
