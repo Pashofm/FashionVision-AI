@@ -153,7 +153,7 @@ for dt, name in drivers:
 Lista todos los drivers disponibles.
 
 ```bash
-curl -X GET http://localhost:8000/api/printers/drivers
+curl -X GET http://localhost/api/printers/drivers
 ```
 
 **Response:**
@@ -173,7 +173,7 @@ curl -X GET http://localhost:8000/api/printers/drivers
 Obtiene el driver activo actualmente.
 
 ```bash
-curl -X GET http://localhost:8000/api/printers/driver
+curl -X GET http://localhost/api/printers/driver
 ```
 
 **Response:**
@@ -189,7 +189,7 @@ curl -X GET http://localhost:8000/api/printers/driver
 Cambia el driver activo.
 
 ```bash
-curl -X POST "http://localhost:8000/api/printers/driver?driver_type=html"
+curl -X POST "http://localhost/api/printers/driver?driver_type=html"
 ```
 
 **Response:**
@@ -205,7 +205,7 @@ curl -X POST "http://localhost:8000/api/printers/driver?driver_type=html"
 Imprime un recibo existente usando el driver activo.
 
 ```bash
-curl -X POST http://localhost:8000/api/receipts/{uuid}/print \
+curl -X POST http://localhost/api/receipts/{uuid}/print \
   -H "Authorization: Bearer {token}"
 ```
 
@@ -226,7 +226,7 @@ curl -X POST http://localhost:8000/api/receipts/{uuid}/print \
 Genera vista previa HTML de un recibo.
 
 ```bash
-curl -X GET http://localhost:8000/api/receipts/{uuid}/preview
+curl -X GET http://localhost/api/receipts/{uuid}/preview
 ```
 
 **Response:**

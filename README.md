@@ -13,6 +13,7 @@ FashionVision AI es una solución tecnológica diseñada para pequeñas y median
 - [Instalación Rápida](#instalación-rápida)
 - [Arquitectura del Sistema](#arquitectura-del-sistema)
 - [Modos de Uso](#modos-de-uso)
+- [Flujo funcional](#flujo-funcional)
 - [Documentación](#documentación)
 - [Endpoints de la API](#endpoints-de-la-api)
 
@@ -48,19 +49,16 @@ FashionVision AI es una solución tecnológica diseñada para pequeñas y median
 
 ```bash
 # 1. Clonar el repositorio
-git clone git@github.com:Pashofm/FashionVision-AI.git
+git clone https://github.com/Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 
 # 2. Configurar variables de entorno
 cp .env.example .env
 
-# 3. Construir y levantar los 4 servicios
-make up-build
+# 3. Construir y esperar los 4 servicios
+docker compose up -d --build --wait
 
-# 4. Ejecutar migraciones de base de datos
-make migrate
-
-# 5. Cargar datos iniciales de prueba
+# 4. Cargar datos iniciales de prueba
 make seed
 ```
 
@@ -80,6 +78,8 @@ make seed
 | admin@tienda.com | admin | admin123 |
 | cajero@tienda.com | cashier | admin123 |
 | cliente@demo.com | client | admin123 |
+
+Para conocer el flujo completo de administrador, cliente y cajero consulta la [Guía de Usuario](./docs/USER_GUIDE.md).
 
 ---
 
@@ -127,7 +127,7 @@ make seed
 
 ```bash
 make up-build    # Construye y levanta todos los servicios con volúmenes de código
-make migrate     # Aplica migraciones pendientes
+make seed        # Carga los datos demo
 ```
 
 Los cambios en `backend/` y `frontend/src/` se reflejan instantáneamente gracias a los volúmenes montados y hot reload (uvicorn --reload + Vite HMR).
@@ -135,14 +135,24 @@ Los cambios en `backend/` y `frontend/src/` se reflejan instantáneamente gracia
 ### Modo Producción
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+cp .env.example .env
+# Editar .env con secretos, dominios reales y ENVIRONMENT=production
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 Sin volúmenes de código, sin hot reload, backend con gunicorn + 4 workers uvicorn, restart always.
 
-### Desarrollo sin Docker (avanzado)
+## Flujo funcional
 
-Si necesitas correr backend/frontend fuera de Docker (por debugging o IDE), consulta [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md#desarrollo-sin-docker-avanzado).
+FashionVision AI se utiliza con tres perfiles:
+
+1. **Administrador**: configura catálogo, variantes, imágenes, inventario y consulta reportes.
+2. **Cliente**: usa el kiosco, permite el acceso a la cámara, identifica una prenda, selecciona una variante y envía el carrito.
+3. **Cajero**: revisa el carrito, confirma disponibilidad, procesa el pago simulado y genera el recibo.
+
+La venta completada actualiza el inventario de la variante correspondiente. El terminal POS incluido es un mock para desarrollo: no realiza cobros reales ni se conecta a hardware bancario.
+
+Consulta la [Guía de Usuario](./docs/USER_GUIDE.md) para el flujo detallado por rol.
 
 ---
 
@@ -160,7 +170,7 @@ make shell-db        # Cliente psql en la base de datos
 make migrate         # alembic upgrade head
 make migrate-status  # Ver estado de migraciones
 make seed            # Cargar datos de prueba
-make test-backend    # pytest en el contenedor backend
+make test-backend    # Requiere una BD de pruebas separada; ver testing/TESTING_GUIDE.md
 make test-frontend   # vitest en el contenedor frontend
 make clean           # Eliminar todo (contenedores + volúmenes)
 ```
@@ -172,6 +182,9 @@ make clean           # Eliminar todo (contenedores + volúmenes)
 | Documento | Descripción |
 |-----------|-------------|
 | [QUICKSTART.md](./QUICKSTART.md) | Guía rápida para nuevos desarrolladores |
+| [docs/INDEX.md](./docs/INDEX.md) | Índice de documentación por audiencia |
+| [docs/USER_GUIDE.md](./docs/USER_GUIDE.md) | Flujo funcional por rol |
+| [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) | Variables de entorno y configuración |
 | [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Guía completa de desarrollo |
 | [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) | Entorno Docker y migraciones |
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Arquitectura del sistema |
@@ -277,10 +290,6 @@ make logs-db                   # Ver logs
 make migrate-status            # Ver estado
 make migrate                   # Forzar aplicación
 ```
-
-### Error: `No module named 'backend'`
-
-Esto solo ocurre en modo desarrollo sin Docker. Asegúrate de ejecutar desde la raíz del proyecto con `PYTHONPATH=$PWD`.
 
 ### Acceso a PostgreSQL
 
