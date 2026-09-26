@@ -1,46 +1,51 @@
 # Instalación
 
-FashionVision AI se ejecuta con Docker. Python, Node.js y PostgreSQL no son necesarios en el sistema anfitrión para usar la demo.
+FashionVision AI se ejecuta con Docker. No necesitas instalar Python, Node.js ni PostgreSQL para usar la demo.
 
-## Requisitos
+Elige el método que corresponde a tu equipo:
 
-- Docker Engine 24+ en Linux, o Docker Desktop 4+ en Windows/macOS.
-- Docker Compose v2 (`docker compose`).
+| Sistema | Guía | Recomendación |
+|---|---|---|
+| Linux | [Linux](#linux) | Docker Engine nativo |
+| Windows 10/11 | [Windows nativo](#windows-nativo) | Docker Desktop y PowerShell |
+| Windows 10/11 con Ubuntu | [Windows con WSL2](#windows-con-wsl2) | Recomendado para desarrollo |
+
+## Requisitos comunes
+
 - Git 2.40+.
+- Docker Engine 24+ o Docker Desktop 4+.
+- Docker Compose v2 (`docker compose`).
 - 8 GB de RAM recomendados.
-- 10 GB de espacio libre como mínimo; 20 GB es más cómodo para modelos y cachés.
+- 20 GB libres recomendados para imágenes, modelos y cachés.
 
-Verifica la instalación:
+Después de instalar las herramientas, verifica:
 
 ```bash
+git --version
 docker --version
+docker compose version
 ```
 
-En Windows se recomienda Docker Desktop con integración WSL2. Consulta [WINDOWS_WSL2.md](WINDOWS_WSL2.md).
+## Flujo de la demo
 
-## Instalación común
+Estos comandos son iguales en Linux y WSL2. En PowerShell usa la variante indicada en la sección de Windows nativo.
 
 ```bash
 git clone https://github.com/Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 cp .env.example .env
 docker compose up -d --build --wait
+make seed
 ```
 
-En Windows PowerShell, sustituye la copia del entorno por:
+`--wait` espera a que los servicios estén saludables y a que el backend aplique las migraciones. Si no tienes `make`, usa el comando de seed de [COMANDOS.md](COMANDOS.md#datos-iniciales-y-migraciones).
 
-```powershell
-Copy-Item .env.example .env
-docker compose up -d --build --wait
-```
-
-Comprueba que los servicios estén saludables:
+Comprueba el resultado:
 
 ```bash
 docker compose ps
+curl http://localhost/health
 ```
-
-Carga los datos demo con `make seed` o consulta el equivalente en [COMANDOS.md](COMANDOS.md). Las migraciones se ejecutan automáticamente al arrancar el backend.
 
 ## Acceso
 
@@ -51,33 +56,132 @@ Carga los datos demo con `make seed` o consulta el equivalente en [COMANDOS.md](
 | Swagger | `http://localhost/docs` |
 | pgAdmin opcional | `http://localhost:5050` |
 
-Para utilizar la aplicación consulta [USER_GUIDE.md](USER_GUIDE.md).
+Las cuentas de demostración se documentan en [QUICKSTART.md](../QUICKSTART.md#usuarios-de-prueba). Para operar la aplicación consulta [USER_GUIDE.md](USER_GUIDE.md).
 
 ## Linux
 
-Instala Docker desde el gestor de paquetes de tu distribución o Docker Engine. En Arch Linux, asegúrate de tener el daemon activo:
+### 1. Instalar Docker y Git
+
+Instala Docker Engine y el plugin Docker Compose usando la guía oficial para tu distribución:
+
+- Debian/Ubuntu: <https://docs.docker.com/engine/install/debian/> o <https://docs.docker.com/engine/install/ubuntu/>.
+- Fedora: <https://docs.docker.com/engine/install/fedora/>.
+- Arch Linux: instala los paquetes `docker`, `docker-compose`, `git` y `make` con `pacman`.
+
+Instala Git y Make con el gestor de paquetes de tu distribución:
 
 ```bash
+# Debian/Ubuntu
+sudo apt update && sudo apt install -y git make
+
+# Fedora
+sudo dnf install -y git make
+```
+
+En Arch Linux:
+
+```bash
+sudo pacman -Syu docker docker-compose git make
 sudo systemctl enable --now docker
+```
+
+Permite usar Docker sin `sudo` y vuelve a iniciar sesión:
+
+```bash
 sudo usermod -aG docker "$USER"
 ```
 
-Cierra y vuelve a iniciar sesión si agregaste tu usuario al grupo `docker`.
+Comprueba que Docker funciona antes de continuar:
 
-## Windows
+```bash
+docker run --rm hello-world
+```
 
-Instala Docker Desktop, activa la integración con tu distribución WSL2 y ejecuta los comandos desde WSL o PowerShell. No necesitas instalar Python ni Node.js para la demo.
+### 2. Ejecutar la demo
+
+Sigue el [flujo de la demo](#flujo-de-la-demo). Si el puerto 80 está ocupado, define `FRONTEND_HOST_PORT=8080` en `.env` antes de iniciar los servicios y abre `http://localhost:8080`.
+
+## Windows nativo
+
+Este método ejecuta los comandos desde PowerShell. Docker Desktop puede usar WSL2 internamente, pero no requiere trabajar dentro de una terminal Linux.
+
+### 1. Instalar herramientas
+
+1. Activa la virtualización en BIOS/UEFI si Docker Desktop lo solicita.
+2. Instala [Docker Desktop](https://www.docker.com/products/docker-desktop/) y deja el motor iniciado.
+3. Instala [Git for Windows](https://git-scm.com/download/win) o ejecuta `winget install Git.Git` desde PowerShell.
+4. Reinicia PowerShell y verifica:
+
+```powershell
+git --version
+docker --version
+docker compose version
+```
+
+### 2. Ejecutar la demo
+
+```powershell
+git clone https://github.com/Pashofm/FashionVision-AI.git
+Set-Location FashionVision-AI
+Copy-Item .env.example .env
+docker compose up -d --build --wait
+docker compose cp backend/database/seed.sql db:/tmp/seed.sql
+docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/seed.sql'
+```
+
+Verifica los servicios y abre `http://localhost`:
+
+```powershell
+docker compose ps
+Invoke-WebRequest http://localhost/health
+```
+
+### Problemas frecuentes
+
+- Si Docker no responde, abre Docker Desktop y espera a que indique que el motor está activo.
+- Si el puerto 80 está ocupado, cambia `FRONTEND_HOST_PORT=8080` en `.env` y abre `http://localhost:8080`.
+- Para identificar un proceso que usa el puerto 80: `netstat -ano | findstr :80` y `taskkill /PID <PID> /F`.
+
+## Windows con WSL2
+
+Este es el método recomendado para desarrollo. Sigue la guía detallada de [WINDOWS_WSL2.md](WINDOWS_WSL2.md), que cubre la instalación de WSL2, Ubuntu, Docker Desktop e integración entre Windows y Linux.
+
+Resumen del flujo una vez configurado WSL2:
+
+```bash
+mkdir -p ~/Projects
+cd ~/Projects
+git clone https://github.com/Pashofm/FashionVision-AI.git
+cd FashionVision-AI
+cp .env.example .env
+docker compose up -d --build --wait
+make seed
+```
+
+Guarda el repositorio bajo `~/Projects` u otro directorio Linux, no en `C:\`, para evitar problemas de rendimiento con volúmenes y hot reload.
 
 ## macOS
 
-Instala Docker Desktop y ejecuta los mismos comandos de la sección de instalación común desde Terminal.
+Instala [Docker Desktop](https://www.docker.com/products/docker-desktop/) y Git, y sigue el [flujo de la demo](#flujo-de-la-demo) desde Terminal. Si no tienes `make`, usa el seed sin Make de [COMANDOS.md](COMANDOS.md#datos-iniciales-y-migraciones).
+
+## pgAdmin opcional
+
+Inicia pgAdmin cuando necesites administrar PostgreSQL:
+
+```bash
+docker compose --profile tools up -d pgadmin
+```
+
+Abre `http://localhost:5050` y registra el servidor con host `db`, puerto `5432` y credenciales de `.env`. Consulta [GUIAS_PGADMIN.md](GUIAS_PGADMIN.md).
 
 ## Reiniciar completamente la demo
 
-Este flujo borra la base de datos y los volúmenes persistentes:
+Este flujo elimina los contenedores y volúmenes, incluidos los datos PostgreSQL y modelos descargados:
 
 ```bash
 docker compose down -v --remove-orphans
 docker compose up -d --build --wait
 make seed
 ```
+
+En Windows nativo, sustituye `make seed` por el comando de [COMANDOS.md](COMANDOS.md#datos-iniciales-y-migraciones).

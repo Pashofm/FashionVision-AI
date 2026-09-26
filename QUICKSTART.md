@@ -21,7 +21,7 @@ docker compose up -d --build --wait
 make seed
 ```
 
-En Windows puedes ejecutar estos comandos desde WSL2 o Git Bash con `make` instalado. Si no tienes `make`, usa los comandos equivalentes de [docs/COMANDOS.md](./docs/COMANDOS.md).
+Antes de ejecutar el flujo, sigue la guía de tu plataforma: [Linux](./docs/INSTALLATION.md#linux), [Windows nativo](./docs/INSTALLATION.md#windows-nativo) o [Windows con WSL2](./docs/WINDOWS_WSL2.md). Si no tienes `make`, usa el seed sin Make de [docs/COMANDOS.md](./docs/COMANDOS.md#datos-iniciales-y-migraciones).
 
 Las migraciones se aplican automáticamente durante el arranque del backend. El sistema ya está corriendo cuando los servicios estén saludables. Abre http://localhost en tu navegador.
 

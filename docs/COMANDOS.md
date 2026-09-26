@@ -14,7 +14,7 @@ make clean     # Detener y borrar contenedores, volúmenes huérfanos
 Sin `make`, usa los equivalentes:
 
 ```bash
-docker compose up -d --build  # Construir imágenes y levantar la demo
+docker compose up -d --build --wait  # Construir y esperar la demo
 docker compose up -d          # Levantar imágenes existentes
 docker compose down           # Detener contenedores sin borrar volúmenes
 docker compose down -v --remove-orphans  # Borrar contenedores y volúmenes
@@ -33,6 +33,13 @@ make seed            # Insertar productos y usuarios demo
 ```
 
 `make seed` es idempotente y debe ejecutarse después de que el backend y PostgreSQL estén saludables.
+
+Sin `make`, usa este equivalente compatible con Bash y PowerShell:
+
+```bash
+docker compose cp backend/database/seed.sql db:/tmp/seed.sql
+docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/seed.sql'
+```
 
 ## Estado, logs y shells
 
