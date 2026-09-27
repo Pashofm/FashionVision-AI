@@ -1,0 +1,18 @@
+# Local Python environments and generated files must not enter the image.
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Test and local-only artifacts are not needed by the runtime image.
+tests/
+scripts/
+*.log
+.env
+.env.local
+media/
+uploads/
