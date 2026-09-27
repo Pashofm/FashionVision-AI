@@ -1,0 +1,391 @@
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { performLogout } from '../services/api';
+import { analyticsService } from '../services/analyticsService';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+} from 'recharts';
+import '../styles/Dashboard.css';
+
+const COLORS = ['#4da6ff', '#764ba2', '#f5576c', '#11998e', '#fc8181', '#68d391'];
+
+const Dashboard = () => {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [salesGeneral, setSalesGeneral] = useState(null);
+  const [salesData, setSalesData] = useState([]);
+  const [trendData, setTrendData] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const userData = JSON.parse(localStorage.getItem('user') || '{}');
+
+  const fetchDashboardData = async () => {
+    try {
+      setError(null);
+
+      const [summaryData, salesGenData] = await Promise.all([
+        analyticsService.getSummary(),
+        analyticsService.getSalesGeneral(),
+      ]);
+
+      setSummary(summaryData);
+      setSalesGeneral(salesGenData);
+
+      const hourData = summaryData.sales_by_hour || [];
+      const formattedHourData = Array.from({ length: 24 }, (_, i) => {
+        const found = hourData.find(h => h.hour === i);
+        return {
+          hour: `${i.toString().padStart(2, '0')}:00`,
+          ventas: found ? found.total_orders : 0,
+          revenue: found ? found.total_revenue : 0,
+        };
+      });
+      setSalesData(formattedHourData);
+
+      const trendDataMapped = (summaryData.sales_trend || []).map((item, index) => {
+        const date = new Date();
+        date.setDate(date.getDate() - (27 - index));
+        return {
+          date: date.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }),
+          ventas: item.total_orders,
+          revenue: item.total_revenue,
+        };
+      });
+      setTrendData(trendDataMapped);
+
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error('Error fetching dashboard:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (userData.role !== 'admin') {
+      navigate('/');
+      return;
+    }
+    fetchDashboardData();
+    const interval = setInterval(fetchDashboardData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [navigate, userData.role]);
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+    }).format(value);
+  };
+
+  const getTrendIcon = (trend) => {
+    switch (trend) {
+      case 'up': return '\u2191';
+      case 'down': return '\u2193';
+      default: return '\u2192';
+    }
+  };
+
+  const getTrendColor = (trend) => {
+    switch (trend) {
+      case 'up': return '#11998e';
+      case 'down': return '#f5576c';
+      default: return '#94a3b8';
+    }
+  };
+
+  const handleLogout = () => {
+    performLogout();
+    navigate('/');
+  };
+
+  if (!userData.role) return null;
+
+  if (loading) {
+    return (
+      <div className="dashboard-page">
+        <header>
+          <div className="logo">⚙️ Admin - FashionVision</div>
+          <nav>
+            <button className="nav-active">Dashboard</button>
+            <button onClick={() => navigate('/inventory')}>Inventario</button>
+            <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
+          </nav>
+          <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
+        </header>
+        <div className="dashboard-container" style={{ textAlign: 'center', padding: '60px' }}>
+          <p>Cargando datos del dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="dashboard-page">
+        <header>
+          <div className="logo">⚙️ Admin - FashionVision</div>
+          <nav>
+            <button className="nav-active">Dashboard</button>
+            <button onClick={() => navigate('/inventory')}>Inventario</button>
+            <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
+          </nav>
+          <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
+        </header>
+        <div className="dashboard-container" style={{ textAlign: 'center', padding: '60px' }}>
+          <p style={{ color: '#f5576c' }}>{error}</p>
+          <button onClick={fetchDashboardData} className="action-btn btn-inventario">
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const pieData = summary?.sales_by_category?.map((cat, index) => ({
+    name: cat.category_name,
+    value: cat.total_quantity_sold,
+    color: COLORS[index % COLORS.length],
+  })) || [];
+
+  const ticketPromedio = summary?.today?.total_orders > 0
+    ? summary.today.total_revenue / summary.today.total_orders
+    : 0;
+
+  const paymentMethods = salesGeneral?.payment_methods || {};
+  const cashRevenue = paymentMethods.cash?.revenue || 0;
+  const cardRevenue = paymentMethods.card?.revenue || 0;
+  const mixedRevenue = paymentMethods.mixed?.revenue || 0;
+  const totalTransactions = salesGeneral?.total_transactions || 0;
+
+  return (
+    <div className="dashboard-page">
+      <header>
+        <div className="logo">⚙️ Admin - FashionVision</div>
+        <nav>
+          <button className="nav-active">Dashboard</button>
+          <button onClick={() => navigate('/inventory')}>Inventario</button>
+          <button onClick={() => navigate('/admin/catalog')}>Catálogo</button>
+        </nav>
+        <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
+      </header>
+
+      <main className="dashboard-container">
+        <div className="dashboard-header-row">
+          <h2 className="section-title">Panel de Control</h2>
+          {lastUpdated && (
+            <span className="last-updated">
+              Actualizado a las {lastUpdated.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+
+        <section className="stats-cards">
+          <div className="stat-card">
+            <h3>Ventas de Hoy</h3>
+            <p className="stat-value">{formatCurrency(summary?.today?.total_revenue || 0)}</p>
+            <p className="stat-detail">{summary?.today?.total_orders || 0} órdenes</p>
+          </div>
+          <div className="stat-card">
+            <h3>Ventas Semanales</h3>
+            <p className="stat-value">{formatCurrency(summary?.weekly_sales || 0)}</p>
+            <p className="stat-detail">
+              <span style={{ color: getTrendColor(summary?.comparison?.trend), fontWeight: 'bold' }}>
+                {getTrendIcon(summary?.comparison?.trend)} {Math.abs(summary?.comparison?.percentage_change || 0)}%
+              </span>
+              {' '}vs semana anterior
+            </p>
+          </div>
+          <div className="stat-card">
+            <h3>Ventas Mensuales</h3>
+            <p className="stat-value">{formatCurrency(summary?.monthly_sales || 0)}</p>
+            <p className="stat-detail">Últimos 30 días</p>
+          </div>
+          <div className="stat-card">
+            <h3>Productos Vendidos (Hoy)</h3>
+            <p className="stat-value">{summary?.today?.total_items_sold || 0}</p>
+            <p className="stat-detail">Artículos</p>
+          </div>
+          <div className="stat-card">
+            <h3>Ticket Promedio</h3>
+            <p className="stat-value">{formatCurrency(ticketPromedio)}</p>
+            <p className="stat-detail">Por orden</p>
+          </div>
+        </section>
+
+        <section className="payment-methods-section">
+          <h2 className="section-title">Métodos de Pago (Hoy)</h2>
+          <div className="payment-methods-row">
+            <div className="payment-method-card">
+              <span className="pm-label">Efectivo</span>
+              <span className="pm-value">{formatCurrency(cashRevenue)}</span>
+            </div>
+            <div className="payment-method-card">
+              <span className="pm-label">Tarjeta</span>
+              <span className="pm-value">{formatCurrency(cardRevenue)}</span>
+            </div>
+            <div className="payment-method-card">
+              <span className="pm-label">Mixto</span>
+              <span className="pm-value">{formatCurrency(mixedRevenue)}</span>
+            </div>
+            <div className="payment-method-card">
+              <span className="pm-label">Total Transacciones</span>
+              <span className="pm-value">{totalTransactions}</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="charts-row">
+          <div className="chart-card">
+            <h2 className="section-title">Ventas por Hora (Hoy)</h2>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={salesData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="hour" tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <YAxis tick={{ fill: '#64748b' }} />
+                  <Tooltip />
+                  <Bar dataKey="ventas" fill="#4da6ff" radius={[4, 4, 0, 0]} name="Órdenes" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="chart-card">
+            <h2 className="section-title">Ventas por Categoría</h2>
+            <div className="chart-wrapper">
+              {pieData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>
+                  Sin datos de ventas
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="dashboard-trend-section">
+          <div className="chart-card trend-card">
+            <h2 className="section-title">Tendencia de Ventas (Últimas 4 semanas)</h2>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} />
+                  <YAxis tick={{ fill: '#64748b' }} />
+                  <Tooltip formatter={(value) => formatCurrency(value)} />
+                  <Line type="monotone" dataKey="revenue" stroke="#4da6ff" strokeWidth={2} dot={false} name="Revenue" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="chart-card analytics-inline-card">
+            <h2 className="section-title">Estadísticas Avanzadas</h2>
+            <p className="section-subtitle">Ver análisis detallados y reportes</p>
+            <button className="action-btn btn-analytics" onClick={() => navigate('/reportes')}>
+              VER REPORTES
+            </button>
+          </div>
+        </section>
+
+        <section className="top-products-section">
+          <h2 className="section-title">Productos Más Vendidos</h2>
+          <p className="section-subtitle">Últimos 30 días</p>
+          <div className="products-table-wrapper">
+            <table className="products-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Categoría</th>
+                  <th>Cantidad Vendida</th>
+                  <th>Revenue</th>
+                  <th>Órdenes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary?.top_products?.length > 0 ? (
+                  summary.top_products.map((product) => (
+                    <tr key={product.product_id}>
+                      <td>{product.product_name}</td>
+                      <td>{product.category_name}</td>
+                      <td>{product.total_quantity_sold}</td>
+                      <td>{formatCurrency(product.total_revenue)}</td>
+                      <td>{product.order_count}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: 'center', color: '#94a3b8' }}>
+                      Sin ventas registradas
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {summary?.inventory_alerts?.length > 0 && (
+          <section className="alerts-section">
+            <h2 className="section-title">Alertas de Inventario</h2>
+            <p className="section-subtitle">Productos con stock bajo o agotado</p>
+            <div className="alerts-list">
+              {summary.inventory_alerts.map((alert) => (
+                <div key={alert.variant_id} className={`alert-item ${alert.status}`}>
+                  <div className="alert-info">
+                    <strong>{alert.product_name}</strong>
+                    <span>{alert.variant_description}</span>
+                    <span className="alert-sku">SKU: {alert.sku_variant}</span>
+                  </div>
+                  <div className="alert-stock">
+                    <span className={`stock-badge ${alert.status}`}>
+                      {alert.status === 'out_of_stock' ? 'AGOTADO' : 'STOCK BAJO'}
+                    </span>
+                    <span className="stock-count">
+                      {alert.quantity_available} disponibles
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default Dashboard;
