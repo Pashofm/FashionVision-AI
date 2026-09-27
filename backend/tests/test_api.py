@@ -451,10 +451,14 @@ class TestAnalyticsEndpoints:
         assert "total_orders" in data
 
     @pytest.mark.asyncio
-    async def test_get_top_products(self, authenticated_client):
+    async def test_get_top_products(self, authenticated_client, completed_order_with_items):
         response = await authenticated_client.get("/api/analytics/top-products?days=30")
         assert response.status_code == 200
-        assert isinstance(response.json(), list)
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["total_quantity_sold"] == 3
+        assert data[0]["total_revenue"] == 40.0
+        assert data[0]["order_count"] == 1
 
     @pytest.mark.asyncio
     async def test_get_sales_analytics(self, authenticated_client):
@@ -469,9 +473,14 @@ class TestAnalyticsEndpoints:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_get_sales_by_category(self, authenticated_client):
+    async def test_get_sales_by_category(self, authenticated_client, completed_order_with_items):
         response = await authenticated_client.get("/api/analytics/sales-by-category?period=weekly")
         assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["total_quantity_sold"] == 3
+        assert data[0]["total_revenue"] == 40.0
+        assert data[0]["order_count"] == 1
 
     @pytest.mark.asyncio
     async def test_get_inventory_alerts(self, authenticated_client):
@@ -488,11 +497,15 @@ class TestAnalyticsEndpoints:
         assert "percentage_change" in data
 
     @pytest.mark.asyncio
-    async def test_get_dashboard_summary(self, authenticated_client):
+    async def test_get_dashboard_summary(self, authenticated_client, completed_order_with_items):
         response = await authenticated_client.get("/api/analytics/dashboard/summary")
         assert response.status_code == 200
         data = response.json()
-        assert "today" in data
+        assert data["today"] == {
+            "total_orders": 1,
+            "total_revenue": 46.4,
+            "total_items_sold": 3,
+        }
 
 
 class TestPOSTerminalEndpoints:
