@@ -6,8 +6,8 @@
  *   para matching de productos en el catálogo desde el módulo de detección.
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const API_URL = BASE_URL === '/' ? '' : BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_URL || '/';
+const API_URL = BASE_URL === '/' || BASE_URL === '/api' ? '' : BASE_URL;
 
 function getAuthHeaders() {
   const headers = { 'Content-Type': 'application/json' };

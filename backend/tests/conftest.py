@@ -10,12 +10,11 @@ This module provides:
 All tests use PostgreSQL with automatic cleanup after each test.
 """
 import pytest
-import asyncio
 import os
 import sys
 from typing import AsyncGenerator
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
@@ -36,16 +35,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for the test session."""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def test_engine():
     """Create test database engine."""
     engine = create_async_engine(
@@ -57,7 +47,7 @@ async def test_engine():
     await engine.dispose()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def setup_database(test_engine):
     """Setup database schema before tests and cleanup after."""
     from backend.app.database import Base
@@ -258,24 +248,16 @@ async def test_product(db_session, test_category) -> "Product":
 @pytest.fixture
 async def test_variant(db_session, test_product) -> "ProductVariant":
     """Create a test product variant."""
-    from backend.app.models.models import ProductVariant
-    import uuid
-    from decimal import Decimal
+    from backend.tests.factories import ProductVariantFactory
 
-    variant = ProductVariant(
-        id=uuid.uuid4(),
-        product_id=test_product.id,
+    return await ProductVariantFactory.create(
+        db_session,
+        product=test_product,
         size="M",
         color="Red",
         color_hex="#FF0000",
-        sku_variant=f"VAR-{uuid.uuid4().hex[:8]}",
-        price_modifier=Decimal("10.00"),
-        is_active=True
+        price_modifier=10,
     )
-    db_session.add(variant)
-    await db_session.commit()
-    await db_session.refresh(variant)
-    return variant
 
 
 @pytest.fixture
@@ -380,6 +362,46 @@ async def test_order(db_session, test_cart, cashier_user) -> "Order":
     await db_session.commit()
     await db_session.refresh(order)
     return order
+
+
+@pytest.fixture
+async def completed_order_with_items(db_session, test_order, test_product) -> "Order":
+    """Create a completed order with multiple items for analytics tests."""
+    from datetime import datetime
+    from decimal import Decimal
+    from backend.app.models.models import OrderItem, OrderStatus
+    import uuid
+
+    test_order.status = OrderStatus.completed
+    test_order.completed_at = datetime.now()
+    test_order.subtotal = Decimal("40.00")
+    test_order.tax_amount = Decimal("6.40")
+    test_order.total_amount = Decimal("46.40")
+    db_session.add_all([
+        OrderItem(
+            id=uuid.uuid4(),
+            order_id=test_order.id,
+            product_id=test_product.id,
+            product_variant_id=None,
+            product_name=test_product.name,
+            quantity=2,
+            unit_price=Decimal("10.00"),
+            subtotal=Decimal("20.00"),
+        ),
+        OrderItem(
+            id=uuid.uuid4(),
+            order_id=test_order.id,
+            product_id=test_product.id,
+            product_variant_id=None,
+            product_name=test_product.name,
+            quantity=1,
+            unit_price=Decimal("20.00"),
+            subtotal=Decimal("20.00"),
+        ),
+    ])
+    await db_session.commit()
+    await db_session.refresh(test_order)
+    return test_order
 
 
 class BaseTest:

@@ -28,7 +28,7 @@ git --version
 git clone https://github.com/Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 cp .env.example .env
-make up-build
+docker compose up -d --build --wait
 make seed
 ```
 
@@ -61,6 +61,6 @@ make logs-backend
 
 ```bash
 make clean
-make up-build
+docker compose up -d --build --wait
 make seed
 ```

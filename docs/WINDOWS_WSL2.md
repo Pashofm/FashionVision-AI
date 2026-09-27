@@ -1,298 +1,125 @@
-# Guía de Instalación - Windows con WSL2
+# Windows con WSL2
 
-Sistema completo para levantar FashionVision-AI en Windows usando WSL2 (Ubuntu) + Docker Desktop.
+Esta guía instala FashionVision AI desde Ubuntu en WSL2 usando Docker Desktop. Es el método recomendado para desarrollar en Windows porque los volúmenes de Docker y el hot reload funcionan mejor dentro del filesystem Linux.
 
-## Tabla de Contenidos
+## Requisitos
 
-1. [Arquitectura](#arquitectura)
-2. [Requisitos Previos](#requisitos-previos)
-3. [Instalación Paso a Paso](#instalación-paso-a-paso)
-4. [Configuración del Entorno](#configuración-del-entorno)
-5. [Iniciar los Servicios](#iniciar-los-servicios)
-6. [Verificar el Sistema](#verificar-el-sistema)
-7. [Solución de Problemas](#solución-de-problemas)
+- Windows 10 versión 2004 o posterior, o Windows 11.
+- Virtualización habilitada en BIOS/UEFI.
+- 8 GB de RAM y 20 GB libres recomendados.
+- Permisos de administrador para instalar WSL2 y Docker Desktop.
 
----
+## 1. Instalar WSL2 y Ubuntu
 
-## Arquitectura
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Windows Host                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              WSL2 (Ubuntu)                           │   │
-│  │  ┌──────────────┐   ┌──────────────┐                 │   │
-│  │  │   Backend    │   │   Frontend   │  (Hot Reload)  │   │
-│  │  │   :8000      │   │   :5173      │                 │   │
-│  │  └──────────────┘   └──────────────┘                 │   │
-│  │         │                  │                          │   │
-│  │         └──────────────────┴──────────────────┐     │   │
-│  └────────────────────────────────────────────────│─────┘   │
-│                                                     │       │
-│  ┌─────────────────────────────────────────────────▼─────┐ │
-│  │              Docker Desktop (Windows)                 │ │
-│  │  ┌──────────────┐   ┌──────────────┐   ┌──────────┐ │ │
-│  │  │     DB       │   │   pgAdmin    │   │ Backend  │ │ │
-│  │  │   :5432      │   │   :5050      │   │  Docker  │ │ │
-│  │  └──────────────┘   └──────────────┘   └──────────┘ │ │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Requisitos Previos
-
-### Software Necesario
-
-| Software | Versión | Notes |
-|----------|---------|-------|
-| Windows 10/11 | 22H2+ | Con soporte para WSL2 |
-| WSL2 | Latest | Incluido en Windows |
-| Ubuntu (WSL) | 22.04 LTS | Desde Microsoft Store |
-| Docker Desktop | 4.0+ | Con integración WSL2 |
-| Git | 2.30+ | En WSL2 |
-
-### Verificar Instalación (en WSL2 terminal)
-
-```bash
-# Verificar WSL2
-wsl --status
-
-# Verificar Ubuntu
-wsl -l -v
-
-# Verificar Docker
-docker --version
-docker compose version
-
-# Verificar Git
-git --version
-
-# Verificar Python
-python3 --version
-
-# Verificar Node.js
-node --version
-npm --version
-```
-
----
-
-## Instalación Paso a Paso
-
-### Paso 1: Habilitar WSL2
-
-Ejecutar en **PowerShell como Administrador**:
+Abre PowerShell como administrador y ejecuta:
 
 ```powershell
 wsl --install
 ```
 
-Reiniciar el computador después de la instalación.
+Reinicia Windows cuando se solicite. Después abre Ubuntu desde el menú Inicio, crea el usuario Linux y verifica desde PowerShell:
 
-### Paso 2: Instalar Ubuntu desde Microsoft Store
-
-1. Abrir Microsoft Store
-2. Buscar "Ubuntu 22.04 LTS"
-3. Click en "Instalar"
-4. Crear usuario y contraseña cuando termine
-
-### Paso 3: Instalar Docker Desktop
-
-1. Descargar desde https://www.docker.com/products/docker-desktop/
-2. Ejecutar el instalador
-3. **Importante**: Marcar "Use WSL 2 instead of Hyper-V"
-4. Esperar a que termine y reiniciar
-
-### Paso 4: Configurar Docker en WSL2
-
-En la terminal de Ubuntu (WSL2):
-
-```bash
-# Agregar usuario al grupo docker
-sudo usermod -aG docker $USER
-
-# Verificar que Docker funciona
-docker ps
-
-# Si hay error de permisos, reiniciar WSL
-wsl --shutdown
-# Luego abrir Ubuntu de nuevo
+```powershell
+wsl --status
+wsl -l -v
 ```
 
-### Paso 5: Clonar el Repositorio
+La distribución Ubuntu debe mostrar versión `2`. Si ya tenías WSL1, ejecuta `wsl --set-version Ubuntu 2` desde PowerShell como administrador.
 
-En la terminal de Ubuntu:
+## 2. Instalar Docker Desktop
+
+1. Instala [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+2. Durante la instalación, selecciona el backend WSL2 si se ofrece la opción.
+3. Abre Docker Desktop y espera a que el motor quede iniciado.
+4. En **Settings > Resources > WSL Integration**, activa la integración para Ubuntu.
+
+Desde la terminal Ubuntu verifica que Docker está disponible sin `sudo`:
 
 ```bash
-# Ir al directorio home
-cd ~
+docker --version
+docker compose version
+docker run --rm hello-world
+```
 
-# Crear directorio de proyectos
-mkdir -p Projects && cd Projects
+Si Docker no responde, cierra Docker Desktop, ejecuta `wsl --shutdown` desde PowerShell y vuelve a iniciar Docker Desktop.
 
-# Clonar repositorio
-git clone <repo-url> FashionVision-AI
+## 3. Instalar Git y clonar el proyecto
+
+En Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y git make
+mkdir -p ~/Projects
+cd ~/Projects
+git clone https://github.com/Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 ```
 
----
+No clones el proyecto en `/mnt/c` ni `C:\`. Los montajes desde el disco Windows reducen el rendimiento y pueden afectar el hot reload.
 
-## Configuración del Entorno
-
-### Paso 1: Copiar archivo de variables
+## 4. Configurar y ejecutar la demo
 
 ```bash
-cd ~/Projects/FashionVision-AI
-cp .env.template .env
-```
-
-### Paso 2: Editar .env
-
-```bash
-nano .env
-```
-
-Configurar las siguientes variables:
-
-```env
-# DATABASE
-POSTGRES_PASSWORD=your_strong_password_here
-
-# SECURITY
-SECRET_KEY=generate_with_openssl_rand_base64_32
-
-# PGADMIN
-PGADMIN_PASSWORD=your_pgadmin_password_here
-```
-
-### Paso 3: Configurar puertos en Windows Firewall (opcional)
-
-Si tienes problemas de conexión, verificar que los puertos no estén bloqueados.
-
----
-
-## Iniciar los Servicios
-
-### Iniciar con Docker
-
-```bash
-cd ~/Projects/FashionVision-AI
-
 cp .env.example .env
-make up-build
+docker compose up -d --build --wait
 make seed
-```
-
-Docker inicia la base de datos, backend, frontend y nginx. No necesitas instalar Python ni Node.js en WSL2.
-
----
-
-## Verificar el Sistema
-
-### Verificar servicios
-
-```bash
-# En otra terminal de WSL2
-curl http://localhost/health
-curl http://localhost
-```
-
-### Verificar Docker
-
-```bash
 docker compose ps
 ```
 
-### Accesos
+Si no instalaste `make`, usa el seed sin Make de [COMANDOS.md](COMANDOS.md#datos-iniciales-y-migraciones).
 
-| Servicio | URL | Credenciales |
-|----------|-----|--------------|
-| App | http://localhost | - |
-| Backend API | http://localhost/api | - |
-| API Docs | http://localhost/docs | - |
-| pgAdmin | http://localhost:5050 | ver .env |
-| PostgreSQL | localhost:5432 | ver .env |
+Abre desde Windows o Ubuntu:
 
----
+| Recurso | URL |
+|---|---|
+| Aplicación | `http://localhost` |
+| Health | `http://localhost/health` |
+| Swagger | `http://localhost/docs` |
+| pgAdmin opcional | `http://localhost:5050` |
 
-## Solución de Problemas
+## PowerShell frente a WSL
 
-### Error: WSL2 no está instalado
+Ejecuta los comandos Docker del proyecto desde Ubuntu. Si necesitas usar PowerShell, abre el repositorio mediante `wsl` o sigue la sección [Windows nativo](INSTALLATION.md#windows-nativo). No alternes ambos directorios para el mismo checkout.
+
+## Problemas comunes
+
+### Docker no responde en Ubuntu
+
+1. Confirma que Docker Desktop está iniciado.
+2. Confirma que la integración WSL está habilitada para Ubuntu.
+3. Reinicia WSL y Docker Desktop:
 
 ```powershell
-# En PowerShell Admin
-wsl --install
-```
-
-### Error: Docker no inicia en WSL2
-
-```bash
-# En WSL2 terminal
-export DOCKER_HOST=wsl://localhost
-docker ps
-```
-
-### Error: Puerto en uso
-
-```bash
-# Encontrar proceso
-lsof -i :8000
-
-# Matar proceso
-kill -9 <PID>
-```
-
-### Error: Permiso denegado en Docker
-
-```bash
-# Reiniciar WSL
-wsl --shutdown
-
-# O agregar usuario al grupo
-sudo usermod -aG docker $USER
-# Cerrar sesión y volver a entrar
-```
-
-### Error: ModuleNotFoundError
-
-```bash
-# Asegurar que PYTHONPATH está configurado
-export PYTHONPATH=~/Projects/FashionVision-AI
-```
-
-### Problemas de encoding con npm en WSL2
-
-```bash
-# Si hay errores con caracteres especiales
-export LC_ALL=C.UTF-8
-export LANG=C.UTF-8
-npm install
-```
-
----
-
-## Comandos Rápidos
-
-```bash
-# Iniciar base de datos
-docker compose up -d db
-
-# Ver logs
-docker compose logs -f
-
-# Detener servicios
-docker compose stop
-
-# Reiniciar WSL2
 wsl --shutdown
 ```
 
----
+### El puerto 80 está ocupado
 
-## Próximos Pasos
+Edita `.env`:
 
-- Revisar [docs/DEVELOPMENT.md](./DEVELOPMENT.md) para flujo de trabajo
-- Revisar [scripts/README.md](./scripts/README.md) para scripts disponibles
-- Configurar IDE en WSL2 (VS Code con Remote WSL)
+```text
+FRONTEND_HOST_PORT=8080
+```
+
+Recrea los servicios y abre `http://localhost:8080`:
+
+```bash
+docker compose up -d --force-recreate nginx
+```
+
+### Los cambios no se reflejan
+
+Confirma que el repositorio está bajo `~/Projects` y no bajo `/mnt/c`. Si cambias dependencias o configuración, reconstruye:
+
+```bash
+docker compose up -d --build --wait
+```
+
+### Ver logs
+
+```bash
+docker compose ps
+docker compose logs -f backend
+docker compose logs -f frontend
+```

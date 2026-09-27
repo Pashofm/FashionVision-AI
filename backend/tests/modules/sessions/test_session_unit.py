@@ -10,7 +10,7 @@ Tests for session lifecycle management:
 """
 import pytest
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.app.models.models import Session, SessionStatus
 from backend.app.services.session_manager import SessionManager
@@ -99,7 +99,7 @@ class TestSessionActivityUpdate:
     async def test_update_activity_clears_ended_at(self, db_session):
         """Test that update_activity clears ended_at."""
         session = await SessionFactory.create(db_session)
-        session.ended_at = datetime.utcnow()
+        session.ended_at = datetime.now(timezone.utc)
         await db_session.commit()
 
         await SessionManager.update_activity(db_session, session.id)
@@ -112,7 +112,7 @@ class TestSessionActivityUpdate:
         """Test that update_activity does not affect ended_at if session not active."""
         session = await SessionFactory.create(db_session)
         session.status = SessionStatus.abandoned
-        session.ended_at = datetime.utcnow()
+        session.ended_at = datetime.now(timezone.utc)
         await db_session.commit()
 
         await SessionManager.update_activity(db_session, session.id)
@@ -130,7 +130,7 @@ class TestSessionActiveStatus:
         from datetime import datetime
 
         session = await SessionFactory.create(db_session)
-        session.last_activity_at = datetime.utcnow()
+        session.last_activity_at = datetime.now(timezone.utc)
         await db_session.commit()
 
         result = await SessionManager.is_session_active(db_session, session.id)
@@ -166,7 +166,7 @@ class TestSessionActiveStatus:
     async def test_is_session_active_with_ended_at(self, db_session):
         """Test session with ended_at is not active."""
         session = await SessionFactory.create(db_session)
-        session.ended_at = datetime.utcnow()
+        session.ended_at = datetime.now(timezone.utc)
         await db_session.commit()
 
         result = await SessionManager.is_session_active(db_session, session.id)
@@ -227,7 +227,7 @@ class TestSessionExtend:
     async def test_extend_session_clears_ended_at(self, db_session):
         """Test that extend_session clears ended_at."""
         session = await SessionFactory.create(db_session)
-        session.ended_at = datetime.utcnow()
+        session.ended_at = datetime.now(timezone.utc)
         await db_session.commit()
 
         await SessionManager.extend_session(db_session, session.id)
@@ -279,7 +279,7 @@ class TestExpireInactiveSessions:
         """Test expiring one inactive session."""
         SessionManager.set_timeout_minutes(30)
 
-        old_time = datetime.utcnow() - timedelta(minutes=60)
+        old_time = datetime.now(timezone.utc) - timedelta(minutes=60)
         session = Session(
             id=uuid.uuid4(),
             session_token=uuid.uuid4(),
@@ -300,7 +300,7 @@ class TestExpireInactiveSessions:
         """Test that recently active sessions are not expired."""
         SessionManager.set_timeout_minutes(30)
 
-        recent_time = datetime.utcnow() - timedelta(minutes=5)
+        recent_time = datetime.now(timezone.utc) - timedelta(minutes=5)
         session = Session(
             id=uuid.uuid4(),
             session_token=uuid.uuid4(),
@@ -335,7 +335,7 @@ class TestSessionTimeoutConfiguration:
 
         SessionManager.set_timeout_minutes(5)
 
-        old_time = datetime.utcnow() - timedelta(minutes=10)
+        old_time = datetime.now(timezone.utc) - timedelta(minutes=10)
         session = Session(
             id=uuid.uuid4(),
             session_token=uuid.uuid4(),

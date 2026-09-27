@@ -1,6 +1,7 @@
 import pytest
 import uuid
 from decimal import Decimal
+from sqlalchemy import select
 
 
 class TestInventoryQueries:
@@ -8,7 +9,9 @@ class TestInventoryQueries:
     async def test_get_inventory_by_variant(self, db_session, test_inventory, test_variant):
         from backend.app.models.models import Inventory
 
-        result = await db_session.query(Inventory).filter_by(product_variant_id=test_variant.id).first()
+        result = (await db_session.execute(
+            select(Inventory).where(Inventory.product_variant_id == test_variant.id)
+        )).scalar_one_or_none()
 
         assert result is not None
         assert result.id == test_inventory.id
@@ -17,16 +20,15 @@ class TestInventoryQueries:
     @pytest.mark.asyncio
     async def test_get_low_stock_inventory(self, db_session, test_variant, admin_user):
         from backend.app.models.models import Inventory
+        from backend.tests.factories import ProductVariantFactory
 
-        low_stock_variant = ProductVariant(
-            id=uuid.uuid4(),
+        low_stock_variant = await ProductVariantFactory.create(
+            db_session,
             product_id=test_variant.product_id,
             size="S",
             color="Yellow",
-            sku_variant="LOW-STOCK-001"
+            sku_variant="LOW-STOCK-001",
         )
-        db_session.add(low_stock_variant)
-        await db_session.flush()
 
         low_inventory = Inventory(
             id=uuid.uuid4(),
@@ -39,9 +41,9 @@ class TestInventoryQueries:
         db_session.add(low_inventory)
         await db_session.commit()
 
-        result = await db_session.query(Inventory).filter(
-            Inventory.quantity_available <= Inventory.low_stock_threshold
-        ).all()
+        result = (await db_session.execute(
+            select(Inventory).where(Inventory.quantity_available <= Inventory.low_stock_threshold)
+        )).scalars().all()
 
         assert any(inv.id == low_inventory.id for inv in result)
 
@@ -163,10 +165,12 @@ class TestRestockOperations:
         db_session.add(movement)
         await db_session.commit()
 
-        result = await db_session.query(InventoryMovement).filter_by(
-            product_variant_id=test_inventory.product_variant_id,
-            movement_type=MovementType.restock
-        ).all()
+        result = (await db_session.execute(
+            select(InventoryMovement).where(
+                InventoryMovement.product_variant_id == test_inventory.product_variant_id,
+                InventoryMovement.movement_type == MovementType.restock,
+            )
+        )).scalars().all()
 
         assert len(result) >= 1
         assert result[0].notes == "Regular restock"
@@ -212,10 +216,12 @@ class TestSaleOperations:
         db_session.add(movement)
         await db_session.commit()
 
-        result = await db_session.query(InventoryMovement).filter_by(
-            product_variant_id=test_inventory.product_variant_id,
-            movement_type=MovementType.sale
-        ).all()
+        result = (await db_session.execute(
+            select(InventoryMovement).where(
+                InventoryMovement.product_variant_id == test_inventory.product_variant_id,
+                InventoryMovement.movement_type == MovementType.sale,
+            )
+        )).scalars().all()
 
         assert len(result) >= 1
 
@@ -282,9 +288,11 @@ class TestInventoryMovements:
             db_session.add(m)
         await db_session.commit()
 
-        result = await db_session.query(InventoryMovement).filter_by(
-            product_variant_id=test_inventory.product_variant_id
-        ).all()
+        result = (await db_session.execute(
+            select(InventoryMovement).where(
+                InventoryMovement.product_variant_id == test_inventory.product_variant_id
+            )
+        )).scalars().all()
 
         assert len(result) >= 2
 
@@ -330,9 +338,9 @@ class TestInventoryEdgeCases:
     async def test_inventory_variant_not_found(self, db_session):
         from backend.app.models.models import Inventory
 
-        result = await db_session.query(Inventory).filter_by(
-            product_variant_id=uuid.uuid4()
-        ).first()
+        result = (await db_session.execute(
+            select(Inventory).where(Inventory.product_variant_id == uuid.uuid4())
+        )).scalar_one_or_none()
 
         assert result is None
 
@@ -343,7 +351,10 @@ class TestInventoryCalculations:
         test_inventory.quantity_available = 100
         await db_session.commit()
 
-        unit_price = float(test_variant.product.base_price) + float(test_variant.price_modifier)
+        from backend.app.models.models import Product
+
+        product = await db_session.get(Product, test_variant.product_id)
+        unit_price = float(product.base_price) + float(test_variant.price_modifier)
         total_value = unit_price * 100
 
         assert total_value == (99.99 + 10.00) * 100
@@ -364,6 +375,3 @@ class TestInventoryCalculations:
 
         is_low_stock = test_inventory.quantity_available <= test_inventory.low_stock_threshold
         assert is_low_stock is False
-
-
-from backend.app.models.models import ProductVariant

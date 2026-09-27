@@ -729,7 +729,8 @@ async def get_detection_product_by_id(product_id: uuid.UUID, db: AsyncSession = 
 @app.post("/api/upload/image")
 async def upload_product_image(
     file: UploadFile = File(...),
-    folder: str = "fashionvision/products"
+    folder: str = "fashionvision/products",
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     try:
         contents = await file.read()
@@ -749,7 +750,10 @@ async def upload_product_image(
 
 
 @app.delete("/api/upload/image/{public_id}")
-async def delete_product_image(public_id: str):
+async def delete_product_image(
+    public_id: str,
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
     try:
         result = delete_image(public_id)
         return {"success": True, "data": result}
@@ -944,7 +948,11 @@ async def update_user(user_id: uuid.UUID, user_data: UserUpdate, db: AsyncSessio
 # ==================== CATEGORIES ====================
 
 @app.post("/api/categories", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
-async def create_category(category: CategoryCreate, db: AsyncSession = db_dependency):
+async def create_category(
+    category: CategoryCreate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency,
+):
     db_category = Category(**category.model_dump())
     db.add(db_category)
     await db.flush()
@@ -968,7 +976,12 @@ async def get_category(category_id: uuid.UUID, db: AsyncSession = db_dependency)
 
 
 @app.put("/api/categories/{category_id}", response_model=CategoryResponse)
-async def update_category(category_id: uuid.UUID, category_data: CategoryUpdate, db: AsyncSession = db_dependency):
+async def update_category(
+    category_id: uuid.UUID,
+    category_data: CategoryUpdate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency,
+):
     result = await db.execute(select(Category).where(Category.id == category_id))
     category = result.scalar_one_or_none()
     if not category:
@@ -1418,7 +1431,6 @@ async def update_product_variant(
         setattr(variant, key, value)
 
     await db.flush()
-    await db.refresh(variant)
     return variant
 
 
@@ -1662,6 +1674,7 @@ async def remove_product_image(
 @app.post("/api/inventory", response_model=InventoryResponse, status_code=status.HTTP_201_CREATED)
 async def create_inventory(
     inventory: InventoryCreate,
+    current_user: User = Depends(require_role(UserRole.admin)),
     db: AsyncSession = db_dependency,
 ):
     """Registra una nueva entrada de inventario para una variante de producto.
@@ -2787,7 +2800,14 @@ async def get_top_products(
         date_filter = Order.completed_at >= datetime.now() - timedelta(days=days)
 
     result = await db.execute(
-        select(Product.id, Product.name, Category.name, func.sum(OrderItem.quantity), func.sum(OrderItem.subtotal), func.count(func.distinct(Order.id)))
+        select(
+            Product.id,
+            Product.name,
+            Category.name,
+            func.sum(OrderItem.quantity),
+            func.sum(OrderItem.unit_price * OrderItem.quantity),
+            func.count(func.distinct(Order.id)),
+        )
         .select_from(OrderItem)
         .join(Order)
         .join(Product)
@@ -2932,7 +2952,7 @@ async def get_sales_by_category(
             Category.id,
             Category.name,
             func.sum(OrderItem.quantity).label('total_quantity'),
-            func.sum(OrderItem.subtotal).label('total_revenue'),
+            func.sum(OrderItem.unit_price * OrderItem.quantity).label('total_revenue'),
             func.count(func.distinct(Order.id)).label('order_count')
         )
         .select_from(OrderItem)
@@ -3106,6 +3126,26 @@ async def get_dashboard_summary(
     now = datetime.now()
     today_start = func.current_date()
 
+    async def get_summary_totals(date_filter):
+        orders_result = await db.execute(
+            select(
+                func.count(Order.id),
+                func.coalesce(func.sum(Order.total_amount), 0),
+            ).where(and_(Order.status == OrderStatus.completed, date_filter))
+        )
+        items_result = await db.execute(
+            select(func.coalesce(func.sum(OrderItem.quantity), 0))
+            .select_from(OrderItem)
+            .join(Order)
+            .where(and_(Order.status == OrderStatus.completed, date_filter))
+        )
+        orders_row = orders_result.one()
+        return DashboardToday(
+            total_orders=orders_row[0] or 0,
+            total_revenue=float(orders_row[1] or 0),
+            total_items_sold=items_result.scalar() or 0,
+        )
+
     if start_date and end_date:
         try:
             sd = datetime.strptime(start_date, "%Y-%m-%d")
@@ -3113,28 +3153,11 @@ async def get_dashboard_summary(
         except ValueError:
             raise HTTPException(400, "Formato de fecha inválido. Use YYYY-MM-DD")
 
-        today_result = await db.execute(
-            select(
-                func.count(Order.id),
-                func.coalesce(func.sum(Order.total_amount), 0),
-                func.coalesce(func.sum(OrderItem.quantity), 0)
-            )
-            .where(and_(
-                Order.status == OrderStatus.completed,
-                Order.completed_at >= sd,
-                Order.completed_at < ed,
-            ))
-            .join(OrderItem, Order.id == OrderItem.order_id, isouter=True)
-        )
-        today_row = today_result.first()
-        today_data = DashboardToday(
-            total_orders=today_row[0] or 0,
-            total_revenue=float(today_row[1] or 0),
-            total_items_sold=today_row[2] or 0
-        )
+        date_filter = and_(Order.completed_at >= sd, Order.completed_at < ed)
+        today_data = await get_summary_totals(date_filter)
 
-        weekly_sales = float(today_row[1] or 0)
-        monthly_sales = float(today_row[1] or 0)
+        weekly_sales = today_data.total_revenue
+        monthly_sales = today_data.total_revenue
 
         range_days = (ed - sd).days
         prev_sd = sd - timedelta(days=range_days)
@@ -3177,24 +3200,7 @@ async def get_dashboard_summary(
         inventory_alerts = await get_inventory_alerts(db)
         sales_trend = await get_sales_trend(28, db)
     else:
-        today_result = await db.execute(
-            select(
-                func.count(Order.id),
-                func.coalesce(func.sum(Order.total_amount), 0),
-                func.coalesce(func.sum(OrderItem.quantity), 0)
-            )
-            .where(and_(
-                Order.status == OrderStatus.completed,
-                func.date(Order.completed_at) == today_start
-            ))
-            .join(OrderItem, Order.id == OrderItem.order_id, isouter=True)
-        )
-        today_row = today_result.first()
-        today_data = DashboardToday(
-            total_orders=today_row[0] or 0,
-            total_revenue=float(today_row[1] or 0),
-            total_items_sold=today_row[2] or 0
-        )
+        today_data = await get_summary_totals(func.date(Order.completed_at) == today_start)
 
         weekly_result = await db.execute(
             select(func.coalesce(func.sum(Order.total_amount), 0))

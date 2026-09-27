@@ -1,297 +1,187 @@
-# Guia de Instalacion - FashionVision-AI
+# Instalación
 
-Sistema completo para levantar y ejecutar FashionVision-AI usando Docker.
+FashionVision AI se ejecuta con Docker. No necesitas instalar Python, Node.js ni PostgreSQL para usar la demo.
 
----
+Elige el método que corresponde a tu equipo:
 
-## Requisitos Previos (todos los SO)
+| Sistema | Guía | Recomendación |
+|---|---|---|
+| Linux | [Linux](#linux) | Docker Engine nativo |
+| Windows 10/11 | [Windows nativo](#windows-nativo) | Docker Desktop y PowerShell |
+| Windows 10/11 con Ubuntu | [Windows con WSL2](#windows-con-wsl2) | Recomendado para desarrollo |
 
-| Software | Version | Instalacion |
-|----------|---------|-------------|
-| Docker | Latest | `curl -fsSL https://get.docker.com | sh` |
-| Git | 2.30+ | [git-scm.com](https://git-scm.com) |
+## Requisitos comunes
 
-## Flujo Principal (todos los SO)
+- Git 2.40+.
+- Docker Engine 24+ o Docker Desktop 4+.
+- Docker Compose v2 (`docker compose`).
+- 8 GB de RAM recomendados.
+- 20 GB libres recomendados para imágenes, modelos y cachés.
 
-Una vez instalado Docker y Git, el flujo es identico para Linux, macOS, Windows WSL2 y Windows Nativo:
+Después de instalar las herramientas, verifica:
 
 ```bash
-# 1. Clonar repositorio
-git clone git@github.com:Pashofm/FashionVision-AI.git
+git --version
+docker --version
+docker compose version
+```
+
+## Flujo de la demo
+
+Estos comandos son iguales en Linux y WSL2. En PowerShell usa la variante indicada en la sección de Windows nativo.
+
+```bash
+git clone https://github.com/Pashofm/FashionVision-AI.git
 cd FashionVision-AI
-
-# 2. Configurar variables de entorno
 cp .env.example .env
-# Editar .env con tus credenciales (nano .env / notepad .env)
-
-# 3. Construir y levantar todos los servicios
-make up-build
-
-# 4. Ejecutar migraciones
-make migrate
-
-# 5. Cargar datos de prueba
+docker compose up -d --build --wait
 make seed
 ```
 
-Servicios disponibles:
+`--wait` espera a que los servicios estén saludables y a que el backend aplique las migraciones. Si no tienes `make`, usa el comando de seed de [COMANDOS.md](COMANDOS.md#datos-iniciales-y-migraciones).
 
-| Servicio | URL |
-|----------|-----|
-| App (Frontend) | http://localhost |
-| Backend API | http://localhost/api |
-| API Docs (Swagger) | http://localhost/docs |
-| pgAdmin | http://localhost:5050 |
+Comprueba el resultado:
 
----
+```bash
+docker compose ps
+curl http://localhost/health
+```
+
+## Acceso
+
+| Recurso | URL |
+|---|---|
+| Aplicación | `http://localhost` |
+| Health | `http://localhost/health` |
+| Swagger | `http://localhost/docs` |
+| pgAdmin opcional | `http://localhost:5050` |
+
+Las cuentas de demostración se documentan en [QUICKSTART.md](../QUICKSTART.md#usuarios-de-prueba). Para operar la aplicación consulta [USER_GUIDE.md](USER_GUIDE.md).
 
 ## Linux
 
-### 1. Instalar Docker
+### 1. Instalar Docker y Git
+
+Instala Docker Engine y el plugin Docker Compose usando la guía oficial para tu distribución:
+
+- Debian/Ubuntu: <https://docs.docker.com/engine/install/debian/> o <https://docs.docker.com/engine/install/ubuntu/>.
+- Fedora: <https://docs.docker.com/engine/install/fedora/>.
+- Arch Linux: instala los paquetes `docker`, `docker-compose`, `git` y `make` con `pacman`.
+
+Instala Git y Make con el gestor de paquetes de tu distribución:
 
 ```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-# Cerrar sesion y volver a entrar para que el grupo tenga efecto
+# Debian/Ubuntu
+sudo apt update && sudo apt install -y git make
+
+# Fedora
+sudo dnf install -y git make
 ```
 
-### 2. Instalar Git
+En Arch Linux:
 
 ```bash
-sudo apt install git -y   # Debian/Ubuntu
-sudo dnf install git -y   # Fedora
-sudo pacman -S git        # Arch
+sudo pacman -Syu docker docker-compose git make
+sudo systemctl enable --now docker
 ```
 
-### 3. Seguir el Flujo Principal
-
-Ejecutar los comandos de la seccion [Flujo Principal](#flujo-principal-todos-los-so).
-
-### Solucion de Problemas
+Permite usar Docker sin `sudo` y vuelve a iniciar sesión:
 
 ```bash
-# Error: permission denied con Docker
-sudo docker compose up -d
-
-# Error: PostgreSQL connection refused
-make logs-db
-docker compose restart db
-
-# Verificar servicios
-docker ps
+sudo usermod -aG docker "$USER"
 ```
 
----
+Comprueba que Docker funciona antes de continuar:
 
-## Windows WSL2 (Recomendado)
-
-### Arquitectura
-
-```
-Windows Host
-├── WSL2 (Ubuntu)
-│   └── Codigo fuente
-└── Docker Desktop
-    ├── Frontend (:80)
-    ├── Backend (:8000)
-    ├── DB (:5432)
-    ├── pgAdmin (:5050)
-    └── nginx
+```bash
+docker run --rm hello-world
 ```
 
-### 1. Habilitar WSL2 (PowerShell como Administrador)
+### 2. Ejecutar la demo
+
+Sigue el [flujo de la demo](#flujo-de-la-demo). Si el puerto 80 está ocupado, define `FRONTEND_HOST_PORT=8080` en `.env` antes de iniciar los servicios y abre `http://localhost:8080`.
+
+## Windows nativo
+
+Este método ejecuta los comandos desde PowerShell. Docker Desktop puede usar WSL2 internamente, pero no requiere trabajar dentro de una terminal Linux.
+
+### 1. Instalar herramientas
+
+1. Activa la virtualización en BIOS/UEFI si Docker Desktop lo solicita.
+2. Instala [Docker Desktop](https://www.docker.com/products/docker-desktop/) y deja el motor iniciado.
+3. Instala [Git for Windows](https://git-scm.com/download/win) o ejecuta `winget install Git.Git` desde PowerShell.
+4. Reinicia PowerShell y verifica:
 
 ```powershell
-wsl --install
+git --version
+docker --version
+docker compose version
 ```
 
-Reiniciar el equipo.
-
-### 2. Instalar Ubuntu desde Microsoft Store
-
-Buscar "Ubuntu 22.04 LTS" o superior e instalar.
-
-### 3. Instalar Docker Desktop
-
-1. Descargar de https://www.docker.com/products/docker-desktop/
-2. Marcar "Use WSL 2 instead of Hyper-V"
-3. Reiniciar
-
-### 4. Configurar Docker en WSL2
-
-En la terminal de Ubuntu:
-
-```bash
-sudo usermod -aG docker $USER
-# Cerrar sesion y volver a entrar
-docker ps
-```
-
-### 5. Seguir el Flujo Principal
-
-Ejecutar los comandos de la seccion [Flujo Principal](#flujo-principal-todos-los-so) desde la terminal de Ubuntu.
-
-### Solucion de Problemas
-
-```bash
-# Docker no inicia en WSL2
-export DOCKER_HOST=wsl://localhost
-docker ps
-
-# Problemas de permisos
-wsl --shutdown
-# Abrir Ubuntu de nuevo
-
-# Puerto en uso
-lsof -i :8000
-kill -9 <PID>
-```
-
----
-
-## Windows Nativo
-
-**Nota:** Para mejor compatibilidad, se recomienda usar WSL2. Ver seccion anterior.
-
-### 1. Instalar Docker Desktop
-
-1. Descargar de https://www.docker.com/products/docker-desktop/
-2. Instalar y reiniciar
-
-### 2. Instalar Git
-
-Descargar de https://git-scm.com e instalar (incluir Git Bash).
-
-### 3. Seguir el Flujo Principal
-
-Ejecutar los comandos de la seccion [Flujo Principal](#flujo-principal-todos-los-so) desde PowerShell o Git Bash.
-
-### Solucion de Problemas
+### 2. Ejecutar la demo
 
 ```powershell
-# Hyper-V no habilitado
-Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All -All
-
-# PostgreSQL connection refused
-docker compose restart db
+git clone https://github.com/Pashofm/FashionVision-AI.git
+Set-Location FashionVision-AI
+Copy-Item .env.example .env
+docker compose up -d --build --wait
+docker compose cp backend/database/seed.sql db:/tmp/seed.sql
+docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/seed.sql'
 ```
 
----
+Verifica los servicios y abre `http://localhost`:
+
+```powershell
+docker compose ps
+Invoke-WebRequest http://localhost/health
+```
+
+### Problemas frecuentes
+
+- Si Docker no responde, abre Docker Desktop y espera a que indique que el motor está activo.
+- Si el puerto 80 está ocupado, cambia `FRONTEND_HOST_PORT=8080` en `.env` y abre `http://localhost:8080`.
+- Para identificar un proceso que usa el puerto 80: `netstat -ano | findstr :80` y `taskkill /PID <PID> /F`.
+
+## Windows con WSL2
+
+Este es el método recomendado para desarrollo. Sigue la guía detallada de [WINDOWS_WSL2.md](WINDOWS_WSL2.md), que cubre la instalación de WSL2, Ubuntu, Docker Desktop e integración entre Windows y Linux.
+
+Resumen del flujo una vez configurado WSL2:
+
+```bash
+mkdir -p ~/Projects
+cd ~/Projects
+git clone https://github.com/Pashofm/FashionVision-AI.git
+cd FashionVision-AI
+cp .env.example .env
+docker compose up -d --build --wait
+make seed
+```
+
+Guarda el repositorio bajo `~/Projects` u otro directorio Linux, no en `C:\`, para evitar problemas de rendimiento con volúmenes y hot reload.
 
 ## macOS
 
-### Arquitectura
+Instala [Docker Desktop](https://www.docker.com/products/docker-desktop/) y Git, y sigue el [flujo de la demo](#flujo-de-la-demo) desde Terminal. Si no tienes `make`, usa el seed sin Make de [COMANDOS.md](COMANDOS.md#datos-iniciales-y-migraciones).
 
-```
-macOS Host
-└── Docker
-    ├── Frontend (:80)
-    ├── Backend (:8000)
-    ├── DB (:5432)
-    ├── pgAdmin (:5050)
-    └── nginx
-```
+## pgAdmin opcional
 
-### 1. Instalar Homebrew
+Inicia pgAdmin cuando necesites administrar PostgreSQL:
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+docker compose --profile tools up -d pgadmin
 ```
 
-### 2. Instalar Docker y Git
+Abre `http://localhost:5050` y registra el servidor con host `db`, puerto `5432` y credenciales de `.env`. Consulta [GUIAS_PGADMIN.md](GUIAS_PGADMIN.md).
+
+## Reiniciar completamente la demo
+
+Este flujo elimina los contenedores y volúmenes, incluidos los datos PostgreSQL y modelos descargados:
 
 ```bash
-brew install --cask docker git
+docker compose down -v --remove-orphans
+docker compose up -d --build --wait
+make seed
 ```
 
-Abrir Docker Desktop desde Applications.
-
-### 3. Seguir el Flujo Principal
-
-Ejecutar los comandos de la seccion [Flujo Principal](#flujo-principal-todos-los-so).
-
-### Verificacion
-
-```bash
-curl http://localhost/health
-curl http://localhost
-```
-
-### Apple Silicon (M1/M2/M3/M4)
-
-```bash
-uname -m  # debe mostrar arm64
-```
-
----
-
-## Credenciales del Sistema
-
-| Servicio | Usuario | Contrasena | Puerto |
-|----------|---------|------------|--------|
-| PostgreSQL | fashionvision_ai_user | (del .env) | 5432 |
-| pgAdmin | admin@fashionvision.com | admin123 | 5050 |
-| Login por defecto | admin@tienda.com | admin123 | - |
-
----
-
-## Desarrollo sin Docker (avanzado)
-
-Si prefieres ejecutar los servicios de forma nativa sin contenedores, sigue estos pasos.
-
-### Requisitos Previos
-
-| Software | Version | Comando |
-|----------|---------|---------|
-| Python | 3.12+ | Ver [python.org](https://python.org) |
-| Node.js | 20+ | Ver [nodejs.org](https://nodejs.org) |
-| PostgreSQL | 16+ | Instalacion nativa o vía Docker |
-
-### Instalacion
-
-```bash
-# 1. Clonar repositorio
-git clone git@github.com:Pashofm/FashionVision-AI.git
-cd FashionVision-AI
-
-# 2. Copiar variables de entorno
-cp .env.example .env
-# Editar .env con credenciales de PostgreSQL local
-
-# 3. Levantar solo la base de datos con Docker (opcional si no tienes PostgreSQL nativo)
-docker compose up -d db
-
-# 4. Backend
-cd backend
-python3 -m venv venv
-source venv/bin/activate      # Linux/macOS
-# .\venv\Scripts\activate     # Windows PowerShell
-pip install -r requirements.txt
-cd ..
-export PYTHONPATH=$PWD        # Linux/macOS
-# $env:PYTHONPATH = $PWD      # Windows PowerShell
-alembic upgrade head
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# 5. Frontend (otra terminal)
-cd frontend
-npm install
-npm run dev
-```
-
-### URLs (desarrollo local)
-
-| Servicio | URL |
-|----------|-----|
-| Frontend (dev) | http://localhost:5173 |
-| Backend API | http://localhost/api |
-| API Docs | http://localhost/docs |
-| pgAdmin (si se usa Docker) | http://localhost:5050 |
-
----
-
-## Proximos Pasos
-
-- [DEVELOPMENT.md](./DEVELOPMENT.md) - Flujo de trabajo en equipo
-- [scripts/README.md](../scripts/README.md) - Scripts de automatizacion
-- [DEPLOYMENT.md](./DEPLOYMENT.md) - Despliegue a produccion
+En Windows nativo, sustituye `make seed` por el comando de [COMANDOS.md](COMANDOS.md#datos-iniciales-y-migraciones).

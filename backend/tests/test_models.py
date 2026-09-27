@@ -1,6 +1,7 @@
 import pytest
 import uuid
 from decimal import Decimal
+from sqlalchemy import func, select
 
 
 class TestUserModel:
@@ -72,12 +73,14 @@ class TestUserModel:
         await db_session.commit()
 
         for role in roles:
-            result = await db_session.query(User).filter_by(role=role).first()
+            result = (await db_session.execute(
+                select(User).where(User.role == role)
+            )).scalar_one_or_none()
             assert result is not None
 
     @pytest.mark.asyncio
     async def test_user_default_values(self, db_session):
-        from backend.app.models.models import User
+        from backend.app.models.models import User, UserRole
 
         user = User(
             id=uuid.uuid4(),
@@ -129,10 +132,13 @@ class TestCategoryModel:
 
     @pytest.mark.asyncio
     async def test_category_products_relationship(self, db_session, test_category, test_product):
-        await db_session.refresh(test_category)
+        from backend.app.models.models import Product
 
-        assert len(test_category.products) >= 1
-        assert any(p.id == test_product.id for p in test_category.products)
+        products = (await db_session.execute(
+            select(Product).where(Product.category_id == test_category.id)
+        )).scalars().all()
+
+        assert any(product.id == test_product.id for product in products)
 
 
 class TestProductModel:
@@ -197,32 +203,35 @@ class TestProductModel:
 
     @pytest.mark.asyncio
     async def test_product_variants_relationship(self, db_session, test_product, test_variant):
-        await db_session.refresh(test_product)
+        from backend.app.models.models import ProductVariant
 
-        assert len(test_product.variants) >= 1
-        assert any(v.id == test_variant.id for v in test_product.variants)
+        variants = (await db_session.execute(
+            select(ProductVariant).where(ProductVariant.product_id == test_product.id)
+        )).scalars().all()
+
+        assert any(variant.id == test_variant.id for variant in variants)
 
 
 class TestProductVariantModel:
     @pytest.mark.asyncio
     async def test_create_variant(self, db_session, test_product):
-        from backend.app.models.models import ProductVariant
+        from backend.app.models.models import AttributeOption
+        from backend.tests.factories import ProductVariantFactory
 
-        variant = ProductVariant(
-            id=uuid.uuid4(),
-            product_id=test_product.id,
+        variant = await ProductVariantFactory.create(
+            db_session,
+            product=test_product,
             size="XL",
             color="Green",
             color_hex="#00FF00",
             sku_variant="TEST-001-XL-GREEN",
-            price_modifier=Decimal("15.00")
+            price_modifier=Decimal("15.00"),
         )
-        db_session.add(variant)
-        await db_session.commit()
-        await db_session.refresh(variant)
+
+        size = await db_session.get(AttributeOption, variant.size_attribute_id)
 
         assert variant.id is not None
-        assert variant.size == "XL"
+        assert size.value == "XL"
         assert float(variant.price_modifier) == 15.00
 
     @pytest.mark.asyncio
@@ -232,9 +241,9 @@ class TestProductVariantModel:
         variant2 = ProductVariant(
             id=uuid.uuid4(),
             product_id=test_product.id,
-            size=test_variant.size,
-            color=test_variant.color,
-            sku_variant="UNIQUE-SKU"
+            size_attribute_id=test_variant.size_attribute_id,
+            color_attribute_id=test_variant.color_attribute_id,
+            sku_variant="UNIQUE-SKU",
         )
         db_session.add(variant2)
 
@@ -243,10 +252,12 @@ class TestProductVariantModel:
 
     @pytest.mark.asyncio
     async def test_variant_inventory_relationship(self, db_session, test_variant, test_inventory):
-        await db_session.refresh(test_variant)
+        from backend.app.models.models import Inventory
 
-        assert test_variant.inventory is not None
-        assert test_variant.inventory.quantity_available == 100
+        inventory = await db_session.get(Inventory, test_inventory.id)
+
+        assert inventory.product_variant_id == test_variant.id
+        assert inventory.quantity_available == 100
 
 
 class TestInventoryModel:
@@ -286,10 +297,11 @@ class TestInventoryModel:
 
     @pytest.mark.asyncio
     async def test_inventory_variant_relationship(self, db_session, test_inventory, test_variant):
-        await db_session.refresh(test_inventory)
+        from backend.app.models.models import ProductVariant
 
-        assert test_inventory.variant is not None
-        assert test_inventory.variant.sku_variant == test_variant.sku_variant
+        variant = await db_session.get(ProductVariant, test_inventory.product_variant_id)
+
+        assert variant.sku_variant == test_variant.sku_variant
 
 
 class TestInventoryMovementModel:
@@ -338,7 +350,11 @@ class TestInventoryMovementModel:
             db_session.add(movement)
         await db_session.commit()
 
-        count = await db_session.query(InventoryMovement).filter_by(product_variant_id=test_variant.id).count()
+        count = (await db_session.execute(
+            select(func.count(InventoryMovement.id)).where(
+                InventoryMovement.product_variant_id == test_variant.id
+            )
+        )).scalar_one()
         assert count >= len(movement_types)
 
 
@@ -368,7 +384,7 @@ class TestOrderModel:
 
     @pytest.mark.asyncio
     async def test_order_unique_cart(self, db_session, test_cart, cashier_user):
-        from backend.app.models.models import Order
+        from backend.app.models.models import Order, PaymentMethod
 
         order1 = Order(
             id=uuid.uuid4(),
@@ -406,7 +422,7 @@ class TestOrderModel:
             product_id=test_product.id,
             product_variant_id=test_variant.id,
             product_name=test_product.name,
-            variant_description=f"{test_variant.size} / {test_variant.color}",
+            variant_description="M / Red",
             quantity=2,
             unit_price=Decimal("109.99"),
             discount_applied=Decimal("0.00"),
@@ -414,9 +430,11 @@ class TestOrderModel:
         )
         db_session.add(item)
         await db_session.commit()
-        await db_session.refresh(test_order)
+        items = (await db_session.execute(
+            select(OrderItem).where(OrderItem.order_id == test_order.id)
+        )).scalars().all()
 
-        assert len(test_order.items) >= 1
+        assert len(items) == 1
 
 
 class TestReceiptModel:

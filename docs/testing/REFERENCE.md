@@ -185,6 +185,8 @@ from tests.factories import (
 
 ## Environment Setup
 
+La siguiente configuración corresponde a una PostgreSQL aislada para pruebas. El Compose principal no publica el puerto `5433`; no uses la base de datos demo para ejecutar pruebas destructivas.
+
 ```bash
 # Required environment variables
 export SKIP_DB_TESTS=false

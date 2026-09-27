@@ -8,8 +8,8 @@ import { generateEmbedding } from '../services/catalogService';
 import { formatLocalDateTime } from '../utils/dateUtils';
 import '../styles/Inventory.css';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const API_URL = BASE_URL === '/' ? '' : BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_URL || '/';
+const API_URL = BASE_URL === '/' || BASE_URL === '/api' ? '' : BASE_URL;
 
 const STOCK_STATUSES = ['available', 'reserved', 'damaged', 'in_transit', 'returned'];
 const STOCK_STATUS_LABELS = {

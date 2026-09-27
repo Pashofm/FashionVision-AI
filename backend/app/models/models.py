@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Enum, Text, Numeric, Boolean, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, Column, String, Integer, Float, DateTime, ForeignKey, Enum, Text, Numeric, Boolean, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from backend.app.database import Base
@@ -239,6 +239,7 @@ class Cart(Base):
 
 class CartItem(Base):
     __tablename__ = "cart_items"
+    __table_args__ = (CheckConstraint("quantity > 0", name="ck_cart_items_quantity_positive"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     cart_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("carts.id"), nullable=False)
@@ -269,6 +270,8 @@ class PaymentQueue(Base):
     called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", onupdate=lambda: datetime.now())
+
+    cart: Mapped["Cart"] = relationship()
 
 
 class Order(Base):

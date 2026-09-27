@@ -4,27 +4,26 @@ Guía rápida para poner en marcha el proyecto. Todo corre en Docker — no nece
 
 ---
 
-## 5 Comandos para Empezar
+## 4 Comandos para Empezar
 
 ```bash
 # 1. Clonar el repositorio
-git clone git@github.com:Pashofm/FashionVision-AI.git
+git clone https://github.com/Pashofm/FashionVision-AI.git
 cd FashionVision-AI
 
 # 2. Configurar variables de entorno
 cp .env.example .env
 
-# 3. Construir y levantar los 4 servicios (DB + Backend + Frontend + Nginx)
-make up-build
+# 3. Construir y esperar los 4 servicios (DB + Backend + Frontend + Nginx)
+docker compose up -d --build --wait
 
-# 4. Ejecutar migraciones de base de datos
-make migrate
-
-# 5. Cargar datos iniciales de prueba
+# 4. Cargar datos iniciales de prueba
 make seed
 ```
 
-El sistema ya está corriendo. Abre http://localhost en tu navegador.
+Antes de ejecutar el flujo, sigue la guía de tu plataforma: [Linux](./docs/INSTALLATION.md#linux), [Windows nativo](./docs/INSTALLATION.md#windows-nativo) o [Windows con WSL2](./docs/WINDOWS_WSL2.md). Si no tienes `make`, usa el seed sin Make de [docs/COMANDOS.md](./docs/COMANDOS.md#datos-iniciales-y-migraciones).
+
+Las migraciones se aplican automáticamente durante el arranque del backend. El sistema ya está corriendo cuando los servicios estén saludables. Abre http://localhost en tu navegador.
 
 ---
 
@@ -70,7 +69,7 @@ make down            # Detener todos los servicios
 make clean           # Eliminar contenedores y volúmenes
 make shell-backend   # Abrir shell en el contenedor backend
 make shell-db        # Abrir psql en la base de datos
-make test-backend    # Correr tests del backend
+make test-backend    # Requiere una BD de pruebas separada; ver testing/TESTING_GUIDE.md
 make test-frontend   # Correr tests del frontend
 ```
 
@@ -117,3 +116,5 @@ La primera detección puede tardar mientras PyTorch prepara su caché. Espera a 
 2. Revisar [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) para flujo de trabajo
 3. Revisar [docs/DOCKER_ENVIRONMENT.md](./docs/DOCKER_ENVIRONMENT.md) para migraciones
 4. Explorar la API en http://localhost/docs
+
+Para aprender a operar el sistema por rol, consulta [docs/USER_GUIDE.md](./docs/USER_GUIDE.md).

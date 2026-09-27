@@ -8,6 +8,7 @@ from decimal import Decimal
 from backend.app.models.models import Product, ProductVariant
 from .base import BaseFactory
 from .category_factory import CategoryFactory
+from .attribute_factory import AttributeOptionFactory
 
 
 class ProductFactory(BaseFactory):
@@ -64,8 +65,8 @@ class ProductVariantFactory(BaseFactory):
         return {
             "id": kwargs.get("id", uuid.uuid4()),
             "product_id": product_id or kwargs.get("product_id"),
-            "size": kwargs.get("size", "M"),
-            "color": kwargs.get("color", f"Color {unique_suffix}"),
+            "size_attribute_id": kwargs.get("size_attribute_id"),
+            "color_attribute_id": kwargs.get("color_attribute_id"),
             "color_hex": kwargs.get("color_hex", "#FF0000"),
             "sku_variant": kwargs.get("sku_variant", f"VAR-{unique_suffix}"),
             "price_modifier": kwargs.get("price_modifier", Decimal("0.00")),
@@ -80,6 +81,17 @@ class ProductVariantFactory(BaseFactory):
         elif "product_id" not in kwargs:
             prod = await ProductFactory.create(db_session)
             kwargs["product_id"] = prod.id
+
+        if "size_attribute_id" not in kwargs:
+            size = await AttributeOptionFactory.create(
+                db_session, "size", kwargs.pop("size", "M")
+            )
+            kwargs["size_attribute_id"] = size.id
+        if "color_attribute_id" not in kwargs:
+            color = await AttributeOptionFactory.create(
+                db_session, "color", kwargs.pop("color", None), hex_code=kwargs.get("color_hex")
+            )
+            kwargs["color_attribute_id"] = color.id
 
         data = cls.build(**kwargs)
         variant = ProductVariant(**data)

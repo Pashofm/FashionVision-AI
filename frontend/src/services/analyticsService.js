@@ -13,8 +13,8 @@
 
 import { authenticatedFetch } from './api';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const API_URL = BASE_URL === '/' ? '' : BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_URL || '/';
+const API_URL = BASE_URL === '/' || BASE_URL === '/api' ? '' : BASE_URL;
 
 /**
  * Realiza una petición GET autenticada con parámetros de query.
@@ -23,13 +23,14 @@ const API_URL = BASE_URL === '/' ? '' : BASE_URL;
  * @returns {Promise<Object>} Datos de la respuesta
  */
 async function apiGet(path, params = {}) {
-  const url = new URL(`${API_URL}${path}`);
+  const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v !== null && v !== undefined && v !== '') {
-      url.searchParams.set(k, v);
+      searchParams.set(k, v);
     }
   });
-  const response = await authenticatedFetch(url.toString());
+  const query = searchParams.toString();
+  const response = await authenticatedFetch(`${API_URL}${path}${query ? `?${query}` : ''}`);
   if (!response.ok) {
     throw new Error(`Error al obtener ${path}: ${response.statusText}`);
   }

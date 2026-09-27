@@ -59,7 +59,7 @@ Agradecemos la divulgación responsable y reconocemos a quienes reporten vulnera
 
 - Cambia `SECRET_KEY` por un valor generado aleatoriamente (ej: `openssl rand -hex 32`)
 - Cambia las contraseñas por defecto de PostgreSQL y pgAdmin
-- Configura HTTPS (ver [Guía de Deploy](DEPLOYMENT.md))
+- Configura HTTPS (ver [Guía de Deploy](docs/DEPLOYMENT.md))
 - Habilita firewalls para limitar acceso a los puertos de BD y pgAdmin
 - Ejecuta backups regulares de la base de datos
 - Mantén las dependencias actualizadas (`pip list --outdated`, `npm outdated`)

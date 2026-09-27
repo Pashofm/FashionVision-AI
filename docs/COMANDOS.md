@@ -1,766 +1,105 @@
-# Comandos Importantes - FashionVision-AI
+# Comandos
 
-Referencia rápida de comandos para desarrollar, ejecutar y mantener el proyecto.
+Ejecuta los comandos desde la raíz del repositorio. El `Makefile` raíz es la interfaz recomendada para el desarrollo local.
 
----
-
-## Tabla de Contenidos
-
-1. [Docker - Base de Datos](#1-docker---base-de-datos)
-2. [Backend - Python/FastAPI](#2-backend---pythonfastapi)
-3. [Frontend - React/Vite](#3-frontend---reactvite)
-4. [PostgreSQL - Terminal](#4-postgresql---terminal)
-5. [Git - Control de Versiones](#5-git---control-de-versiones)
-6. [Logs y Debugging](#6-logs-y-debugging)
-7. [Base de Datos - Backup y Restore](#7-base-de-datos---backup-y-restore)
-8. [Limpieza y Mantenimiento](#8-limpieza-y-mantenimiento)
-9. [Makefile](#9-makefile)
-
----
-
-## 1. Docker - Base de Datos
-
-### Iniciar/Detener Servicios
+## Inicio y parada
 
 ```bash
-# ============================================
-# LEVANTAR BASE DE DATOS
-# ============================================
-
-# Usando make (recomendado)
-make up-build
-
-# Manual con docker compose
-cd backend
-docker compose up -d
-
-# Ver que está corriendo
-docker ps
+make up-build  # Construir imágenes y levantar la demo
+make up        # Levantar imágenes existentes
+make down      # Detener contenedores sin borrar volúmenes
+make clean     # Detener y borrar contenedores, volúmenes huérfanos
 ```
 
-```powershell
-# ============================================
-# EN WINDOWS (Git Bash)
-# ============================================
-# Usar PowerShell o CMD, NO Git Bash para docker compose
-```
+Sin `make`, usa los equivalentes:
 
 ```bash
-# ============================================
-# DETENER BASE DE DATOS
-# ============================================
-
-# Usando make (recomendado)
-make down
-
-# Manual
-docker compose down
-
-# Detener y eliminar datos (¡CUIDADO! Elimina todo)
-docker compose down -v
+docker compose up -d --build --wait  # Construir y esperar la demo
+docker compose up -d          # Levantar imágenes existentes
+docker compose down           # Detener contenedores sin borrar volúmenes
+docker compose down -v --remove-orphans  # Borrar contenedores y volúmenes
 ```
 
-### Reiniciar Base de Datos
+## Datos iniciales y migraciones
+
+El backend ejecuta `alembic upgrade head` durante su arranque. Estos comandos sirven para operar manualmente:
 
 ```bash
-# Reiniciar contenedor
-docker compose restart
-
-# Forzar reinicio
-docker compose stop
-docker compose start
-
-# Ver estado
-docker compose ps
+make migrate         # Aplicar migraciones pendientes
+make migrate-status  # Ver la revisión actual
+make migrate-history # Ver el historial
+make migrate-down    # Revertir la última revisión
+make seed            # Insertar productos y usuarios demo
 ```
 
-### Ver Logs de PostgreSQL
+`make seed` es idempotente y debe ejecutarse después de que el backend y PostgreSQL estén saludables.
+
+Sin `make`, usa este equivalente compatible con Bash y PowerShell:
 
 ```bash
-# Usando make (recomendado)
+docker compose cp backend/database/seed.sql db:/tmp/seed.sql
+docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/seed.sql'
+```
+
+## Estado, logs y shells
+
+```bash
+make logs
+make logs-backend
 make logs-db
-
-# Manual: ver logs en tiempo real
-docker compose logs -f db
-
-# Ver últimas 50 líneas
-docker compose logs --tail 50 db
-
-# Ver logs de contenedor específico
-docker logs fashionvision_db
-```
-
-### Eliminar y Recrear Contenedor
-
-```bash
-# Usando make (recomendado)
-make clean && make up-build
-
-# Manual: detener y eliminar
-docker compose down
-
-# Eliminar volumen de datos (¡PÉRDIDA DE DATOS!)
-docker volume rm postgres_data
-
-# Recrear desde cero
-docker compose up -d
-```
-
----
-
-## 2. Backend - Python/FastAPI
-
-### Activar Entorno Virtual
-
-```bash
-# ============================================
-# LINUX / MAC
-# ============================================
-cd backend
-source venv/bin/activate
-
-# Verificar (debe mostrar venv entre paréntesis)
-which python
-python --version
-```
-
-```powershell
-# ============================================
-# WINDOWS POWERSHELL
-# ============================================
-cd backend
-.\venv\Scripts\activate
-
-# Verificar
-where python
-python --version
-```
-
-```bash
-# ============================================
-# WINDOWS GIT BASH
-# ============================================
-cd backend
-source venv/Scripts/activate
-
-# Verificar
-which python
-python --version
-```
-
-### Iniciar Servidor Backend
-
-```bash
-# ============================================
-# COMANDO COMPLETO
-# ============================================
-
-# Linux
-cd /ruta/al/proyecto/FashionVision-AI
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Windows PowerShell
-cd C:\ruta\al\proyecto\FashionVision-AI
-.\backend\venv\Scripts\activate
-$env:PYTHONPATH = $PWD
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-```bash
-# ============================================
-# COMANDO ABREVIADO (después de configurar)
-# ============================================
-cd backend
-source venv/bin/activate
-uvicorn app.main:app --reload  # Si PYTHONPATH está configurado
-```
-
-### Verificar que Backend Funciona
-
-```bash
-# Health check en el entorno Docker
-curl http://localhost/health
-
-# Respuesta esperada:
-# {"status":"healthy","database":"connected"}
-```
-
-### Detener Servidor Backend
-
-```bash
-# Opción 1: Ctrl+C en la terminal donde está corriendo
-
-# Opción 2: Matar proceso
-pkill -f uvicorn
-
-# Opción 3: Matar por puerto
-lsof -i :8000  # Linux
-kill -9 <PID>
-```
-
-### Reinstall Dependencies
-
-```bash
-# Salir del venv
-deactivate
-
-# Eliminar venv
-rm -rf backend/venv
-
-# Recrear
-cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install 'bcrypt<5.0.0'  # Si hay problemas con bcrypt
-```
-
----
-
-## 3. Frontend - React/Vite
-
-### Instalar Dependencias
-
-```bash
-cd frontend
-npm install
-```
-
-### Iniciar Servidor de Desarrollo
-
-```bash
-# Linux y Windows
-cd frontend
-npm run dev
-```
-
-### Build para Producción
-
-```bash
-cd frontend
-npm run build
-```
-
-### Ver Archivos Build
-
-```bash
-# El build se guarda en frontend/dist/
-cd frontend/dist
-ls -la
-```
-
-### Linting
-
-```bash
-# Verificar código
-npm run lint
-
-# Corregir errores automáticamente
-npm run lint -- --fix
-```
-
-### Preview Producción
-
-```bash
-npm run preview
-```
-
----
-
-## 4. PostgreSQL - Terminal
-
-### Conectar a Base de Datos
-
-```bash
-# ============================================
-# USANDO MAKE (recomendado)
-# ============================================
+make logs-frontend
+make logs-nginx
+make shell-backend
 make shell-db
 ```
 
-```bash
-# ============================================
-# DESDE TERMINAL DIRECTA (Linux)
-# ============================================
-PGPASSWORD=fashionvision_ai_pass psql -h localhost -p 5432 -U fashionvision_ai_user -d fashionvision_ai
-```
+Accesos públicos:
 
-```powershell
-# ============================================
-# DESDE TERMINAL DIRECTA (Windows)
-# ============================================
-# Primero instalar psql o usar Git Bash
-set PGPASSWORD=fashionvision_ai_pass
-psql -h localhost -p 5432 -U fashionvision_ai_user -d fashionvision_ai
-```
+| Recurso | URL |
+|---|---|
+| Aplicación | `http://localhost` |
+| Health | `http://localhost/health` |
+| Swagger | `http://localhost/docs` |
+| API | `http://localhost/api` |
+| pgAdmin opcional | `http://localhost:5050` |
 
-### Comandos dentro de psql
+El backend y PostgreSQL no se publican directamente en el host. Usa Nginx para la API, `make shell-db` o pgAdmin para la base de datos.
 
-```sql
--- Ver todas las tablas
-\dt
-
--- Ver estructura de una tabla
-\d users
-\d products
-
--- Ver todas las bases de datos
-\l
-
--- Ver todas las secuencias
-\ds
-
--- Ver todos los índices
-\di
-
--- Ver funciones
-\df
-
--- Ver vistas
-\dv
-
--- Listar usuarios/roles
-\du
-\dg
-
--- Ejecutar archivo SQL
-\i archivo.sql
-
--- Salir
-\q
-
--- Help
-\h
-\?
-```
-
-### Consultas SQL Comunes
-
-```sql
--- Ver todos los usuarios
-SELECT * FROM users;
-
--- Ver categorías
-SELECT * FROM categories;
-
--- Ver productos
-SELECT * FROM products;
-
--- Ver usuarios activos
-SELECT name, email, role FROM users WHERE is_active = true;
-
--- Contar registros
-SELECT COUNT(*) FROM products;
-
--- Ver productos con categoría
-SELECT p.name, p.sku, p.base_price, c.name as category
-FROM products p
-JOIN categories c ON p.category_id = c.id;
-
--- Ver inventario bajo
-SELECT pv.sku_variant, p.name, i.quantity_available
-FROM inventory i
-JOIN product_variants pv ON i.product_variant_id = pv.id
-JOIN products p ON pv.product_id = p.id
-WHERE i.quantity_available < 5;
-```
-
-### CRUD Básico en SQL
-
-```sql
--- INSERTAR
-INSERT INTO categories (name, description, icon)
-VALUES ('Gorras', 'Gorras y sombreros', 'cap');
-
--- ACTUALIZAR
-UPDATE products SET base_price = 299.99 WHERE sku = 'PLAY-BAS-001';
-
--- ELIMINAR
-DELETE FROM products WHERE sku = 'CAM-VER-001';
-
--- INSERTAR múltiples
-INSERT INTO products (category_id, name, sku, base_price) VALUES
-('id-categoria', 'Producto 1', 'SKU-001', 100.00),
-('id-categoria', 'Producto 2', 'SKU-002', 200.00);
-```
-
----
-
-## 5. Git - Control de Versiones
-
-### Configuración Inicial
+## pgAdmin
 
 ```bash
-# Configurar nombre y email
-git config --global user.name "Tu Nombre"
-git config --global user.email "tu@email.com"
-
-# Configurar editor
-git config --global core.editor nano
-
-# Ver configuración
-git config --list
+docker compose --profile tools up -d pgadmin
 ```
 
-### Operaciones Básicas
+Dentro de pgAdmin usa `db:5432` como servidor. Consulta [GUIAS_PGADMIN.md](GUIAS_PGADMIN.md).
+
+## Pruebas
 
 ```bash
-# ============================================
-# CLONAR REPOSITORIO
-# ============================================
-git clone git@github.com:Pashofm/FashionVision-AI.git
-cd FashionVision-AI
+make test-backend
+make test-frontend
 ```
+
+`make test-backend` requiere una base de datos de pruebas separada. Consulta [testing/TESTING_GUIDE.md](testing/TESTING_GUIDE.md) antes de ejecutarlo; `make test-frontend` no requiere PostgreSQL.
+
+La guía de pruebas explica requisitos y limitaciones actuales: [testing/TESTING_GUIDE.md](testing/TESTING_GUIDE.md).
+
+## Producción
 
 ```bash
-# ============================================
-# ESTADO DEL REPOSITORIO
-# ============================================
-
-# Ver estado de archivos
-git status
-
-# Ver diferencias (cambios no rastreados)
-git diff
-
-# Ver diferencias en archivos específicos
-git diff archivo.js
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
+
+Configura `ENVIRONMENT=production` y secretos reales en `.env` antes de ejecutar este comando.
+Consulta [DEPLOYMENT.md](DEPLOYMENT.md) antes de exponer el sistema fuera de la máquina local.
+
+## Diagnóstico rápido
 
 ```bash
-# ============================================
-# STAGING Y COMMIT
-# ============================================
-
-# Agregar archivos modificados al staging
-git add .
-
-# Agregar archivo específico
-git add archivo.js
-
-# Crear commit
-git commit -m "Descripción del cambio"
-
-# Commit rápido (agrega todo y hace commit)
-git commit -am "Descripción del cambio"
-```
-
-```bash
-# ============================================
-# RAMAS (BRANCHES)
-# ============================================
-
-# Ver ramas
-git branch
-
-# Crear nueva rama
-git branch nueva-funcionalidad
-
-# Cambiar a otra rama
-git checkout nueva-funcionalidad
-
-# Crear y cambiar en un paso
-git checkout -b nueva-funcionalidad
-
-# Eliminar rama (primero salir de ella)
-git branch -d nombre-rama
-
-# Ver ramas remotas
-git branch -r
-```
-
-```bash
-# ============================================
-# SINCRONIZAR CON REMOTO
-# ============================================
-
-# Traer cambios del remoto
-git pull origin main
-
-# Subir cambios al remoto
-git push origin nombre-rama
-
-# Ver remotos configurados
-git remote -v
-```
-
----
-
-## 6. Logs y Debugging
-
-### Ver Logs del Backend
-
-```bash
-# Usando make (recomendado)
-make logs-backend
-
-# Si está corriendo con uvicorn, ver en terminal directamente
-
-# Si está corriendo en background
-journalctl -u uvicorn  # Linux (si es servicio)
-```
-
-### Ver Logs de Docker
-
-```bash
-# Usando make (recomendado)
-make logs
-
-# Manual: todos los contenedores
-docker compose logs
-
-# Contenedor específico
-docker compose logs db
-docker compose logs -f app
-
-# Últimas 100 líneas
-docker compose logs --tail 100
-```
-
-### Reconstruir Contenedor Backend (si hay cambios)
-
-```bash
-# Usando make (recomendado)
-make up-build
-
-# Manual
-cd backend
-docker compose build --no-cache
-docker compose up -d
-```
-
-### Debug Python
-
-```bash
-# Activar modo debug
-export DEBUG=1
-
-# Ver variables de entorno
-printenv | grep -i python
-
-# Probar imports
-python -c "from backend.app.main import app; print('OK')"
-```
-
----
-
-## 7. Base de Datos - Backup y Restore
-
-### Backup Completo
-
-```bash
-# ============================================
-# LINUX / MAC
-# ============================================
-docker exec fashionvision_db pg_dump -U fashionvision_ai_user fashionvision_ai > backup_$(date +%Y%m%d_%H%M%S).sql
-
-# Con compresión
-docker exec fashionvision_db pg_dump -U fashionvision_ai_user fashionvision_ai | gzip > backup_$(date +%Y%m%d).sql.gz
-```
-
-```powershell
-# ============================================
-# WINDOWS POWERSHELL
-# ============================================
-$fecha = Get-Date -Format "yyyyMMdd_HHmmss"
-docker exec fashionvision_db pg_dump -U fashionvision_ai_user fashionvision_ai > backup_$fecha.sql
-```
-
-### Backup de Tabla Específica
-
-```bash
-docker exec fashionvision_db pg_dump -U fashionvision_ai_user -t products fashionvision_ai > products_backup.sql
-```
-
-### Restore desde Backup
-
-```bash
-# Linux/Mac
-cat backup_archivo.sql | docker exec -i fashionvision_db psql -U fashionvision_ai_user fashionvision_ai
-
-# Windows PowerShell
-Get-Content backup_archivo.sql | docker exec -i fashionvision_db psql -U fashionvision_ai_user fashionvision_ai
-```
-
-### Restore en pgAdmin
-
-1. Click derecho en base de datos → **"Restore..."**
-2. Seleccionar archivo `.sql`
-3. Click en **"Restore"**
-
----
-
-## 8. Limpieza y Mantenimiento
-
-### Limpiar Docker
-
-```bash
-# Usando make (recomendado)
-make clean
-
-# Manual: detener y eliminar contenedores
-docker compose down
-
-# Eliminar volúmenes (¡PÉRDIDA DE DATOS!)
-docker compose down -v
-
-# Eliminar imágenes no usadas
-docker image prune -a
-
-# Limpiar todo el sistema Docker
-docker system prune -a --volumes
-```
-
-### Reconstruir Todo desde Cero
-
-```bash
-# Usando make (recomendado)
-make clean && make up-build && make migrate && make seed
-
-# Manual
-# 1. Eliminar todo
-docker compose down -v
-rm -rf backend/venv
-rm -f .env
-
-# 2. Recrear entorno
-cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# 3. Copiar configuración
-cp .env.example .env
-
-# 4. Levantar base de datos
-docker compose up -d
-
-# 5. Iniciar backend
-export PYTHONPATH=$PWD
-uvicorn backend.app.main:app --reload
-```
-
-### Verificar Espacio en Disco
-
-```bash
-# Docker
-docker system df
-
-# Linux general
-df -h
-du -sh backend/*
-```
-
-### Matar Procesos por Puerto
-
-```bash
-# Linux
-lsof -i :8000 | grep LISTEN | awk '{print $2}' | xargs kill -9
-
-# Windows
-netstat -ano | findstr :8000
-taskkill /PID <PID> /F
-```
-
----
-
-## Resumen Visual de Comandos
-
-### Levantar Proyecto Completo
-
-```bash
-# Usando make (recomendado)
-make up-build && make migrate && make seed
-
-# Manual
-# Terminal 1: Base de datos
-cd backend
-docker compose up -d
-
-# Terminal 2: Backend
-source backend/venv/bin/activate
-export PYTHONPATH=$PWD
-uvicorn backend.app.main:app --port 8000 --reload
-
-# Terminal 3: Frontend
-cd frontend
-npm run dev
-```
-
-### Verificaciones Rápidas
-
-```bash
-# ¿Docker corriendo?
-docker ps
-
-# ¿Backend funcionando?
+docker compose ps
+docker compose logs --tail=100 backend
+docker compose logs --tail=100 db
 curl http://localhost/health
-
-# ¿pgAdmin funcionando?
-curl http://localhost:5050
-
-# ¿Frontend funcionando?
-curl http://localhost
 ```
 
----
-
-## 9. Makefile
-
-El proyecto incluye un `Makefile` para simplificar las operaciones más comunes.
-
-### Comandos disponibles
-
-Ejecutar `make help` para ver todos los comandos.
-
-### Flujo de Docker
-
-```bash
-cp .env.example .env
-make up-build
-make seed
-```
-
-Las migraciones se aplican automáticamente al iniciar el backend. Usa `make migrate` únicamente para aplicarlas de forma manual.
-
-### Comandos de acceso a contenedores
-
-En lugar de usar `docker exec`, usar:
-
-| Operación | Comando |
-|---|---|
-| Shell en backend | `make shell-backend` |
-| Shell psql en BD | `make shell-db` |
-
-### Comandos de logs
-
-| Operación | Comando |
-|---|---|
-| Todos los logs | `make logs` |
-| Logs del backend | `make logs-backend` |
-| Logs de BD | `make logs-db` |
-| Logs del frontend | `make logs-frontend` |
-| Logs de nginx | `make logs-nginx` |
-
----
-
-## Troubleshooting Rápido
-
-| Problema | Solución |
-|----------|----------|
-| Puerto en uso | `lsof -i :8000` → `kill -9 <PID>` |
-| Docker no responde | `sudo systemctl restart docker` |
-| Backend no conecta DB | Verificar `.env` y `PYTHONPATH=$PWD` |
-| Dependencies rotos | Recrear venv: `rm -rf venv && python -m venv venv` |
-| Permiso denegado (Docker) | Usar `sudo` o agregar usuario a grupo docker |
-| pgAdmin no carga | Esperar 1-2 min, limpiar cache navegador |
-
----
-
-## Documentación Relacionada
-
-- [Guía de Instalación](./INSTALLATION.md)
-- [Guía de pgAdmin](./GUIAS_PGADMIN.md)
-- [Sistema de Sesiones y Carritos](./SESIONES_Y_CARRITOS.md)
+Si el puerto 80 está ocupado, configura `FRONTEND_HOST_PORT` en `.env`. La base de datos no publica `5432` por defecto y no debería entrar en conflicto con una instalación local de PostgreSQL.

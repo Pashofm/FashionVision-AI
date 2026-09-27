@@ -23,8 +23,8 @@ class TestAuthEndpoints:
     @pytest.mark.asyncio
     async def test_login_success(self, client, admin_user):
         response = await client.post("/api/auth/login", json={
-            "email": "admin@test.com",
-            "password": "testpassword123"
+            "email": admin_user.email,
+            "password": "admin123"
         })
         assert response.status_code == 200
         data = response.json()
@@ -50,8 +50,8 @@ class TestAuthEndpoints:
     @pytest.mark.asyncio
     async def test_refresh_token_success(self, client, admin_user):
         login_response = await client.post("/api/auth/login", json={
-            "email": "admin@test.com",
-            "password": "testpassword123"
+            "email": admin_user.email,
+            "password": "admin123"
         })
         refresh_token = login_response.json()["refresh_token"]
 
@@ -105,14 +105,14 @@ class TestUserEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
-        assert any(u["email"] == "admin@test.com" for u in data)
+        assert any(u["email"] == admin_user.email for u in data)
 
     @pytest.mark.asyncio
     async def test_get_user_by_id(self, authenticated_client, admin_user):
         response = await authenticated_client.get(f"/api/users/{admin_user.id}")
         assert response.status_code == 200
         data = response.json()
-        assert data["email"] == "admin@test.com"
+        assert data["email"] == admin_user.email
 
     @pytest.mark.asyncio
     async def test_update_user(self, authenticated_client, admin_user):
@@ -210,17 +210,22 @@ class TestProductEndpoints:
 
 class TestProductVariantEndpoints:
     @pytest.mark.asyncio
-    async def test_create_variant(self, authenticated_client, test_product):
+    async def test_create_variant(self, authenticated_client, test_product, db_session):
+        from backend.tests.factories import AttributeOptionFactory
+
+        size = await AttributeOptionFactory.create(db_session, "size", "L")
+        color = await AttributeOptionFactory.create(db_session, "color", "Blue", hex_code="#0000FF")
         response = await authenticated_client.post(f"/api/products/{test_product.id}/variants", json={
-            "size": "L",
-            "color": "Blue",
+            "product_id": str(test_product.id),
+            "size_attribute_id": str(size.id),
+            "color_attribute_id": str(color.id),
             "color_hex": "#0000FF",
             "sku_variant": "NEW-VAR-001",
             "price_modifier": 5.00
         })
         assert response.status_code == 201
         data = response.json()
-        assert data["size"] == "L"
+        assert data["size_attribute_id"] == str(size.id)
 
     @pytest.mark.asyncio
     async def test_get_variants(self, authenticated_client, test_product):
@@ -260,7 +265,7 @@ class TestInventoryEndpoints:
         assert response.status_code == 201
 
     @pytest.mark.asyncio
-    async def test_get_inventory_by_variant(self, authenticated_client, test_inventory):
+    async def test_get_inventory_by_variant(self, authenticated_client, test_inventory, test_variant):
         response = await authenticated_client.get(f"/api/inventory/{test_variant.id}")
         assert response.status_code == 200
 
@@ -273,17 +278,15 @@ class TestInventoryEndpoints:
 
     @pytest.mark.asyncio
     async def test_adjust_inventory(self, authenticated_client, test_variant, test_inventory):
-        response = await authenticated_client.post("/api/inventory/adjust", json={
-            "variant_id": str(test_variant.id),
-            "quantity": 5,
+        response = await authenticated_client.post("/api/inventory/adjust", params={"variant_id": str(test_variant.id)}, json={
+            "quantity_change": 5,
             "reason": "Manual adjustment"
         })
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_restock_inventory(self, authenticated_client, test_variant):
-        response = await authenticated_client.post("/api/inventory/restock", json={
-            "variant_id": str(test_variant.id),
+    async def test_restock_inventory(self, authenticated_client, test_variant, test_inventory):
+        response = await authenticated_client.post("/api/inventory/restock", params={"variant_id": str(test_variant.id)}, json={
             "quantity": 100,
             "notes": "Supplier delivery"
         })
@@ -298,8 +301,7 @@ class TestInventoryEndpoints:
     @pytest.mark.asyncio
     async def test_update_threshold(self, authenticated_client, test_variant, test_inventory):
         response = await authenticated_client.put(
-            f"/api/inventory/{test_variant.id}/threshold",
-            json={"threshold": 20}
+            f"/api/inventory/{test_variant.id}/threshold?threshold=20",
         )
         assert response.status_code == 200
 
@@ -320,7 +322,7 @@ class TestInventoryMovementEndpoints:
     @pytest.mark.asyncio
     async def test_get_movements(self, authenticated_client, test_variant):
         response = await authenticated_client.get(
-            f"/api/inventory-movements?variant_id={test_variant.id}"
+            f"/api/inventory-movements?product_variant_id={test_variant.id}"
         )
         assert response.status_code == 200
 
@@ -412,7 +414,10 @@ class TestOrderEndpoints:
     async def test_create_order(self, authenticated_client, test_cart, cashier_user):
         response = await authenticated_client.post("/api/orders", json={
             "cart_id": str(test_cart.id),
-            "cashier_id": str(cashier_user.id)
+            "cashier_id": str(cashier_user.id),
+            "subtotal": 100,
+            "total_amount": 116,
+            "payment_method": "cash",
         })
         assert response.status_code == 201
 
@@ -451,10 +456,14 @@ class TestAnalyticsEndpoints:
         assert "total_orders" in data
 
     @pytest.mark.asyncio
-    async def test_get_top_products(self, authenticated_client):
+    async def test_get_top_products(self, authenticated_client, completed_order_with_items):
         response = await authenticated_client.get("/api/analytics/top-products?days=30")
         assert response.status_code == 200
-        assert isinstance(response.json(), list)
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["total_quantity_sold"] == 3
+        assert data[0]["total_revenue"] == 40.0
+        assert data[0]["order_count"] == 1
 
     @pytest.mark.asyncio
     async def test_get_sales_analytics(self, authenticated_client):
@@ -469,9 +478,14 @@ class TestAnalyticsEndpoints:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_get_sales_by_category(self, authenticated_client):
+    async def test_get_sales_by_category(self, authenticated_client, completed_order_with_items):
         response = await authenticated_client.get("/api/analytics/sales-by-category?period=weekly")
         assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["total_quantity_sold"] == 3
+        assert data[0]["total_revenue"] == 40.0
+        assert data[0]["order_count"] == 1
 
     @pytest.mark.asyncio
     async def test_get_inventory_alerts(self, authenticated_client):
@@ -488,11 +502,15 @@ class TestAnalyticsEndpoints:
         assert "percentage_change" in data
 
     @pytest.mark.asyncio
-    async def test_get_dashboard_summary(self, authenticated_client):
+    async def test_get_dashboard_summary(self, authenticated_client, completed_order_with_items):
         response = await authenticated_client.get("/api/analytics/dashboard/summary")
         assert response.status_code == 200
         data = response.json()
-        assert "today" in data
+        assert data["today"] == {
+            "total_orders": 1,
+            "total_revenue": 46.4,
+            "total_items_sold": 3,
+        }
 
 
 class TestPOSTerminalEndpoints:
@@ -516,9 +534,9 @@ class TestPOSTerminalEndpoints:
         })
         transaction_id = init_response.json()["transaction_id"]
 
-        response = await authenticated_client.post("/api/payments/pos/wait-card", json={
-            "transaction_id": transaction_id
-        })
+        response = await authenticated_client.post(
+            "/api/payments/pos/wait-card", params={"transaction_id": transaction_id}
+        )
         assert response.status_code == 200
 
     @pytest.mark.asyncio
@@ -529,9 +547,9 @@ class TestPOSTerminalEndpoints:
         })
         transaction_id = init_response.json()["transaction_id"]
 
-        response = await authenticated_client.post("/api/payments/pos/process", json={
-            "transaction_id": transaction_id
-        })
+        response = await authenticated_client.post(
+            "/api/payments/pos/process", params={"transaction_id": transaction_id}
+        )
         assert response.status_code == 200
 
     @pytest.mark.asyncio
@@ -542,9 +560,9 @@ class TestPOSTerminalEndpoints:
         })
         transaction_id = init_response.json()["transaction_id"]
 
-        response = await authenticated_client.post("/api/payments/pos/cancel", json={
-            "transaction_id": transaction_id
-        })
+        response = await authenticated_client.post(
+            "/api/payments/pos/cancel", params={"transaction_id": transaction_id}
+        )
         assert response.status_code == 200
 
     @pytest.mark.asyncio
@@ -591,9 +609,9 @@ class TestUploadEndpoints:
     @pytest.mark.asyncio
     async def test_upload_image_unauthorized(self, client):
         response = await client.post("/api/upload/image")
-        assert response.status_code == 401
+        assert response.status_code == 403
 
     @pytest.mark.asyncio
     async def test_delete_image_unauthorized(self, client):
         response = await client.delete("/api/upload/image/test-public-id")
-        assert response.status_code == 401
+        assert response.status_code == 403

@@ -7,7 +7,11 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ---
 
-## [1.0.0] — 2026-06-24
+## [Unreleased]
+
+---
+
+## [1.0.0] — 2026-09-27
 
 ### Added
 - Docker multi-stage para backend (`dev`: uvicorn --reload, `prod`: gunicorn + 4 uvicorn workers, usuario no-root)
@@ -28,6 +32,14 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - `requirements.txt`: reorganizado por secciones, agregados `gunicorn==23.0.0`, `httptools==0.6.4`, `uvicorn[standard]`
 - `.gitignore`: agregados patrones para `*.pt`, `*.bin`, `*.onnx`, `uploads/`, `logs/`
 - Documentación completa actualizada a flujo Docker-first (README, QUICKSTART, DEVELOPMENT, etc.)
+- Reconciliadas las relaciones de líneas de pedido para los reportes de analytics.
+- Catálogo, inventario e imágenes requieren permisos de administrador para mutaciones.
+- Cantidades de carrito inválidas se rechazan mediante restricción de base de datos.
+- Cliente frontend usa rutas API relativas cuando no se configura una URL explícita.
+- Suite backend estabilizada en 375 pruebas automatizadas.
+- Reorganizada la documentación por audiencia y añadido el flujo funcional por roles.
+- Alineadas las guías de instalación, Docker, producción, pgAdmin y testing con la configuración actual.
+- Añadida la referencia de configuración de `.env.example`.
 
 ### Removed
 - Scripts legacy redundantes: `setup.sh`, `dev-start.sh`, `dev-stop.sh`, `docker-start.sh`, `deploy-local.sh`, `db-reset.sh`, `migrate.sh` (reemplazados por `make` targets)

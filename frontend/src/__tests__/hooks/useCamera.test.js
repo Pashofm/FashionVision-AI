@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import useCamera from '../../hooks/useCamera';
 
 describe('useCamera Hook', () => {
@@ -26,7 +27,7 @@ describe('useCamera Hook', () => {
       const { result } = renderHook(() => useCamera());
       expect(result.current.stream).toBeNull();
       expect(result.current.isActive).toBe(false);
-      expect(result.current.error).toBeNull();
+      expect(result.current.error).toBe('');
     });
   });
 
@@ -39,7 +40,9 @@ describe('useCamera Hook', () => {
     it('should request camera access with rear camera preference', async () => {
       const { result } = renderHook(() => useCamera());
 
-      await result.current.openCamera();
+      await act(async () => {
+        await result.current.openCamera();
+      });
 
       expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
         video: { facingMode: 'environment' }
@@ -49,7 +52,9 @@ describe('useCamera Hook', () => {
     it('should set stream when camera opens successfully', async () => {
       const { result } = renderHook(() => useCamera());
 
-      await result.current.openCamera();
+      await act(async () => {
+        await result.current.openCamera();
+      });
 
       expect(result.current.stream).toBe(mockStream);
       expect(result.current.isActive).toBe(true);
@@ -61,9 +66,11 @@ describe('useCamera Hook', () => {
 
       const { result } = renderHook(() => useCamera());
 
-      await result.current.openCamera();
+      await act(async () => {
+        await result.current.openCamera();
+      });
 
-      expect(result.current.error).toBe('Camera access denied');
+      expect(result.current.error).toBe('No se pudo acceder a la cámara');
       expect(result.current.isActive).toBe(false);
     });
   });
@@ -77,10 +84,14 @@ describe('useCamera Hook', () => {
     it('should stop all tracks when closing', async () => {
       const { result } = renderHook(() => useCamera());
 
-      await result.current.openCamera();
-      await result.current.closeCamera();
+      await act(async () => {
+        await result.current.openCamera();
+      });
+      await act(async () => {
+        result.current.closeCamera();
+      });
 
-      expect(mockStream.getTracks()).toHaveBeenCalled();
+      expect(mockStream.getTracks).toHaveBeenCalled();
       expect(result.current.stream).toBeNull();
       expect(result.current.isActive).toBe(false);
     });
@@ -88,7 +99,9 @@ describe('useCamera Hook', () => {
     it('should handle closing when no stream is active', async () => {
       const { result } = renderHook(() => useCamera());
 
-      await result.current.closeCamera();
+      await act(async () => {
+        result.current.closeCamera();
+      });
 
       expect(result.current.isActive).toBe(false);
     });
@@ -124,12 +137,12 @@ describe('useCamera Hook', () => {
 
       const { result } = renderHook(() => useCamera());
 
-      const frame = await result.current.captureFrame(mockCanvas, mockVideo);
+      result.current.videoRef.current = mockVideo;
+      const frame = result.current.captureFrame(mockCanvas);
 
       expect(mockCanvas.getContext).toHaveBeenCalledWith('2d');
       expect(mockCanvas.toDataURL).toHaveBeenCalled();
+      expect(frame).toBe('data:image/png;base64,mockdata');
     });
   });
 });
-
-import { renderHook } from '@testing-library/react';
