@@ -388,10 +388,14 @@ CREATE TABLE order_items (
     order_id            UUID            NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     product_id          UUID            NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
     product_variant_id  UUID            NOT NULL REFERENCES product_variants(id) ON DELETE RESTRICT,
+    product_name        VARCHAR(200)    NOT NULL,
+    variant_description VARCHAR(100),
     quantity            INTEGER         NOT NULL CHECK (quantity > 0),
     unit_price          NUMERIC(10,2)   NOT NULL,
     cost_price          NUMERIC(10,2)   NOT NULL DEFAULT 0,
     discount            NUMERIC(10,2)   NOT NULL DEFAULT 0,
+    discount_applied    NUMERIC(10,2)   NOT NULL DEFAULT 0,
+    subtotal            NUMERIC(10,2)   NOT NULL,
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
