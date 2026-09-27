@@ -298,7 +298,8 @@ class TestSessionManagerExpireInactiveSessions:
             session_token=uuid.uuid4(),
             client_user_id=client_user.id,
             status=SessionStatus.active,
-            started_at=old_time
+            started_at=old_time,
+            last_activity_at=old_time,
         )
         db_session.add(session)
         await db_session.commit()
@@ -399,7 +400,8 @@ class TestSessionManagerExpireInactiveSessions:
             session_token=uuid.uuid4(),
             client_user_id=client_user.id,
             status=SessionStatus.active,
-            started_at=old_time
+            started_at=old_time,
+            last_activity_at=old_time,
         )
         db_session.add(session)
         await db_session.commit()

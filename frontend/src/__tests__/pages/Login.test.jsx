@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
-import { login, checkHealth } from '../../services/api';
+import { login } from '../../services/api';
 
 vi.mock('../../services/api', () => ({
   login: vi.fn(),
@@ -20,7 +20,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-import Login from '../../pages/Login';
+import Login from '../../pages/login';
 
 describe('Login Page', () => {
   beforeEach(() => {
@@ -38,9 +38,9 @@ describe('Login Page', () => {
   describe('Rendering', () => {
     it('renders login form', () => {
       renderLogin();
-      expect(screen.getByPlaceholderText(/email/i)).toBeInTheDocument();
-      expect(screen.getByPlaceholderText(/contraseña/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /entrar/i })).toBeInTheDocument();
+      expect(screen.getByLabelText(/correo electrónico/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeInTheDocument();
     });
 
     it('renders logo/brand element', () => {
@@ -50,29 +50,16 @@ describe('Login Page', () => {
   });
 
   describe('Form Validation', () => {
-    it('shows validation errors for empty fields', async () => {
+    it('uses native validation for required fields', () => {
       renderLogin();
-      const user = userEvent.setup();
 
-      await user.click(screen.getByRole('button', { name: /entrar/i }));
-
-      await waitFor(() => {
-        expect(screen.getByText(/campos requeridos/i)).toBeInTheDocument();
-      });
+      expect(screen.getByLabelText(/correo electrónico/i)).toBeRequired();
+      expect(screen.getByLabelText(/contraseña/i)).toBeRequired();
     });
 
     it('validates email format', async () => {
       renderLogin();
-      const user = userEvent.setup();
-
-      const emailInput = screen.getByPlaceholderText(/email/i);
-      await user.type(emailInput, 'invalid-email');
-
-      await user.click(screen.getByRole('button', { name: /entrar/i }));
-
-      await waitFor(() => {
-        expect(screen.getByText(/formato de email inválido/i)).toBeInTheDocument();
-      });
+      expect(screen.getByLabelText(/correo electrónico/i)).toHaveAttribute('type', 'email');
     });
   });
 
@@ -86,9 +73,9 @@ describe('Login Page', () => {
       renderLogin();
       const user = userEvent.setup();
 
-      await user.type(screen.getByPlaceholderText(/email/i), 'admin@test.com');
-      await user.type(screen.getByPlaceholderText(/contraseña/i), 'password123');
-      await user.click(screen.getByRole('button', { name: /entrar/i }));
+      await user.type(screen.getByLabelText(/correo electrónico/i), 'admin@test.com');
+      await user.type(screen.getByLabelText(/contraseña/i), 'password123');
+      await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
       await waitFor(() => {
         expect(login).toHaveBeenCalledWith('admin@test.com', 'password123');
@@ -104,9 +91,9 @@ describe('Login Page', () => {
       renderLogin();
       const user = userEvent.setup();
 
-      await user.type(screen.getByPlaceholderText(/email/i), 'admin@test.com');
-      await user.type(screen.getByPlaceholderText(/contraseña/i), 'admin123');
-      await user.click(screen.getByRole('button', { name: /entrar/i }));
+      await user.type(screen.getByLabelText(/correo electrónico/i), 'admin@test.com');
+      await user.type(screen.getByLabelText(/contraseña/i), 'admin123');
+      await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
@@ -122,9 +109,9 @@ describe('Login Page', () => {
       renderLogin();
       const user = userEvent.setup();
 
-      await user.type(screen.getByPlaceholderText(/email/i), 'cashier@test.com');
-      await user.type(screen.getByPlaceholderText(/contraseña/i), 'cashier123');
-      await user.click(screen.getByRole('button', { name: /entrar/i }));
+      await user.type(screen.getByLabelText(/correo electrónico/i), 'cashier@test.com');
+      await user.type(screen.getByLabelText(/contraseña/i), 'cashier123');
+      await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith('/caja');
@@ -140,9 +127,9 @@ describe('Login Page', () => {
       renderLogin();
       const user = userEvent.setup();
 
-      await user.type(screen.getByPlaceholderText(/email/i), 'client@test.com');
-      await user.type(screen.getByPlaceholderText(/contraseña/i), 'client123');
-      await user.click(screen.getByRole('button', { name: /entrar/i }));
+      await user.type(screen.getByLabelText(/correo electrónico/i), 'client@test.com');
+      await user.type(screen.getByLabelText(/contraseña/i), 'client123');
+      await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith('/cliente');
@@ -157,12 +144,12 @@ describe('Login Page', () => {
       renderLogin();
       const user = userEvent.setup();
 
-      await user.type(screen.getByPlaceholderText(/email/i), 'wrong@test.com');
-      await user.type(screen.getByPlaceholderText(/contraseña/i), 'wrongpass');
-      await user.click(screen.getByRole('button', { name: /entrar/i }));
+      await user.type(screen.getByLabelText(/correo electrónico/i), 'wrong@test.com');
+      await user.type(screen.getByLabelText(/contraseña/i), 'wrongpass');
+      await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
       await waitFor(() => {
-        expect(screen.getByText(/credenciales inválidas/i)).toBeInTheDocument();
+        expect(screen.getByText(/email o contraseña incorrectos/i)).toBeInTheDocument();
       });
     });
 
@@ -172,11 +159,11 @@ describe('Login Page', () => {
       renderLogin();
       const user = userEvent.setup();
 
-      await user.type(screen.getByPlaceholderText(/email/i), 'test@test.com');
-      await user.type(screen.getByPlaceholderText(/contraseña/i), 'password');
-      await user.click(screen.getByRole('button', { name: /entrar/i }));
+      await user.type(screen.getByLabelText(/correo electrónico/i), 'test@test.com');
+      await user.type(screen.getByLabelText(/contraseña/i), 'password');
+      await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
-      expect(screen.getByText(/cargando/i)).toBeInTheDocument();
+      expect(screen.getByText(/iniciando sesión/i)).toBeInTheDocument();
     });
   });
 });

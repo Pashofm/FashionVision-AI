@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+from unittest.mock import MagicMock
 from backend.app.services.pos_terminal import (
     MockPOSTerminal, TransactionStatus, TransactionResult
 )
@@ -8,7 +9,9 @@ from backend.app.services.pos_terminal import (
 class TestMockPOSTerminal:
     @pytest.fixture
     def terminal(self):
-        return MockPOSTerminal(approval_rate=0.70, decline_rate=0.20, timeout_rate=0.10)
+        terminal = MockPOSTerminal(approval_rate=0.70, decline_rate=0.20, timeout_rate=0.10)
+        terminal._simulate_card_present = MagicMock(return_value=True)
+        return terminal
 
     @pytest.mark.asyncio
     async def test_initialize_payment_creates_transaction(self, terminal):
@@ -36,6 +39,16 @@ class TestMockPOSTerminal:
 
         assert card_result["success"] is True
         assert card_result["status"] == TransactionStatus.PROCESSING.value
+
+    @pytest.mark.asyncio
+    async def test_wait_for_card_timeout(self, terminal):
+        terminal._simulate_card_present.return_value = False
+        init_result = await terminal.initialize_payment(amount=100.00)
+
+        card_result = await terminal.wait_for_card_present(init_result["transaction_id"])
+
+        assert card_result["success"] is False
+        assert card_result["status"] == TransactionStatus.TIMEOUT.value
 
     @pytest.mark.asyncio
     async def test_wait_for_card_invalid_transaction(self, terminal):

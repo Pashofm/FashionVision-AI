@@ -11,6 +11,7 @@ import pytest
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from sqlalchemy.exc import IntegrityError
 
 from backend.app.models.models import Cart, CartItem, CartStatus
 from backend.app.services.session_manager import SessionManager
@@ -64,7 +65,7 @@ class TestCartCreation:
         )
         db_session.add(cart)
 
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             await db_session.commit()
 
 
@@ -327,11 +328,11 @@ class TestCartEdgeCases:
     """Tests for edge cases."""
 
     async def test_cart_item_zero_quantity(self, db_session):
-        """Test item with zero quantity."""
+        """Reject cart items with zero quantity."""
         cart = await CartFactory.create(db_session)
-        item = await CartItemFactory.create(db_session, cart=cart, quantity=0)
 
-        assert item.quantity == 0
+        with pytest.raises(Exception):
+            await CartItemFactory.create(db_session, cart=cart, quantity=0)
 
     async def test_multiple_carts_per_session(self, db_session):
         """Test multiple carts can belong to same session."""

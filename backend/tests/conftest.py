@@ -14,7 +14,7 @@ import os
 import sys
 from typing import AsyncGenerator
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
@@ -248,24 +248,16 @@ async def test_product(db_session, test_category) -> "Product":
 @pytest.fixture
 async def test_variant(db_session, test_product) -> "ProductVariant":
     """Create a test product variant."""
-    from backend.app.models.models import ProductVariant
-    import uuid
-    from decimal import Decimal
+    from backend.tests.factories import ProductVariantFactory
 
-    variant = ProductVariant(
-        id=uuid.uuid4(),
-        product_id=test_product.id,
+    return await ProductVariantFactory.create(
+        db_session,
+        product=test_product,
         size="M",
         color="Red",
         color_hex="#FF0000",
-        sku_variant=f"VAR-{uuid.uuid4().hex[:8]}",
-        price_modifier=Decimal("10.00"),
-        is_active=True
+        price_modifier=10,
     )
-    db_session.add(variant)
-    await db_session.commit()
-    await db_session.refresh(variant)
-    return variant
 
 
 @pytest.fixture

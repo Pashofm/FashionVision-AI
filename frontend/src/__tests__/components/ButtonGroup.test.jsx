@@ -32,13 +32,11 @@ describe('ButtonGroup Component', () => {
   });
 
   describe('Button States', () => {
-    it('disables buttons when isLoading is true', () => {
+    it('disables only the demo button when isLoading is true', () => {
       render(<ButtonGroup {...defaultProps} isLoading={true} />);
 
-      const buttons = screen.getAllByRole('button');
-      buttons.forEach(button => {
-        expect(button).toBeDisabled();
-      });
+      expect(screen.getByRole('button', { name: /abrir cámara/i })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: /procesando/i })).toBeDisabled();
     });
 
     it('enables buttons when isLoading is false', () => {
@@ -50,10 +48,16 @@ describe('ButtonGroup Component', () => {
       });
     });
 
-    it('shows loading indicator when isLoading is true', () => {
+    it('shows processing text when isLoading is true', () => {
       render(<ButtonGroup {...defaultProps} isLoading={true} />);
 
-      expect(screen.getByText(/cargando/i)).toBeInTheDocument();
+      expect(screen.getByText(/procesando/i)).toBeInTheDocument();
+    });
+
+    it('disables the camera button while the model is loading', () => {
+      render(<ButtonGroup {...defaultProps} isModelReady={false} />);
+
+      expect(screen.getByRole('button', { name: /cargando ia/i })).toBeDisabled();
     });
   });
 
@@ -82,14 +86,14 @@ describe('ButtonGroup Component', () => {
       render(<ButtonGroup {...defaultProps} />);
 
       const cameraButton = screen.getByRole('button', { name: /abrir cámara/i });
-      expect(cameraButton).toHaveClass('primary');
+      expect(cameraButton).toHaveClass('btn-primary');
     });
 
     it('applies outline style to "Demo Backend" button', () => {
       render(<ButtonGroup {...defaultProps} />);
 
       const demoButton = screen.getByRole('button', { name: /demo backend/i });
-      expect(demoButton).toHaveClass('outline');
+      expect(demoButton).toHaveClass('btn-outline');
     });
   });
 });

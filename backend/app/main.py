@@ -729,7 +729,8 @@ async def get_detection_product_by_id(product_id: uuid.UUID, db: AsyncSession = 
 @app.post("/api/upload/image")
 async def upload_product_image(
     file: UploadFile = File(...),
-    folder: str = "fashionvision/products"
+    folder: str = "fashionvision/products",
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     try:
         contents = await file.read()
@@ -749,7 +750,10 @@ async def upload_product_image(
 
 
 @app.delete("/api/upload/image/{public_id}")
-async def delete_product_image(public_id: str):
+async def delete_product_image(
+    public_id: str,
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
     try:
         result = delete_image(public_id)
         return {"success": True, "data": result}
@@ -944,7 +948,11 @@ async def update_user(user_id: uuid.UUID, user_data: UserUpdate, db: AsyncSessio
 # ==================== CATEGORIES ====================
 
 @app.post("/api/categories", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
-async def create_category(category: CategoryCreate, db: AsyncSession = db_dependency):
+async def create_category(
+    category: CategoryCreate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency,
+):
     db_category = Category(**category.model_dump())
     db.add(db_category)
     await db.flush()
@@ -968,7 +976,12 @@ async def get_category(category_id: uuid.UUID, db: AsyncSession = db_dependency)
 
 
 @app.put("/api/categories/{category_id}", response_model=CategoryResponse)
-async def update_category(category_id: uuid.UUID, category_data: CategoryUpdate, db: AsyncSession = db_dependency):
+async def update_category(
+    category_id: uuid.UUID,
+    category_data: CategoryUpdate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = db_dependency,
+):
     result = await db.execute(select(Category).where(Category.id == category_id))
     category = result.scalar_one_or_none()
     if not category:
@@ -1418,7 +1431,6 @@ async def update_product_variant(
         setattr(variant, key, value)
 
     await db.flush()
-    await db.refresh(variant)
     return variant
 
 
@@ -1662,6 +1674,7 @@ async def remove_product_image(
 @app.post("/api/inventory", response_model=InventoryResponse, status_code=status.HTTP_201_CREATED)
 async def create_inventory(
     inventory: InventoryCreate,
+    current_user: User = Depends(require_role(UserRole.admin)),
     db: AsyncSession = db_dependency,
 ):
     """Registra una nueva entrada de inventario para una variante de producto.

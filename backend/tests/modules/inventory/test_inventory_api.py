@@ -15,7 +15,7 @@ import uuid
 from decimal import Decimal
 
 from backend.app.models.models import Inventory, InventoryMovement, MovementType
-from tests.factories import (
+from backend.tests.factories import (
     InventoryFactory, ProductVariantFactory, UserFactory, CategoryFactory,
     ProductFactory
 )
@@ -90,18 +90,11 @@ class TestInventoryAPIEndpoints:
         assert int(data["quantity_available"]) == 75
 
     async def test_adjust_inventory(
-        self, authenticated_client, test_variant, admin_user
+        self, authenticated_client, test_variant, test_inventory
     ):
         """Test adjusting inventory via API."""
-        InventoryFactory.create(
-            db_session=None,
-            variant=test_variant,
-            quantity_available=100
-        )
-
-        response = await authenticated_client.post("/api/inventory/adjust", json={
-            "variant_id": str(test_variant.id),
-            "quantity": 5,
+        response = await authenticated_client.post("/api/inventory/adjust", params={"variant_id": str(test_variant.id)}, json={
+            "quantity_change": 5,
             "reason": "Manual adjustment"
         })
         assert response.status_code == 200
@@ -110,19 +103,17 @@ class TestInventoryAPIEndpoints:
         self, authenticated_client
     ):
         """Test adjusting non-existent variant."""
-        response = await authenticated_client.post("/api/inventory/adjust", json={
-            "variant_id": str(uuid.uuid4()),
-            "quantity": 5,
+        response = await authenticated_client.post("/api/inventory/adjust", params={"variant_id": str(uuid.uuid4())}, json={
+            "quantity_change": 5,
             "reason": "Test"
         })
         assert response.status_code == 404
 
     async def test_restock_inventory(
-        self, authenticated_client, test_variant
+        self, authenticated_client, test_variant, test_inventory
     ):
         """Test restocking inventory via API."""
-        response = await authenticated_client.post("/api/inventory/restock", json={
-            "variant_id": str(test_variant.id),
+        response = await authenticated_client.post("/api/inventory/restock", params={"variant_id": str(test_variant.id)}, json={
             "quantity": 100,
             "notes": "Supplier delivery"
         })
@@ -153,8 +144,7 @@ class TestInventoryAPIEndpoints:
     ):
         """Test updating low stock threshold."""
         response = await authenticated_client.put(
-            f"/api/inventory/{test_variant.id}/threshold",
-            json={"threshold": 20}
+            f"/api/inventory/{test_variant.id}/threshold?threshold=20",
         )
         assert response.status_code == 200
 
@@ -181,7 +171,7 @@ class TestInventoryMovementAPI:
     ):
         """Test getting inventory movements."""
         response = await authenticated_client.get(
-            f"/api/inventory-movements?variant_id={test_variant.id}"
+            f"/api/inventory-movements?product_variant_id={test_variant.id}"
         )
         assert response.status_code == 200
         data = response.json()
@@ -192,6 +182,6 @@ class TestInventoryMovementAPI:
     ):
         """Test filtering movements by type."""
         response = await authenticated_client.get(
-            f"/api/inventory-movements?variant_id={test_variant.id}&type=sale"
+            f"/api/inventory-movements?product_variant_id={test_variant.id}&type=sale"
         )
         assert response.status_code == 200
